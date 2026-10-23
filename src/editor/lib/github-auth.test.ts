@@ -109,6 +109,19 @@ test("ready requires the intended repository in the correct app's paginated inst
   expect(fetcher).toHaveBeenCalledTimes(4);
 });
 
+test.each([
+  ["  Alex Editor  ", "Alex Editor"],
+  [undefined, undefined], [null, undefined], [42, undefined], [false, undefined],
+  [{ name: "wrong" }, undefined], [[], undefined], ["", undefined], [" \t\n", undefined],
+])("public name %j is optional and safely normalized", async (name, expected) => {
+  const fetcher = github({ "/user": { ...user, name }, "/user/installations": { installations: [] } });
+  const access = await checkGitHubAccess("ghu_test", "owner/site", "rigel-cms");
+  expect(access.user).toEqual(expected ? { ...user, name: expected } : user);
+  expect(access.user.name ?? access.user.login).toBe(expected ?? "editor");
+  expect(access.status).toBe("installation-required");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
 test("identity alone and unrelated apps never prove installation", async () => {
   const fetcher = github({ "/user": user, "/user/installations": { installations: [{ ...installation, app_slug: "other-app" }] } });
   await expect(checkGitHubAccess("ghu_test", "owner/site", "rigel-cms")).resolves.toEqual({ user, status: "installation-required", installUrl: "https://github.com/apps/rigel-cms/installations/new", installation: null, repository: null });

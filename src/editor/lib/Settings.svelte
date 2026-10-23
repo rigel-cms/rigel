@@ -1,17 +1,21 @@
 <script lang="ts">
   import { getKeys, setKeys, STOCK_PROVIDERS } from "./images";
   import type { RigelSettings } from "./settings";
+  import type { Manifest } from "../../manifest/types";
+  import type { GitHubAccess } from "./github-auth";
   import Icon from "./Icon.svelte";
 
-  let { s = $bindable(), error, saving, onerase, onclose }: {
+  let { s = $bindable(), github, user, error, saving, onerase, onclose }: {
     s: RigelSettings;
+    github?: Manifest["github"];
+    user?: GitHubAccess["user"];
     error: string;
     saving: boolean;
     onerase: () => void;
     onclose: () => void;
   } = $props();
 
-  type PaneId = "appearance" | "editor" | "media" | "language" | "advanced";
+  type PaneId = "appearance" | "editor" | "connection" | "media" | "language" | "advanced";
   let active: PaneId = $state("appearance");
 
   const providerIds = Object.keys(STOCK_PROVIDERS) as (keyof typeof STOCK_PROVIDERS)[];
@@ -23,6 +27,7 @@
   const panes: { id: PaneId; label: string }[] = [
     { id: "appearance", label: "Appearance" },
     { id: "editor", label: "Editor" },
+    { id: "connection", label: "Connection" },
     { id: "media", label: "Media" },
     { id: "language", label: "Language" },
     { id: "advanced", label: "Advanced" },
@@ -31,6 +36,7 @@
   const PANE_ICONS = {
     appearance: "palette",
     editor: "textB",
+    connection: "user",
     media: "image",
     language: "translate",
     advanced: "wrench",
@@ -103,6 +109,25 @@
             <label class="radio"><input type="radio" bind:group={s.userPref.editorExperience} value="inline" /><span>Inline preview</span></label>
           </fieldset>
           <p class="hint">Inline preview lets you click an article body and write directly on the page. Other fields stay in the sidebar. This preference saves in this browser; content still requires Save.</p>
+        {:else if active === "connection"}
+          <h3>Connection</h3>
+          {#if github}
+            <dl class="connection-details">
+              <dt>GitHub account</dt>
+              <dd>{#if user}{user.name ?? user.login}<small>@{user.login}</small>{:else}No GitHub account connected.{/if}</dd>
+              <dt>Repository</dt>
+              <dd>{github.repo}</dd>
+              <dt>Editing branch</dt>
+              <dd>{github.branch}</dd>
+              {#if github.publishBranch}
+                <dt>Publishing branch</dt>
+                <dd>{github.publishBranch}</dd>
+              {/if}
+            </dl>
+          {:else}
+            <p>Local mode</p>
+            <p class="hint">No GitHub account connected. Content saves to local files when you press Save.</p>
+          {/if}
         {:else if active === "media"}
 
           <section class="media-settings-section">

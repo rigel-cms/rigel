@@ -1,5 +1,5 @@
 export interface GitHubAccess {
-  user: { login: string; avatar_url: string; html_url: string };
+  user: { login: string; name?: string; avatar_url: string; html_url: string };
   status: "ready" | "installation-required" | "read-only";
   installUrl: string;
   installation: { id: number; account: string; html_url: string } | null;
@@ -85,7 +85,8 @@ export async function checkGitHubAccess(token: string, repo: string, appSlug: st
   };
   const rawUser = await get("/user");
   if (!rawUser || ![rawUser.login, rawUser.avatar_url, rawUser.html_url].every(value => typeof value === "string" && value)) throw new Error("GitHub returned an invalid user. Please sign in again.");
-  const user = { login: rawUser.login, avatar_url: rawUser.avatar_url, html_url: rawUser.html_url };
+  const name = typeof rawUser.name === "string" ? rawUser.name.trim() : "";
+  const user = { login: rawUser.login, ...(name ? { name } : {}), avatar_url: rawUser.avatar_url, html_url: rawUser.html_url };
   const installUrl = `https://github.com/apps/${appSlug}/installations/new`;
   const result: GitHubAccess = { user, status: "installation-required", installUrl, installation: null, repository: null };
   type Installation = { id: number; app_slug: string; account?: { login?: string }; html_url?: string; permissions?: { contents?: string }; suspended_at?: string | null };

@@ -223,10 +223,10 @@
 
   let settings = $state(getSettings());
   let settingsError = $state("");
-  const userName = $derived(githubMode ? githubAccess?.user.login ?? "GitHub user" : "Local user");
+  const userName = $derived(githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? "GitHub user" : "Local user");
   const userAvatar = $derived(githubMode && /^https:\/\/avatars\.githubusercontent\.com\//.test(githubAccess?.user.avatar_url ?? "") ? githubAccess!.user.avatar_url : "");
   let failedAvatar = $state("");
-  const userMode = $derived(githubMode ? `${manifest.github?.repo} · ${manifest.github?.branch}` : "Local mode");
+  const userLogin = $derived(githubMode && githubAccess ? `@${githubAccess.user.login}` : "Local mode");
   let content: HTMLDivElement;
   let contentWidth = $state(0);
   let resizing = $state(false);
@@ -734,14 +734,14 @@
       <div class="user-menu-wrap">
         <button class="user-btn" aria-label={githubMode ? "GitHub user menu" : "Local user menu"} data-tooltip={githubMode ? "GitHub user menu" : "Local user menu"} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
           {@render avatar()}
-          <span class="user-details"><span class="uname">{userName}</span><small>{userMode}</small></span>
+          <span class="user-details"><span class="uname">{userName}</span><small>{userLogin}</small></span>
           <span class="user-menu-icon"><Icon name="dotsThreeOutlineVertical" size={18} /></span>
         </button>
         {#if userOpen}
           <div class="user-menu" role="menu">
             <div class="user-menu-head">
               {@render avatar()}
-              <div class="user-details"><strong>{userName}</strong><small>{userMode}</small></div>
+              <div class="user-details"><strong>{userName}</strong><small>{userLogin}</small></div>
             </div>
             <div class="divider"></div>
             <a role="menuitem" href="/" target="_blank" rel="noopener">
@@ -970,7 +970,7 @@
 {/if}
 
 {#if settingsOpen}
-  <Settings bind:s={settings} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} />
+  <Settings bind:s={settings} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} />
 {/if}
 {#if shortcutsOpen}
   <Shortcuts onclose={() => (shortcutsOpen = false)} />

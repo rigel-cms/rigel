@@ -63,7 +63,7 @@ export async function checkGitHubAccess(token: string, repo: string, appSlug: st
       });
     } catch { throw new Error("Unable to reach GitHub. Check your connection and try again."); }
     if (!response.ok) {
-      if (response.status === 401) throw new Error("GitHub session expired or was revoked. Please sign in again.");
+      if (response.status === 401) throw Object.assign(new Error("GitHub session expired or was revoked. Please sign in again."), { status: 401 });
       if (response.status === 429 || (response.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after")))) throw new Error("GitHub rate limit reached. Wait a few minutes and try again.");
       if (response.status === 403) throw new Error("GitHub access denied. Check app permissions and organization approval, then sign in again.");
       if (response.status === 404) throw new Error("GitHub repository or installation is unavailable. Check the repository name and app installation, then try again.");

@@ -1,7 +1,23 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getSettings, setSettings } from "./settings";
 import { getKeys, setKeys } from "./images";
-import { eraseData } from "./storage";
+import { eraseData, readSession, writeSession, clearSession } from "./storage";
+
+const config = { authOrigin: "https://auth.example", repo: "owner/site", branch: "drafts", appSlug: "rigel" };
+
+test("persists only the scoped access token and original expiry across reads", () => {
+  vi.useFakeTimers();
+  try {
+    const session = { accessToken: "ghu_fixture", expiresAt: Date.now() + 3600000 };
+    writeSession(config, { ...session, refreshToken: "never-store", user: "not-trusted" } as typeof session);
+    expect(readSession(config)).toEqual(session);
+    vi.advanceTimersByTime(60000);
+    expect(readSession(config)).toEqual(session);
+    expect([...entries.values()].join()).not.toMatch(/never-store|not-trusted/);
+    clearSession();
+    expect(readSession(config)).toBeNull();
+  } finally { vi.useRealTimers(); }
+});
 
 let entries: Map<string, string>;
 beforeEach(() => {
@@ -91,8 +107,46 @@ test("failed migration keeps legacy values", () => {
   expect(entries.has("rigel.keys")).toBe(true);
 });
 
+test.each([
+  ["expired", { expiresAt: Date.now() - 1 }],
+  ["near expiry", { expiresAt: Date.now() + 10000 }],
+  ["unbounded expiry", { expiresAt: Date.now() + 90000000 }],
+  ["wrong token", { accessToken: "ghs_not_a_user_token" }],
+  ["wrong version", { version: 2 }],
+  ["wrong scope", { scope: "other" }],
+  ["string expiry", { expiresAt: "3600" }],
+])("%s stored session is discarded", (_label, changes) => {
+  writeSession(config, { accessToken: "ghu_fixture", expiresAt: Date.now() + 3600000 });
+  entries.set("rigelcms.session", JSON.stringify({ ...JSON.parse(entries.get("rigelcms.session")!), ...changes }));
+  expect(readSession(config)).toBeNull();
+  expect(entries.has("rigelcms.session")).toBe(false);
+});
+
+test.each(["authOrigin", "repo", "branch", "appSlug"] as const)("session cannot cross a changed %s", key => {
+  writeSession(config, { accessToken: "ghu_fixture", expiresAt: Date.now() + 3600000 });
+  expect(readSession({ ...config, [key]: "different" })).toBeNull();
+  expect(entries.has("rigelcms.session")).toBe(false);
+});
+
+test("session restore never falls back to an obsolete storage key after signout", () => {
+  writeSession(config, { accessToken: "ghu_fixture", expiresAt: Date.now() + 3600000 });
+  entries.set("rigel.session", entries.get("rigelcms.session")!);
+  clearSession();
+  expect(readSession(config)).toBeNull();
+});
+
+test("malformed storage and blocked storage never prevent memory-only login", () => {
+  entries.set("rigelcms.session", "{");
+  expect(readSession(config)).toBeNull();
+  expect(entries.size).toBe(0);
+  for (const method of ["getItem", "setItem", "removeItem"] as const) localStorage[method] = () => { throw new Error("Blocked"); };
+  expect(() => writeSession(config, { accessToken: "ghu_fixture", expiresAt: Date.now() + 3600000 })).not.toThrow();
+  expect(readSession(config)).toBeNull();
+  expect(() => clearSession()).not.toThrow();
+});
+
 test("erase removes only the Rigel namespace and known legacy keys", () => {
-  for (const key of ["rigelcms.settings", "rigelcms.keys", "rigelcms.mediaView", "rigelcms.files", "rigel.settings", "rigel.keys", "rigel.user", "site.preferences", "rigelcms-other", "rigel.other"]) entries.set(key, "value");
+  for (const key of ["rigelcms.session", "rigelcms.settings", "rigelcms.keys", "rigelcms.mediaView", "rigelcms.files", "rigel.settings", "rigel.keys", "rigel.user", "site.preferences", "rigelcms-other", "rigel.other"]) entries.set(key, "value");
   eraseData();
   expect([...entries.keys()]).toEqual(["site.preferences", "rigelcms-other", "rigel.other"]);
 });

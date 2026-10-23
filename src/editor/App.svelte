@@ -24,7 +24,7 @@
   import SidebarIcon from "./lib/SidebarIcon.svelte";
   import logo from "./assets/rigelcms-icon.png?url";
   import { getSettings, setSettings } from "./lib/settings";
-  import { eraseData } from "./lib/storage";
+  import { eraseData, readSession, writeSession, clearSession } from "./lib/storage";
   import MenuEditor from "./lib/MenuEditor.svelte";
   import type { MenuItem } from "../manifest/menu";
   import UnsavedChanges from "./lib/UnsavedChanges.svelte";
@@ -43,6 +43,7 @@
   let ready = $state(false);
   let blueprint: Manifest | null = null;
   let gitContext: GitContext | null = null;
+  let authRevision = 0;
   let connected = $state(false);
   let connectionBusy = $state(false);
   let connectionError = $state("");
@@ -79,6 +80,14 @@
       blueprint = data;
       manifest = data;
       ready = true;
+      if (data.backend === "github" && data.github) {
+        const session = readSession(data.github);
+        if (session) {
+          gitContext = { token: session.accessToken, repo: data.github.repo, branch: data.github.branch };
+          sessionExpiresAt = session.expiresAt;
+          await recheckGitHub();
+        }
+      }
     } catch (error) {
       loadError = error instanceof Error ? error.message : "Could not load the editor configuration.";
     }
@@ -88,7 +97,7 @@
     if (connectionBusy) throw new Error("Wait for GitHub access verification before saving.");
     if (!gitContext || !connected || githubAccess?.status !== "ready") throw new Error("Connect GitHub and verify repository access before saving.");
     if (Date.now() >= sessionExpiresAt - 30_000) {
-      tokenExpired = true;
+      invalidateSession();
       throw new Error("Your GitHub session expired. Reconnect GitHub, then retry. Your unsaved edits are still here.");
     }
     return gitContext;
@@ -96,27 +105,54 @@
 
   async function verifyGitHub() {
     const config = blueprint?.github;
-    if (!config || !gitContext) return;
-    if (Date.now() >= sessionExpiresAt - 30_000) throw new Error("Your GitHub session expired. Sign in again to check repository access.");
-    githubAccess = await checkGitHubAccess(gitContext.token, config.repo, config.appSlug);
-    if (githubAccess.status !== "ready") return;
-    if (!connected && blueprint) {
-      const remote = await loadManifestRemote(gitContext, blueprint);
-      manifest = remote;
-      connected = true;
+    const context = gitContext;
+    if (!config || !context) return;
+    try {
+      if (Date.now() >= sessionExpiresAt - 30_000) {
+        invalidateSession();
+        throw new Error("Your GitHub session expired. Sign in again to check repository access.");
+      }
+      const access = await checkGitHubAccess(context.token, config.repo, config.appSlug);
+      if (gitContext !== context) return;
+      githubAccess = access;
+      if (access.status !== "ready") return;
+      if (!connected && blueprint) {
+        const remote = await loadManifestRemote(context, blueprint);
+        if (gitContext !== context) return;
+        manifest = remote;
+        connected = true;
+      }
+    } catch (error) {
+      if (gitContext === context) handleAuthError(error);
+      throw error;
     }
+  }
+
+  function invalidateSession() {
+    authRevision += 1;
+    clearSession();
+    gitContext = null;
+    sessionExpiresAt = 0;
+    githubAccess = null;
+    tokenExpired = true;
+  }
+
+  function handleAuthError(error: unknown) {
+    if (error instanceof Error && "status" in error && error.status === 401) invalidateSession();
   }
 
   async function connectGitHub() {
     if (connectionBusy || saveState === "saving" || !manifest.github) return;
     connectionBusy = true;
     connectionError = "";
+    const revision = ++authRevision;
     try {
       const session = await startGitHubLogin(manifest.github.authOrigin);
-      if (gitContext) gitContext.token = session.accessToken;
-      else gitContext = { token: session.accessToken, repo: manifest.github.repo, branch: manifest.github.branch };
+      if (revision !== authRevision) return;
+      gitContext = { token: session.accessToken, repo: manifest.github.repo, branch: manifest.github.branch };
       githubAccess = null;
       sessionExpiresAt = session.expiresAt;
+      writeSession(manifest.github, session);
       await verifyGitHub();
     } catch (error) {
       connectionError = error instanceof Error ? error.message : "Could not connect GitHub. Try signing in again.";
@@ -138,9 +174,7 @@
     if (saveState === "saving" || connectionBusy) return;
     userOpen = false;
     requestNavigation(() => {
-      gitContext = null;
-      sessionExpiresAt = 0;
-      githubAccess = null;
+      invalidateSession();
       connected = false;
       connectionError = "";
       settingsOpen = false;
@@ -161,9 +195,9 @@
 
   $effect(() => {
     const expiry = sessionExpiresAt;
-    tokenExpired = !!expiry && Date.now() >= expiry - 30_000;
+    tokenExpired = !expiry || Date.now() >= expiry - 30_000;
     if (!expiry) return;
-    const timer = setTimeout(() => { tokenExpired = true; }, Math.max(0, expiry - Date.now() - 30_000));
+    const timer = setTimeout(invalidateSession, Math.max(0, expiry - Date.now() - 30_000));
     return () => clearTimeout(timer);
   });
 
@@ -208,6 +242,7 @@
           saveState = dirty ? "idle" : "saved";
           saveError = "";
         } catch (error) {
+          handleAuthError(error);
           saveState = "error";
           saveError = error instanceof Error ? error.message : "Could not save changes";
           return false;
@@ -276,7 +311,7 @@
   function eraseBrowserData() {
     actionDialog = {
       title: "Erase browser data?", confirmLabel: "Erase data", danger: true,
-      description: "This removes Rigel settings, API keys and unsaved drafts from this browser. Saved repository files will not change. The editor will reload.",
+      description: "This removes Rigel settings, API keys, GitHub login and unsaved drafts from this browser. Saved repository files will not change. The editor will reload.",
       onconfirm: () => {
         if (saveState === "saving") throw new Error("Wait for the current save to finish.");
         eraseData();
@@ -615,7 +650,10 @@
       description: unsaved ? "This discards the new post and its unsaved changes." : `This deletes ${current.slug}.json${githubMode ? ` from ${manifest.github?.branch}` : ""} and discards any unsaved changes. This cannot be undone in the editor.`,
       onconfirm: async () => {
         if (!unsaved) {
-          if (githubMode) await deleteRemotePost(requireGitContext(), manifest, collection.name, current.slug);
+          if (githubMode) {
+            try { await deleteRemotePost(requireGitContext(), manifest, collection.name, current.slug); }
+            catch (error) { handleAuthError(error); throw error; }
+          }
           else {
           const res = await fetch(`/rigel/api/local/${collection.name}/${encodeURIComponent(current.slug)}`, { method: "DELETE" });
           if (!res.ok) throw new Error((await res.text()) || `Delete failed (${res.status})`);
@@ -642,6 +680,12 @@
 {/snippet}
 
 <svelte:window
+  onstorage={(event) => {
+    if ((event.key === "rigelcms.session" || event.key === null) && blueprint?.github && !readSession(blueprint.github)) {
+      invalidateSession();
+      connectionError = "Signed out in another tab. Reconnect GitHub to save. Your unsaved edits are still here.";
+    }
+  }}
   onresize={endPreviewResize}
   onblur={endPreviewResize}
   oncontextmenu={(event) => { if (!settings.devMode) event.preventDefault(); }}

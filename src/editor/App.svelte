@@ -651,31 +651,26 @@
       {#if loadError}<p class="connection-error" role="alert">{loadError}</p><button class="primary" onclick={loadBlueprint}>Retry loading</button>
       {:else}<p role="status">Loading the editor configuration…</p>{/if}
     {:else if manifest.github}
-      <p>Content repository <strong>{manifest.github.repo}</strong></p>
       {#if githubAccess}
         <p>Signed in as <strong>{githubAccess.user.login}</strong>.</p>
-        {#if githubAccess.status === "read-only"}
-          <p>Editing needs write access from both your account and the GitHub App. Ask an administrator to check repository permissions and the App installation, then check again.</p>
-        {:else if githubAccess.status === "installation-required"}
-          <p>Install or configure the Rigel GitHub App for this repository. On GitHub, choose your account or organization, select <strong>Only select repositories</strong>, and include <strong>{manifest.github.repo}</strong>.</p>
-          <p>If your organization requires approval, its administrator must approve the installation first.</p>
+        {#if githubAccess.status === "read-only" || githubAccess.status === "installation-required"}
+          <p>You don’t have editing access. Contact the website administrator.</p>
         {:else}
-          <p role="status">{connectionBusy ? "Loading the shared drafts workspace…" : "Repository access verified. Retry loading the drafts workspace."}</p>
+          <p role="status">{connectionBusy ? "Opening the editor…" : "Access confirmed. Try opening the editor again."}</p>
         {/if}
         {#if githubAccess.status !== "ready"}
-          <a id="github-install" class="primary" href={githubAccess.installUrl} target="_blank" rel="noopener noreferrer">Install / configure GitHub access</a>
-          <p>Keep this tab open. Return here after configuring access on GitHub.</p>
+          <a id="github-install" class="primary" href={githubAccess.installUrl} target="_blank" rel="noopener noreferrer">Manage GitHub access</a>
         {/if}
       {:else}
-        <p>Sign in, then choose which repositories the Rigel GitHub App may access. The editor opens only after GitHub confirms write access to this repository.</p>
+        <p>Sign in to edit this website.</p>
       {/if}
       <div class="connection-actions">
         {#if sessionExpiresAt && !tokenExpired}
-          <button id="github-check-access" class="primary" disabled={connectionBusy} onclick={recheckGitHub}>{connectionBusy ? "Checking access…" : githubAccess?.status === "ready" ? "Retry loading drafts" : "Check repository access"}</button>
+          <button id="github-check-access" class="primary" disabled={connectionBusy} onclick={recheckGitHub}>{connectionBusy ? "Checking access…" : githubAccess?.status === "ready" ? "Open editor" : "Check access"}</button>
         {/if}
         <button id="github-sign-in" class:primary={!sessionExpiresAt || tokenExpired} class:outlined={sessionExpiresAt > 0 && !tokenExpired} disabled={connectionBusy} onclick={connectGitHub}>{connectionBusy && !sessionExpiresAt ? "Signing in…" : sessionExpiresAt ? "Sign in again" : "Sign in with GitHub"}</button>
       </div>
-      <p class="connection-note">Save writes to <strong>{manifest.github.branch}</strong>, not <strong>{manifest.github.publishBranch}</strong>. Publishing is a separate pull request.</p>
+      <p class="connection-note">By continuing, you agree to the <a href="https://rigelcms.dev/terms" target="_blank" rel="noopener noreferrer">Terms of Use</a> and acknowledge the <a href="https://rigelcms.dev/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>
     {/if}
     {#if connectionError}<p class="connection-error" role="alert">{connectionError}</p>{/if}
   </main>

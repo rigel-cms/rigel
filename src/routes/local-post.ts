@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { writeFile, mkdir, rm, readFile, rename } from "node:fs/promises";
+import { writeFile, mkdir, rm, readFile, rename, link } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -55,7 +55,13 @@ export const POST: APIRoute = async ({ request, params }) => {
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporary, JSON.stringify({ frontmatter: fm, body: body.body }, null, 2) + "\n", { flag: "wx" });
-    await rename(temporary, file);
+    if (request.headers.get("If-None-Match") === "*") {
+      try { await link(temporary, file); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") return new Response("A post with that slug already exists. Reload the collection and create the draft again.", { status: 409 });
+        throw error;
+      }
+    } else await rename(temporary, file);
   } finally { await rm(temporary, { force: true }); }
   return new Response(null, { status: 204 });
 };

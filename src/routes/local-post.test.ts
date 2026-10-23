@@ -17,9 +17,28 @@ vi.mock("virtual:rigel-config", () => ({ default: { collections: [{ name: "blog"
 const { POST } = await import("./local-post");
 afterAll(() => rm(folder, { recursive: true, force: true }));
 
-function save(slug: string, frontmatter: Record<string, unknown>, body: unknown = emptyBody()) {
-  return POST({ params: { collection: "blog", slug }, request: new Request("http://localhost/", { method: "POST", body: JSON.stringify({ frontmatter, body }) }) } as unknown as APIContext);
+function save(slug: string, frontmatter: Record<string, unknown>, body: unknown = emptyBody(), creating = false) {
+  return POST({ params: { collection: "blog", slug }, request: new Request("http://localhost/", { method: "POST", headers: creating ? { "If-None-Match": "*" } : {}, body: JSON.stringify({ frontmatter, body }) }) } as unknown as APIContext);
 }
+
+test("creating a post cannot overwrite a slug created since loading the collection", async () => {
+  expect((await save("occupied", { title: "Original" })).status).toBe(204);
+  const file = path.join(folder, "occupied.json");
+  const before = await readFile(file, "utf8");
+  expect((await save("occupied", { title: "Duplicate" }, emptyBody(), true)).status).toBe(409);
+  expect(await readFile(file, "utf8")).toBe(before);
+});
+
+test("concurrent creates persist one complete post without overwriting the winner", async () => {
+  const responses = await Promise.all([
+    save("simultaneous", { title: "First" }, emptyBody(), true),
+    save("simultaneous", { title: "Second" }, emptyBody(), true),
+  ]);
+  expect(responses.map((response) => response.status).sort()).toEqual([204, 409]);
+  const post = JSON.parse(await readFile(path.join(folder, "simultaneous.json"), "utf8"));
+  expect(post.frontmatter.title).toBe(responses[0].status === 204 ? "First" : "Second");
+  expect(post.body).toEqual(emptyBody());
+});
 
 test("existing article save route persists a Lexical tree without a Markdown round trip", async () => {
   const body = emptyBody();

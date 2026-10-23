@@ -63,6 +63,7 @@ try {
       else if (req.url?.startsWith('/rigel/api/local/')) {
         writes++;
         let raw = ''; for await (const chunk of req) raw += chunk;
+        if (req.url.startsWith('/rigel/api/local/blog/')) assert.equal(req.headers['if-none-match'], '*', 'new posts request create-only persistence');
         if (rejectSave) { res.statusCode = 400; res.end('Title: required'); }
         else {
           if (req.url.startsWith('/rigel/api/local/blog/')) { savedPost = JSON.parse(raw); await writeFile(path.join(scratch, 'saved-post.json'), JSON.stringify(savedPost)); }
@@ -145,7 +146,7 @@ try {
   await page(); await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'page reopened');
   assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'Saved title');
   await input('[data-schema-path="title"] input', 'Explicit saved title');
-  await click('.save-button'); await wait(`document.querySelector('.save-button')?.disabled`, 'explicit Save settled');
+  await click('.save-button'); await wait(`!!document.querySelector('.save-status.saved')`, 'explicit Save settled');
   assert.equal(writes, 1, 'only explicit Save writes');
   assert(requests.every(r => !r.headers.authorization && !r.headers.referer), 'remote receives no token or referrer');
   assert(requests.filter(r => r.url.startsWith('/page/')).every(r => !r.headers.cookie), 'HTML fetch omits cookies');
@@ -181,12 +182,25 @@ try {
   await click('.brand'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`, 'rejected save unsaved guard');
   await button('Keep editing');
   rejectSave = false;
-  await click('.save-button'); await wait(`document.querySelector('.save-button')?.disabled`, 'new article explicit save');
+  await click('.save-button'); await wait(`!!document.querySelector('.save-status.saved')`, 'new article explicit save');
   assert.equal(savedPost.frontmatter.description, '', 'untouched description is serialized');
   assert.equal(savedPost.frontmatter.metaTitle, '');
   assert.equal(savedPost.frontmatter.ogImage, '');
   assert.equal(JSON.parse(await readFile(path.join(scratch, 'saved-post.json'), 'utf8')).frontmatter.description, '');
   await click('.brand');
+  await click('[data-collection="blog"]'); await button('Add new');
+  await input('.action-dialog input', 'New remote article'); await button('Create draft');
+  await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'duplicate-title template');
+  assert.equal(await evaluate(`document.querySelector('.visual-live').href`), 'https://sunnypixels.io/blog/new-remote-article-2/');
+  await input('main input[type="text"]', 'Changed title, stable slug');
+  assert.equal(await evaluate(`document.querySelector('.visual-live').href`), 'https://sunnypixels.io/blog/new-remote-article-2/');
+  await click('.save-button'); await wait(`!!document.querySelector('.save-status.saved')`, 'duplicate-title explicit save');
+  await click('.brand');
+  await click('[data-collection="blog"]'); await button('Add new');
+  await input('.action-dialog input', 'New remote article'); await button('Create draft');
+  await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'third duplicate-title template');
+  assert.equal(await evaluate(`document.querySelector('.visual-live').href`), 'https://sunnypixels.io/blog/new-remote-article-3/');
+  await click('.brand'); await button('Discard changes');
   for (const [mode, message] of [['cors','CORS'], ['404','HTTP 404'], ['type','did not return HTML'], ['redirect','redirects'], ['anchors','isn’t set up for live editing']]) {
     failure = mode; await page();
     await wait(`document.querySelector('.visual-error')?.textContent.includes(${JSON.stringify(message)})`, `${mode} error`);

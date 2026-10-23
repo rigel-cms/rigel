@@ -186,7 +186,7 @@
             ? `/rigel/api/local/documents/${encodeURIComponent(docSel.id)}`
             : m ? `/rigel/api/local/menus/${m.slug}` : po && c ? `/rigel/api/local/${c.name}/${encodeURIComponent(po.slug)}` : "/rigel/api/local/save";
           const payload = docSel ? { data: values } : m ? { slug: m.slug, title: values.title, items: values.items } : po ? { frontmatter: values, body } : { slug: p?.slug, values };
-          const res = await fetch(url, { method: docSel ? (creatingDoc ? "POST" : "PUT") : m ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          const res = await fetch(url, { method: docSel ? (creatingDoc ? "POST" : "PUT") : m ? "PUT" : "POST", headers: { "Content-Type": "application/json", ...(po && creating ? { "If-None-Match": "*" } : {}) }, body: JSON.stringify(payload) });
           if (!res.ok) throw new Error((await res.text()) || `Save failed (${res.status})`);
           }
           if (docSel) {
@@ -596,9 +596,8 @@
     actionDialog = {
       title: `Add to ${c.label}`, description: "Enter a title to start a draft. Nothing is written until you press Save.", fieldLabel: "Title", confirmLabel: "Create draft",
       onconfirm: (title) => {
-        const slug = slugify(title);
+        const slug = slugify(title, c.posts.map((post) => post.slug));
         if (!slug) throw new Error("Enter a title containing letters or numbers.");
-        if (c.posts.some((p) => p.slug === slug)) throw new Error(`A post with slug "${slug}" already exists.`);
         newEntry = { collection: c.name, post: { slug, frontmatter: initialCollectionValues(c.fields, title), body: emptyBody() } };
         openSelection({ kind: "post", collection: c.name, slug });
       },

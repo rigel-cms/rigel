@@ -18,6 +18,8 @@ async function until(fn, label) {
 const requests = [];
 let failure = '';
 let writes = 0;
+let rejectSave = false;
+let savedPost;
 const article = JSON.parse(await readFile(path.join(root, 'tests/fixtures/site/src/content/blog/first-post.json'), 'utf8'));
 const html = `<!doctype html><html><head><base href="https://wrong.invalid/"><meta http-equiv="refresh" content="0;url=https://wrong.invalid/"><link rel="stylesheet" href="/styles.css"><style>body { min-height: 2000px }</style><script>parent.previewScriptRan = true</script></head><body onload="parent.previewScriptRan=true"><h1 data-rigel-doc="page:about" data-rigel-text="title">Deployed title</h1><h2 data-rigel-text="intro.title">Deployed copy</h2><div data-rigel-richtext="$body"><p>Deployed body</p></div><img src="/pixel.svg" data-rigel-image="image" onerror="parent.previewScriptRan=true"><a href="/escape/">Leave preview</a><form action="/escape/"><button>Submit</button></form><iframe src="/escape/"></iframe><object data="/escape/"></object><template data-rigel-item-template=""><p data-rigel-text="items.__item__.title"></p></template></body></html>`;
 function fixture(req, res) {
@@ -39,7 +41,7 @@ function manifest() {
     pages: [{ slug: 'copy', label: 'Copy fixture', groups: [{ id: 'intro', label: 'Intro', fields: [{ key: 'title', label: 'Copy title', type: 'string' }] }], values: { intro: { title: 'Saved copy' } } }],
     schema: { objects: [], documents: [{ name: 'page', title: 'Pages', type: 'document', folder: 'content/pages', fields: [{ key: 'title', label: 'Title', type: 'string' }] }] },
     documents: [{ id: 'page:about', type: 'page', slug: 'about', data: { title: 'Saved title', image: '/pixel.svg' } }],
-    collections: [{ name: 'blog', label: 'Blog', fields: [{ key: 'title', label: 'Title', type: 'string' }], posts: [{ slug: 'first-post', ...article }] }],
+    collections: [{ name: 'blog', label: 'Blog', fields: [{ key: 'title', label: 'Title', type: 'string', required: true }, { key: 'description', label: 'Description', type: 'text' }, { key: 'metaTitle', label: 'Meta title', type: 'string' }, { key: 'ogImage', label: 'Open Graph image', type: 'image' }], posts: [{ slug: 'first-post', ...article }] }],
     preview: { liveUrl: 'https://sunnypixels.io', ...(sameOrigin ? {} : { draftUrl: draftOrigin }), documents: { page: { url: '/page/{slug}/' } }, pages: { copy: '/copy/' }, collections: { blog: { url: '/blog/{slug}/', new: '/preview/blog/' } } },
   };
 }
@@ -58,7 +60,15 @@ try {
   vite = await createServer({ ...options, root: path.join(scratch, 'dist'), plugins: [{ name: 'preview-fixture', configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       if (req.url === '/rigel/manifest.json') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(manifest())); }
-      else if (req.url?.startsWith('/rigel/api/local/')) { writes++; res.end('{}'); }
+      else if (req.url?.startsWith('/rigel/api/local/')) {
+        writes++;
+        let raw = ''; for await (const chunk of req) raw += chunk;
+        if (rejectSave) { res.statusCode = 400; res.end('Title: required'); }
+        else {
+          if (req.url.startsWith('/rigel/api/local/blog/')) { savedPost = JSON.parse(raw); await writeFile(path.join(scratch, 'saved-post.json'), JSON.stringify(savedPost)); }
+          res.end('{}');
+        }
+      }
       else if (/^\/(?:page|copy|blog|preview)\//.test(req.url ?? '')) fixture(req, res);
       else next();
     });
@@ -163,7 +173,20 @@ try {
   assert.equal(await evaluate(`${frameDoc}.baseURI`), `${draftOrigin}/preview/blog/`);
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), 'https://sunnypixels.io/blog/new-remote-article/');
   assert.equal(writes, 1, 'new article preview does not write');
-  await click('.brand'); await button('Discard changes');
+  rejectSave = true;
+  await click('.save-button');
+  await wait(`document.body.textContent.includes('Title: required')`, 'rejected save error');
+  assert.equal(await evaluate(`document.querySelector('.save-button').disabled`), false, 'rejected draft stays dirty');
+  assert.equal(await evaluate(`document.querySelector('main input[type="text"]').value`), 'New remote article', 'rejected save retains edits');
+  await click('.brand'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`, 'rejected save unsaved guard');
+  await button('Keep editing');
+  rejectSave = false;
+  await click('.save-button'); await wait(`document.querySelector('.save-button')?.disabled`, 'new article explicit save');
+  assert.equal(savedPost.frontmatter.description, '', 'untouched description is serialized');
+  assert.equal(savedPost.frontmatter.metaTitle, '');
+  assert.equal(savedPost.frontmatter.ogImage, '');
+  assert.equal(JSON.parse(await readFile(path.join(scratch, 'saved-post.json'), 'utf8')).frontmatter.description, '');
+  await click('.brand');
   for (const [mode, message] of [['cors','CORS'], ['404','HTTP 404'], ['type','did not return HTML'], ['redirect','redirects'], ['anchors','isn’t set up for live editing']]) {
     failure = mode; await page();
     await wait(`document.querySelector('.visual-error')?.textContent.includes(${JSON.stringify(message)})`, `${mode} error`);
@@ -179,7 +202,7 @@ try {
   await wait(`${frameDoc}.querySelector('h1').textContent === 'Same-origin unsaved'`, 'same-origin patch');
   assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
   await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'preview.png'), Buffer.from(r.data, 'base64')));
-  console.log('PASS: built editor with actual two-origin HTML, CSS and images; schema/legacy/article/new-entry previews; inline text/body; unsaved patch identity/scroll; Save/guards; credential-free HTML fetch; sandbox/sanitization; CORS/HTTP/type/redirect/anchors errors; same-origin defaults.');
+  console.log('PASS: built editor with actual two-origin HTML, CSS and images; schema/legacy/article/new-entry previews; inline text/body; unsaved patch identity/scroll; new-post untouched SEO serialization; rejected-save draft retention and retry; Save/guards; credential-free HTML fetch; sandbox/sanitization; CORS/HTTP/type/redirect/anchors errors; same-origin defaults.');
 } finally {
   ws?.close(); chrome?.kill(); await vite?.close(); await new Promise(resolve => remote.close(resolve));
 }

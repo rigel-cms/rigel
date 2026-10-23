@@ -50,6 +50,7 @@ const __rigelReservedSlugs = new Set(documents.filter((doc) => !documentTypes.fi
     ).map(([path, raw]) => {
       const post = JSON.parse(raw);
       __rigelValidateBody(post.body);
+      __rigelValidateCollectionValues(${JSON.stringify(c.fields)}, post.frontmatter, documents);
       post.slug = path.split("/").pop().replace(/\\.json$/, "");
       return post;
     }),
@@ -165,6 +166,7 @@ export function derefDocument(value) { return deref(value, __rigelIndex); }
       }
       return `
 import { validateBody as __rigelValidateBody } from ${JSON.stringify(fileURLToPath(new URL("../article-body.ts", import.meta.url)))};
+import { validateCollectionValues as __rigelValidateCollectionValues } from ${JSON.stringify(fileURLToPath(new URL("../manifest/collections.ts", import.meta.url)))};
 const modules = import.meta.glob(${JSON.stringify(pattern)}, { eager: true });
 const loaded = Object.values(modules).map((m) => m.default);
 ${documentsSrc}

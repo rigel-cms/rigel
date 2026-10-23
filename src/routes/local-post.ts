@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { validateBody, type ArticleBody } from "../article-body";
 import config from "virtual:rigel-config";
-import { validateCollectionReferences } from "../manifest/references";
+import { validateCollectionValues } from "../manifest/collections";
 import { readDocuments } from "../schema/store";
 import { fileURLToPath } from "node:url";
 import type { CollectionConfig } from "../config";
@@ -46,9 +46,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     validateBody(body.body);
     const fields = config.collections?.find((collection: CollectionConfig) => collection.name === params.collection)?.fields ?? [];
     const documents = config.schema && config.root ? await readDocuments(config.schema, fileURLToPath(config.root)) : [];
-    validateCollectionReferences(fields, body.frontmatter, documents);
+    validateCollectionValues(fields, body.frontmatter, documents);
   } catch (error) {
-    return new Response(error instanceof Error ? error.message : "Invalid references", { status: 400 });
+    return new Response(error instanceof Error ? error.message : "Invalid article", { status: 400 });
   }
   await mkdir(path.dirname(file), { recursive: true });
   const fm = { ...body.frontmatter, slug };

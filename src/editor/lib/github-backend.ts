@@ -2,7 +2,7 @@ import type { Manifest } from "../../manifest/types";
 import type { Selection } from "../../manifest/navigation";
 import { validateBody, type ArticleBody } from "../../article-body";
 import { validateMenu } from "../../manifest/menu";
-import { validateCollectionReferences } from "../../manifest/references";
+import { validateCollectionValues } from "../../manifest/collections";
 import { documentIndex, isPlainObject, validateDocument, validateDocumentId, validateSchema } from "../../schema/validate";
 import { applyValues, readValues } from "../../routes/serialize";
 
@@ -163,7 +163,7 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest): 
     for (const file of list(folder,POST_SLUG)) {
       const post = parseJson(await read(file.path));
       if (!isPlainObject(post) || !isPlainObject(post.frontmatter)) throw new Error("Invalid remote article");
-      validateBody(post.body); validateCollectionReferences(collection.fields,post.frontmatter,manifest.documents);
+      validateBody(post.body); validateCollectionValues(collection.fields,post.frontmatter,manifest.documents);
       collection.posts.push({slug:file.slug,frontmatter:post.frontmatter,body:post.body});
     }
   }
@@ -236,7 +236,7 @@ export async function saveRemoteSelection(ctx: GitContext, manifest: Manifest, s
     const folder = cfg.collections.find(c => c.name === selection.collection)?.folder;
     const collection = manifest.collections?.find(c => c.name === selection.collection);
     if (!folder || !collection) throw new Error("Unknown collection");
-    validateBody(body); validateCollectionReferences(collection.fields,values,manifest.documents ?? []);
+    validateBody(body); validateCollectionValues(collection.fields,values,manifest.documents ?? []);
     path = filePath(ctx,manifest,folder,selection.slug,"json",POST_SLUG);
     data = {frontmatter:{...values,slug:selection.slug},body};
   } else if (selection.kind === "document") {

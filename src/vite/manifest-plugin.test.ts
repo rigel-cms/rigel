@@ -131,6 +131,16 @@ test("preserves a configured collection list title", () => {
   expect(code).toContain('listTitle: "Editorial library"');
 });
 
+test("generated collection imports use the browser-safe shared validator with normalized fields and documents", () => {
+  const code = raw({ ...cfg, collections: [{ name: "blog", folder: "blog", fields: [{ key: "title", label: "Title", type: "string", required: true }] }] }).load("\0virtual:rigel-manifest")!;
+  expect(code).toContain('import { validateCollectionValues as __rigelValidateCollectionValues }');
+  expect(code).toContain('manifest/collections.ts');
+  expect(code).toContain('__rigelValidateCollectionValues([{');
+  expect(code).toContain('"required":true');
+  expect(code).toContain('"key":"description"');
+  expect(code).toContain('post.frontmatter, documents)');
+});
+
 const schema = {
   documents: [
     { name: "page", title: "Pages", type: "document" as const, folder: "src/content/pages", fields: [{ key: "title", label: "Title", type: "string" as const }] },

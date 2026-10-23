@@ -15,6 +15,7 @@
   import SchemaPanel from "./lib/SchemaPanel.svelte";
   import { collectionPreviewValues, referenceLabel, referenceOptions } from "../manifest/references";
   import { isSeoField } from "../manifest/seo";
+  import { initialCollectionValues } from "../manifest/collections";
   import { slugify } from "./lib/slugify";
   import Icon from "./lib/Icon.svelte";
   import SidebarIcon from "./lib/SidebarIcon.svelte";
@@ -596,7 +597,7 @@
         const slug = slugify(title);
         if (!slug) throw new Error("Enter a title containing letters or numbers.");
         if (c.posts.some((p) => p.slug === slug)) throw new Error(`A post with slug "${slug}" already exists.`);
-        newEntry = { collection: c.name, post: { slug, frontmatter: { title, date: new Date().toISOString().slice(0, 10), author: "", draft: true, ...Object.fromEntries(c.fields.filter(field => field.type === "reference" && field.multiple).map(field => [field.key, []])) }, body: emptyBody() } };
+        newEntry = { collection: c.name, post: { slug, frontmatter: initialCollectionValues(c.fields, title), body: emptyBody() } };
         openSelection({ kind: "post", collection: c.name, slug });
       },
     };

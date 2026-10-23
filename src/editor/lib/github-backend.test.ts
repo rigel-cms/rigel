@@ -50,6 +50,41 @@ function server() {
 }
 afterEach(()=>vi.unstubAllGlobals());
 
+test("invalid collection saves never mutate GitHub or discard existing properties", async () => {
+  const s = server();
+  const original = blueprint();
+  original.collections![0].fields.push(
+    { key: "title", label: "Title", type: "string", required: true },
+    { key: "description", label: "Description", type: "text" },
+    { key: "tags", label: "Tags", type: "tags" },
+    { key: "date", label: "Date", type: "date" },
+  );
+  const m = await loadManifestRemote(ctx, original);
+  const before = new Map(s.files);
+  const calls = s.calls.length;
+  for (const invalid of [{ title: "" }, { description: false }, { tags: "tag" }, { date: "2026-02-30" }, { author: "missing" }]) {
+    const values = { title: "Unsaved", description: "", custom: { keep: true }, ...invalid };
+    const copy = structuredClone(values);
+    await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, values, emptyBody(), false)).rejects.toThrow();
+    expect(values).toEqual(copy);
+  }
+  expect(s.calls).toHaveLength(calls);
+  expect(s.files).toEqual(before);
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Saved", description: "", custom: { keep: true } }, emptyBody(), false);
+  expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter).toMatchObject({ description: "", custom: { keep: true } });
+});
+
+test("remote collection loads validate present types without filling optional omissions", async () => {
+  const s = server();
+  const original = blueprint();
+  original.collections![0].fields.push({ key: "description", label: "Description", type: "text" });
+  const manifest = await loadManifestRemote(ctx, original);
+  expect(Object.hasOwn(manifest.collections![0].posts[0].frontmatter, "description")).toBe(false);
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { description: false }, body: emptyBody() }));
+  await expect(loadManifestRemote(ctx, original)).rejects.toThrow(/Description/);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
 test("loads real draft content and CAS saves all kinds with Unicode without touching main", async()=>{
   const s=server();const original=blueprint();const m=await loadManifestRemote(ctx,original);
   expect(m.pages[0].values.intro.heading).toBe("Start with a hello.");

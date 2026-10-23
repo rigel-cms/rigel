@@ -3,21 +3,43 @@ import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import type { APIContext } from "astro";
 import { emptyBody } from "../article-body";
+import { initialCollectionValues } from "../manifest/collections";
+import config from "virtual:rigel-config";
 
 const folder = path.resolve("_temp/article-route-check");
-vi.mock("virtual:rigel-config", () => ({ default: { collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [] }] } }));
+vi.mock("virtual:rigel-config", () => ({ default: { collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [
+  { key: "title", label: "Title", type: "string", required: true },
+  { key: "description", label: "Description", type: "text" },
+  { key: "date", label: "Date", type: "date" },
+  { key: "tags", label: "Tags", type: "tags" },
+  { key: "author", label: "Author", type: "reference", options: [{ value: "alex", label: "Alex" }] },
+] }] } }));
 const { POST } = await import("./local-post");
 afterAll(() => rm(folder, { recursive: true, force: true }));
 
+function save(slug: string, frontmatter: Record<string, unknown>, body: unknown = emptyBody()) {
+  return POST({ params: { collection: "blog", slug }, request: new Request("http://localhost/", { method: "POST", body: JSON.stringify({ frontmatter, body }) }) } as unknown as APIContext);
+}
+
 test("existing article save route persists a Lexical tree without a Markdown round trip", async () => {
   const body = emptyBody();
-  const payload = { frontmatter: { title: "Block article", draft: true }, body };
-  const response = await POST({ params: { collection: "blog", slug: "blocks" }, request: new Request("http://localhost/rigel/api/local/blog/blocks", { method: "POST", body: JSON.stringify(payload) }) } as unknown as APIContext);
-  expect(response.status).toBe(204);
+  const frontmatter = { title: "Block article", draft: true };
+  expect((await save("blocks", frontmatter, body)).status).toBe(204);
   const text = await readFile(path.join(folder, "blocks.json"), "utf8");
-  expect(JSON.parse(text)).toEqual({ frontmatter: { ...payload.frontmatter, slug: "blocks" }, body });
+  expect(JSON.parse(text)).toEqual({ frontmatter: { ...frontmatter, slug: "blocks" }, body });
   expect(text).toBe(JSON.stringify(JSON.parse(text), null, 2) + "\n");
-  const invalid = await POST({ params: { collection: "blog", slug: "blocks" }, request: new Request("http://localhost/", { method: "POST", body: JSON.stringify({ frontmatter: {}, body: { root: { type: "script", version: 1 } } }) }) } as unknown as APIContext);
-  expect(invalid.status).toBe(400);
+  expect((await save("blocks", frontmatter, { root: { type: "script", version: 1 } })).status).toBe(400);
   expect(await readFile(path.join(folder, "blocks.json"), "utf8")).toBe(text);
+});
+
+test("new values persist untouched description and rejected saves leave existing bytes unchanged", async () => {
+  const frontmatter = { ...initialCollectionValues(config.collections![0].fields, "New post"), custom: { keep: true } };
+  expect((await save("new-post", frontmatter)).status).toBe(204);
+  const file = path.join(folder, "new-post.json");
+  const before = await readFile(file, "utf8");
+  expect(JSON.parse(before).frontmatter).toMatchObject({ description: "", custom: { keep: true } });
+  for (const invalid of [{ title: "" }, { description: 3 }, { date: "2026-02-30" }, { tags: [false] }, { author: "missing" }]) {
+    expect((await save("new-post", { ...frontmatter, ...invalid })).status).toBe(400);
+    expect(await readFile(file, "utf8")).toBe(before);
+  }
 });

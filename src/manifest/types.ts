@@ -52,6 +52,7 @@ export interface CollectionField {
   type: "string" | "text" | "boolean" | "date" | "tags" | "markdown" | "image" | "reference";
   to?: string;
   multiple?: boolean;
+  required?: boolean;
   options?: import("./references").ReferenceOption[];
 }
 

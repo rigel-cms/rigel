@@ -105,6 +105,7 @@ try {
   async function page() { await click('#nav-pages'); await evaluate(`[...document.querySelectorAll('main tbody tr')].find(row => [...row.querySelectorAll('td')].some(td => td.textContent.trim() === 'about')).querySelector('button').click()`); }
   const frameDoc = `document.querySelector('iframe')?.contentDocument`;
   await cdp('Runtime.enable'); await cdp('Page.enable');
+  await cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
   await open();
   await evaluate(`sessionStorage.setItem('preview-test-token','never-send-this'); document.cookie='preview-test-cookie=never-send-this; path=/'; localStorage.setItem('rigelcms.settings',JSON.stringify({userPref:{editorExperience:'inline'}}))`);
   await open();
@@ -167,6 +168,15 @@ try {
   assert.equal(await evaluate(`document.querySelector('.save-button').disabled`), false);
   assert.equal(requests.length, articleRequests, 'inline body must not refetch the page');
   assert.equal(writes, 1, 'inline body does not autosave');
+  await evaluate(`${frameDoc}.querySelector('.rigel-inline [aria-label="Bold"]').focus({preventScroll:true})`);
+  await wait(`!!${frameDoc}.querySelector('[role="tooltip"]:popover-open')`, 'inline formatting tooltip');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('[role="tooltip"]').textContent`), 'Bold');
+  assert.equal(await evaluate(`${frameDoc}.querySelectorAll('.rigel [title]').length`), 0);
+  assert.equal(await evaluate(`${frameDoc}.querySelector('.rigel-inline [aria-label="Bold"]').getAttribute('aria-describedby')`), 'rigel-tooltip');
+  await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'inline-tooltip.png'), Buffer.from(r.data, 'base64')));
+  await evaluate(`${frameDoc}.querySelector('.rigel-inline [aria-label="Bold"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);
+  assert.equal(await evaluate(`!!${frameDoc}.querySelector('[role="tooltip"]:popover-open')`), false);
+  assert.equal(await evaluate(`${frameDoc}.activeElement.getAttribute('aria-label')`), 'Bold', 'tooltip Escape keeps toolbar focus');
   await click('.brand'); await button('Discard changes');
   await click('[data-collection="blog"]'); await button('Add new');
   await input('.action-dialog input', 'New remote article'); await button('Create draft');

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { tooltipRoot } from "./lib/tooltip";
+  onMount(() => tooltipRoot(document.body).destroy);
   import type {
     Manifest,
     ManifestCollection,
@@ -713,7 +716,7 @@
             data-document={node.target.kind === "document" ? node.target.id : undefined}
             data-page={node.target.kind === "page" ? node.target.slug : undefined}
             aria-label={node.label}
-            title={node.label}
+            data-tooltip={node.label}
             class:active={navActive(node.target)}
             aria-current={navActive(node.target) ? "page" : undefined}
             onclick={() => select(node.target)}
@@ -724,12 +727,12 @@
       {/each}
     </nav>
 
-    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
+    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} data-tooltip={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
       <SidebarIcon name="sidebar-simple" /><span class="sidebar-label">Collapse sidebar</span>
     </button>
     <div class="aside-foot">
       <div class="user-menu-wrap">
-        <button class="user-btn" aria-label={githubMode ? "GitHub user menu" : "Local user menu"} title={githubMode ? "GitHub user menu" : "Local user menu"} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
+        <button class="user-btn" aria-label={githubMode ? "GitHub user menu" : "Local user menu"} data-tooltip={githubMode ? "GitHub user menu" : "Local user menu"} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
           {@render avatar()}
           <span class="user-details"><span class="uname">{userName}</span><small>{userMode}</small></span>
           <span class="user-menu-icon"><Icon name="dotsThreeOutlineVertical" size={18} /></span>
@@ -759,7 +762,7 @@
             <a role="menuitem" href={githubAccess?.installUrl} target="_blank" rel="noopener noreferrer">Configure GitHub access</a>
             <button role="menuitem" class="github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={() => { userOpen = false; void connectGitHub(); }}>Reconnect GitHub</button>
             {/if}
-            <button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} title={githubMode ? "Sign out of this editor" : "Local mode"} onclick={signOut}>
+            <button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? "Sign out of this editor" : "Local mode"} onclick={signOut}>
               <Icon name="signOut" size={13} />
               Sign Out
               {#if !githubMode}<span class="soon">backend: github</span>{/if}
@@ -806,7 +809,7 @@
           <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType))}>Add new</button>
         {/if}
         {#if sel?.kind === "post" && post}
-          <button class="icon-btn" title="Delete post" disabled={saveState === "saving"} onclick={deletePost}>
+          <button class="icon-btn" aria-label="Delete post" data-tooltip="Delete post" disabled={saveState === "saving"} onclick={deletePost}>
             <Icon name="trash" size={15} />
           </button>
         {/if}

@@ -39,7 +39,7 @@
 <div class="site-preview" aria-label="Website preview">
   <div class="preview-heading">
     <strong>Website preview</strong>
-    {#if livePath}<a class="icon-btn visual-live" href={livePath} target="_blank" rel="noopener noreferrer" aria-label="View live page" title="View live page"><Icon name="external" size={18} /></a>{/if}
+    {#if livePath}<a class="icon-btn visual-live" href={livePath} target="_blank" rel="noopener noreferrer" aria-label="View live page" data-tooltip="View live page"><Icon name="external" size={18} /></a>{/if}
   </div>
   {#if error}<p role="status" class="preview-error">{error}</p>{/if}
   {#if path}

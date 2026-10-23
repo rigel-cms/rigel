@@ -8,7 +8,7 @@
 
 {#if field === "metaTitle" || field === "description"}
   <div class="seo-length" data-seo-length={field} data-tone={tone}>
-    <div class="seo-length-track" role="meter" aria-label={`${limits.label} length`} aria-valuemin={0} aria-valuemax={Math.max(limits.max, count)} aria-valuenow={count} aria-valuetext={`${count} characters. ${status}. Recommended ${limits.min} to ${limits.max}.`} title={status}>
+    <div class="seo-length-track" role="meter" aria-label={`${limits.label} length`} aria-valuemin={0} aria-valuemax={Math.max(limits.max, count)} aria-valuenow={count} aria-valuetext={`${count} characters. ${status}. Recommended ${limits.min} to ${limits.max}.`} data-tooltip={status}>
       <span class="seo-length-fill" style:width={`${Math.min(count / limits.max * 100, 100)}%`}></span>
     </div>
     <div class="seo-length-summary hint">

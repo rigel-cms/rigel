@@ -1,6 +1,7 @@
 <script lang="ts">
   import { mount, unmount, onDestroy, tick, type Snippet } from "svelte";
   import BlockEditor from "./BlockEditor.svelte";
+  import { tooltipRoot } from "./tooltip";
   import editorStyles from "../styles.css?inline";
   import type { ArticleBody } from "../../article-body";
   import { patchPreview } from "../../preview";
@@ -45,6 +46,7 @@
   let bodyContents: ChildNode[] = [];
   let bodyAttributes: [string, string | null][] = [];
   let bodyScope: HTMLElement | null = null;
+  let removeTooltips: (() => void) | undefined;
   let error = $state("");
   let mode = $state<"browse" | "edit">("edit");
   let panelOpen = $state(true);
@@ -186,6 +188,7 @@
 
   function stopBodyEdit() {
     if (!bodyEditor) return;
+    removeTooltips?.(); removeTooltips = undefined;
     void unmount(bodyEditor); bodyEditor = undefined;
     bodyThemeObserver?.disconnect(); bodyThemeObserver = undefined;
     editingBody?.replaceChildren(...bodyContents);
@@ -222,6 +225,7 @@
     syncTheme();
     const host = doc.createElement("div"); host.className = "rigel rigel-inline";
     scope.append(host); doc.body.append(scope); bodyScope = scope;
+    removeTooltips = tooltipRoot(host).destroy;
     bodyEditor = mount(BlockEditor, { target: host, props: { editableRoot: element, get value() { return body as ArticleBody; }, oninput: (next: ArticleBody) => onbody(next) } });
     bodyThemeObserver = new MutationObserver(syncTheme);
     bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
@@ -435,8 +439,8 @@
       </div>
       <span class="visual-hint">{mode === "edit" ? "Click a region to edit it. Scripts, forms and links stay disabled." : "Scripts, forms and links are disabled in this preview."}</span>
       <div class="visual-actions">
-        {#if livePath}<a class="icon-btn visual-live" href={livePath} target="_blank" rel="noopener noreferrer" aria-label="View live page" title="View live page"><Icon name="external" size={18} /></a>{/if}
-        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label="Toggle properties panel" title="Toggle properties panel" onclick={() => (panelOpen = !panelOpen)}>
+        {#if livePath}<a class="icon-btn visual-live" href={livePath} target="_blank" rel="noopener noreferrer" aria-label="View live page" data-tooltip="View live page"><Icon name="external" size={18} /></a>{/if}
+        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label="Toggle properties panel" data-tooltip="Toggle properties panel" onclick={() => (panelOpen = !panelOpen)}>
           <SidebarIcon name="square-half" />
         </button>
       </div>

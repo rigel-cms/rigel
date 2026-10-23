@@ -127,10 +127,10 @@
           <span>Item {index + 1}</span>
           <span class="schema-key">{(item && typeof item === "object" ? (item as Record<string, unknown>)._key : "") ?? ""}</span>
           <div class="schema-item-actions">
-            <button type="button" aria-label={`Move ${field.label} item ${index + 1} up`} title="Move up" disabled={index === 0} onclick={() => onvalue(moveItem(itemList, index, -1))}>↑</button>
-            <button type="button" aria-label={`Move ${field.label} item ${index + 1} down`} title="Move down" disabled={index === itemList.length - 1} onclick={() => onvalue(moveItem(itemList, index, 1))}>↓</button>
-            <button type="button" aria-label={`Duplicate ${field.label} item ${index + 1}`} title="Duplicate" onclick={() => onvalue(duplicateItem(itemList, index))}>⧉</button>
-            <button type="button" aria-label={`Remove ${field.label} item ${index + 1}`} title="Remove" onclick={() => onvalue(itemList.filter((_, position) => position !== index))}>×</button>
+            <button type="button" aria-label={`Move ${field.label} item ${index + 1} up`} data-tooltip="Move up" disabled={index === 0} onclick={() => onvalue(moveItem(itemList, index, -1))}>↑</button>
+            <button type="button" aria-label={`Move ${field.label} item ${index + 1} down`} data-tooltip="Move down" disabled={index === itemList.length - 1} onclick={() => onvalue(moveItem(itemList, index, 1))}>↓</button>
+            <button type="button" aria-label={`Duplicate ${field.label} item ${index + 1}`} data-tooltip="Duplicate" onclick={() => onvalue(duplicateItem(itemList, index))}>⧉</button>
+            <button type="button" aria-label={`Remove ${field.label} item ${index + 1}`} data-tooltip="Remove" onclick={() => onvalue(itemList.filter((_, position) => position !== index))}>×</button>
           </div>
         </div>
         {#if itemSchema.length}

@@ -509,10 +509,10 @@
 
 {#snippet formatButtons()}
   {#each marks.slice(0, 2) as mark}
-    <button type="button" aria-label={mark.label} title={mark.label} aria-pressed={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={18} /></button>
+    <button type="button" aria-label={mark.label} data-tooltip={mark.label} aria-pressed={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={18} /></button>
   {/each}
-  <button type="button" aria-label="Link" title="Link" aria-expanded={linkOpen} aria-controls={`${id}-link`} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
-  <button type="button" aria-label="More formatting" title="More formatting" aria-haspopup="menu" aria-expanded={formatsOpen} aria-controls={`${id}-formats`} popovertarget={`${id}-formats`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); formatTrigger = event.currentTarget; formatMenu.matches(':popover-open') ? closeMenu() : openMenu(event, formatMenu); }}><Icon name="caretDown" size={18} /></button>
+  <button type="button" aria-label="Link" data-tooltip="Link" aria-expanded={linkOpen} aria-controls={`${id}-link`} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
+  <button type="button" aria-label="More formatting" data-tooltip="More formatting" aria-haspopup="menu" aria-expanded={formatsOpen} aria-controls={`${id}-formats`} popovertarget={`${id}-formats`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); formatTrigger = event.currentTarget; formatMenu.matches(':popover-open') ? closeMenu() : openMenu(event, formatMenu); }}><Icon name="caretDown" size={18} /></button>
 {/snippet}
 {#snippet tableControls()}
   <div class="block-table-controls" role="group" aria-label="Table controls">
@@ -526,24 +526,24 @@
 {#snippet toolbar(image: boolean)}
   <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? "Image editing" : "Body formatting"} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData)}>
     {#if image}
-      <button type="button" aria-label="Edit alt text" title="Edit alt text" onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
-      <button type="button" aria-label={imageData?.url ? "Edit image link" : "Add image link"} title={imageData?.url ? "Edit image link" : "Add image link"} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
+      <button type="button" aria-label="Edit alt text" data-tooltip="Edit alt text" onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
+      <button type="button" aria-label={imageData?.url ? "Edit image link" : "Add image link"} data-tooltip={imageData?.url ? "Edit image link" : "Add image link"} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
     {:else}
-    <Select ariaLabel="Block type" title={activeBlock?.label ?? "Block type"} icon={activeBlock?.icon ?? "paragraph"} value={imageData ? "" : blockType} options={textBlocks} disabled={!!imageData} onchange={next => { hoverKey = ""; changeBlock(String(next)); }} />
+    <Select ariaLabel="Block type" data-tooltip={activeBlock?.label ?? "Block type"} icon={activeBlock?.icon ?? "paragraph"} value={imageData ? "" : blockType} options={textBlocks} disabled={!!imageData} onchange={next => { hoverKey = ""; changeBlock(String(next)); }} />
     {#if !inline || !["image", "divider"].includes(blockType)}<span class="toolbar-separator" aria-hidden="true"></span>{@render formatButtons()}<span class="toolbar-separator" aria-hidden="true"></span>{/if}
     {/if}
     <ImagePicker toolbar value={image ? imageData?.src ?? "" : ""} altText={image ? imageData?.alt ?? "" : ""} triggerLabel={image ? "Replace image" : "Insert image"} onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: image }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {#if !image}
-    <button type="button" aria-label="Table" title="Table" aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>
-    <button type="button" aria-label="Bulleted list" title="Bulleted list" aria-pressed={listType === "bullet"} disabled={["image", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
-    <button type="button" aria-label="Numbered list" title="Numbered list" aria-pressed={listType === "number"} disabled={["image", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
+    <button type="button" aria-label="Table" data-tooltip="Table" aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>
+    <button type="button" aria-label="Bulleted list" data-tooltip="Bulleted list" aria-pressed={listType === "bullet"} disabled={["image", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
+    <button type="button" aria-label="Numbered list" data-tooltip="Numbered list" aria-pressed={listType === "number"} disabled={["image", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
     {#if !inline}
       <button type="button" class="block-history" disabled={!canUndo} onclick={() => editor.dispatchCommand(L.UNDO_COMMAND, undefined)}>Undo</button>
       <button type="button" class="block-history" disabled={!canRedo} onclick={() => editor.dispatchCommand(L.REDO_COMMAND, undefined)}>Redo</button>
-      <button type="button" class="block-add" aria-label="Add block" title="Add block" onclick={addBlock}>Add block</button>
+      <button type="button" class="block-add" aria-label="Add block" data-tooltip="Add block" onclick={addBlock}>Add block</button>
     {/if}
     {/if}
-    {#if inline || image}<span class="toolbar-separator" aria-hidden="true"></span><button type="button" aria-label="More actions" title="More actions" aria-haspopup="true" popovertarget={`${id}-actions`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); menu.matches(':popover-open') ? closeMenu() : openMenu(event); }}><Icon name="dotsThreeOutlineVertical" size={18} /></button>{/if}
+    {#if inline || image}<span class="toolbar-separator" aria-hidden="true"></span><button type="button" aria-label="More actions" data-tooltip="More actions" aria-haspopup="true" popovertarget={`${id}-actions`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); menu.matches(':popover-open') ? closeMenu() : openMenu(event); }}><Icon name="dotsThreeOutlineVertical" size={18} /></button>{/if}
   </div>
 {/snippet}
 <div class="block-editor" bind:this={editorHost}>
@@ -556,9 +556,9 @@
       <label for={`${id}-url`}>Link URL</label>
       <div class="markdown-link-controls">
         <input id={`${id}-url`} type="text" placeholder="https://…" bind:this={linkInput} bind:value={linkUrl} aria-invalid={!!linkError} />
-        <button type="button" aria-label="Apply link" title="Apply link" onclick={() => applyLink()}><Icon name="check" size={16} /></button>
-        <button type="button" aria-label="Remove link" title="Remove link" onclick={() => applyLink(true)}><Icon name="linkBreak" size={16} /></button>
-        <button type="button" aria-label="Close link" title="Close link" onclick={() => { linkOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
+        <button type="button" aria-label="Apply link" data-tooltip="Apply link" onclick={() => applyLink()}><Icon name="check" size={16} /></button>
+        <button type="button" aria-label="Remove link" data-tooltip="Remove link" onclick={() => applyLink(true)}><Icon name="linkBreak" size={16} /></button>
+        <button type="button" aria-label="Close link" data-tooltip="Close link" onclick={() => { linkOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
       </div>
       {#if linkError}<p role="alert">{linkError}</p>{/if}
     </div>
@@ -568,8 +568,8 @@
       <label for={`${id}-alt`}>Alt text (leave empty if decorative)</label>
       <div class="markdown-link-controls">
         <input id={`${id}-alt`} type="text" aria-label="Image alt text" bind:this={altInput} bind:value={altText} />
-        <button type="button" aria-label="Apply alt text" title="Apply alt text" onclick={applyAlt}><Icon name="check" size={16} /></button>
-        <button type="button" aria-label="Close alt text" title="Close alt text" onclick={() => { altOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
+        <button type="button" aria-label="Apply alt text" data-tooltip="Apply alt text" onclick={applyAlt}><Icon name="check" size={16} /></button>
+        <button type="button" aria-label="Close alt text" data-tooltip="Close alt text" onclick={() => { altOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
       </div>
     </div>
   {/if}
@@ -578,9 +578,9 @@
     <div class="block-markdown-view">{#if inline}<button type="button" class="outlined" onclick={async () => { markdownView = false; await tick(); editor.focus(); }}>Close Markdown view</button>{/if}<pre class="block-markdown" aria-label="Body as Markdown" tabindex="0">{articleMarkdown(value)}</pre></div>
   {/if}
   <div class="block-surface" bind:this={surface} hidden={markdownView} onpointermove={hover} role="group" aria-label="Article blocks">
-    {#if insertion && !markdownView}<button type="button" class="block-insert" style={`top:${insertion.top}px;left:${insertion.left}px`} aria-label="Insert paragraph here" title="Insert paragraph" onpointerdown={event => event.preventDefault()} onpointerleave={leaveInsertion} onblur={() => { insertion = null; }} onclick={insertParagraph}><Icon name="plus" size={16} /></button>{/if}
+    {#if insertion && !markdownView}<button type="button" class="block-insert" style={`top:${insertion.top}px;left:${insertion.left}px`} aria-label="Insert paragraph here" data-tooltip="Insert paragraph" onpointerdown={event => event.preventDefault()} onpointerleave={leaveInsertion} onblur={() => { insertion = null; }} onclick={insertParagraph}><Icon name="plus" size={16} /></button>{/if}
     {#if !inline}<div class="block-content" contenteditable="true" role="textbox" aria-label="Body" aria-multiline="true" bind:this={root}></div>{/if}
-    {#if hoverKey || activeKey}<button bind:this={handle} type="button" class="block-handle" style={`top:${handleTop}px;${inline ? `left:${handleLeft}px` : ''}`} aria-label="Block options and drag handle" title="Drag to reorder; click for block options" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={() => endDrag()} onpointercancel={() => endDrag(true)} onlostpointercapture={() => endDrag(true)} onclick={openMenu}><Icon name="dotsThreeOutlineVertical" size={16} /></button>{/if}
+    {#if hoverKey || activeKey}<button bind:this={handle} type="button" class="block-handle" style={`top:${handleTop}px;${inline ? `left:${handleLeft}px` : ''}`} aria-label="Block options and drag handle" data-tooltip="Drag to reorder; click for block options" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={() => endDrag()} onpointercancel={() => endDrag(true)} onlostpointercapture={() => endDrag(true)} onclick={openMenu}><Icon name="dotsThreeOutlineVertical" size={16} /></button>{/if}
     {#if drop}<div class="block-drop-indicator" style={`top:${drop.top}px;${inline ? `position:fixed;left:${root.getBoundingClientRect().left}px;width:${root.getBoundingClientRect().width}px;right:auto` : ''}`}></div>{/if}
     <div bind:this={slashMenu} class="block-slash" id={`${id}-slash`} popover="manual" style={slashPosition} role="listbox" aria-label="Insert block" onkeydown={slashKeydown}>
       {#if slash !== null}

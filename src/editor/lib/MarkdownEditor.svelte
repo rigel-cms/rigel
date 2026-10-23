@@ -172,18 +172,18 @@
   {#if warning}<p class="markdown-warning" role="status">{warning}</p>{/if}
   <div class="markdown-visual" hidden={mode !== "visual"}>
     <div class="body-toolbar formatting-toolbar" role="group" aria-label={`${label} formatting`}>
-      <Select ariaLabel="Text style" title="Text style" value={format} options={[{ value: "paragraph", label: "Paragraph" }, ...[1, 2, 3, 4, 5, 6].map(level => ({ value: `h${level}`, label: `Heading ${level}` })), { value: "code_block", label: "Code block" }].map(option => ({ ...option, disabled: !!state && format !== option.value && !formatCommand(option.value)(state) }))} onchange={next => command(formatCommand(String(next)))} />
+      <Select ariaLabel="Text style" data-tooltip="Text style" value={format} options={[{ value: "paragraph", label: "Paragraph" }, ...[1, 2, 3, 4, 5, 6].map(level => ({ value: `h${level}`, label: `Heading ${level}` })), { value: "code_block", label: "Code block" }].map(option => ({ ...option, disabled: !!state && format !== option.value && !formatCommand(option.value)(state) }))} onchange={next => command(formatCommand(String(next)))} />
       <div class="format-group" role="group" aria-label="Text formatting">
         {#each marks as item}
-          <button type="button" aria-label={item.name} title={item.name} aria-pressed={activeMark(item.type)} disabled={!state || !toggleMark(schema.marks[item.type])(state)} onmousedown={event => event.preventDefault()} onclick={() => command(toggleMark(schema.marks[item.type]))}><Icon name={item.icon} size={18} /></button>
+          <button type="button" aria-label={item.name} data-tooltip={item.name} aria-pressed={activeMark(item.type)} disabled={!state || !toggleMark(schema.marks[item.type])(state)} onmousedown={event => event.preventDefault()} onclick={() => command(toggleMark(schema.marks[item.type]))}><Icon name={item.icon} size={18} /></button>
         {/each}
       </div>
       <div class="format-group" role="group" aria-label="Lists and quote">
         {#each blocks as item}
-          <button type="button" aria-label={item.name} title={item.name} aria-pressed={activeBlock(item.type)} disabled={!state || !blockCommand(item.type)(state)} onmousedown={event => event.preventDefault()} onclick={() => command(blockCommand(item.type))}><Icon name={item.icon} size={18} /></button>
+          <button type="button" aria-label={item.name} data-tooltip={item.name} aria-pressed={activeBlock(item.type)} disabled={!state || !blockCommand(item.type)(state)} onmousedown={event => event.preventDefault()} onclick={() => command(blockCommand(item.type))}><Icon name={item.icon} size={18} /></button>
         {/each}
       </div>
-      <button bind:this={linkButton} type="button" aria-label="Link" title="Link" aria-pressed={activeMark("link")} aria-expanded={linkOpen} aria-controls={`${id}-link`} disabled={!state || !toggleMark(schema.marks.link)(state)} onmousedown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
+      <button bind:this={linkButton} type="button" aria-label="Link" data-tooltip="Link" aria-pressed={activeMark("link")} aria-expanded={linkOpen} aria-controls={`${id}-link`} disabled={!state || !toggleMark(schema.marks.link)(state)} onmousedown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
       <ImagePicker toolbar onopen={() => { imageSelection = view?.state.selection.getBookmark(); linkOpen = false; }} onpick={insertImage} onclose={() => { imageSelection = undefined; }} />
     </div>
     {#if linkOpen}
@@ -191,9 +191,9 @@
         <label for={`${id}-url`}>Link URL</label>
         <div class="markdown-link-controls">
           <input id={`${id}-url`} type="text" placeholder="https://…" bind:this={linkInput} bind:value={linkUrl} aria-invalid={!!linkError} aria-describedby={linkError ? `${id}-error` : undefined} />
-          <button type="button" aria-label="Apply link" title="Apply link" onclick={() => link()}><Icon name="check" size={16} /></button>
-          <button type="button" aria-label="Remove link" title="Remove link" disabled={!activeMark("link")} onclick={() => link(true)}><Icon name="linkBreak" size={16} /></button>
-          <button type="button" aria-label="Close link" title="Close link" onclick={() => { linkOpen = false; linkButton.focus(); }}><Icon name="x" size={16} /></button>
+          <button type="button" aria-label="Apply link" data-tooltip="Apply link" onclick={() => link()}><Icon name="check" size={16} /></button>
+          <button type="button" aria-label="Remove link" data-tooltip="Remove link" disabled={!activeMark("link")} onclick={() => link(true)}><Icon name="linkBreak" size={16} /></button>
+          <button type="button" aria-label="Close link" data-tooltip="Close link" onclick={() => { linkOpen = false; linkButton.focus(); }}><Icon name="x" size={16} /></button>
         </div>
         {#if linkError}<p id={`${id}-error`} role="alert">{linkError}</p>{/if}
       </div>

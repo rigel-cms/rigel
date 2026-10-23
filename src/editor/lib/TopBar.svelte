@@ -112,7 +112,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<button class="search-trigger" aria-label="Search content" title="Search content (⌘K)" onclick={() => { active = -1; open = true; }}>
+<button class="search-trigger" aria-label="Search content" data-tooltip="Search content (⌘K)" onclick={() => { active = -1; open = true; }}>
   <SidebarIcon name="magnifying-glass" />
   <span class="sidebar-label">Search…</span>
   <kbd>⌘K</kbd>

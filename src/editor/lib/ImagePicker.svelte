@@ -153,12 +153,12 @@
     {#if error && !open}<p class="error" role="alert">{error}</p>{/if}
   </div>
 {:else if toolbar}
-  <button bind:this={trigger} data-image-trigger type="button" aria-label={triggerLabel} title={triggerLabel} onmousedown={event => event.preventDefault()} onclick={launch}><Icon name="image" size={18} /></button>
+  <button bind:this={trigger} data-image-trigger type="button" aria-label={triggerLabel} data-tooltip={triggerLabel} onmousedown={event => event.preventDefault()} onclick={launch}><Icon name="image" size={18} /></button>
 {:else}
   <div class="image-field">
     {#if value}<img src={value} alt="" class="preview" />{:else}<div class="preview empty">No image</div>{/if}
     <button bind:this={trigger} type="button" class="outlined" onclick={launch}>Choose…</button>
-    {#if value && onpick}<button type="button" class="outlined" aria-label="Remove image" title="Remove image" onclick={() => onpick?.("", "")}><Icon name="x" size={14} /></button>{/if}
+    {#if value && onpick}<button type="button" class="outlined" aria-label="Remove image" data-tooltip="Remove image" onclick={() => onpick?.("", "")}><Icon name="x" size={14} /></button>{/if}
   </div>
 {/if}
 
@@ -166,14 +166,14 @@
   <p class="hint">Repository media: public/{folder || "…"}. {writable ? "Uploads write files immediately on confirmation; content still requires Save." : "Build-time snapshot. Uploads and stock imports require the local dev server; GitHub uploads are not connected."}</p>
   <div class="media-tools">
     <div class="media-views" role="group" aria-label="Media view">
-      <button type="button" class="outlined" title="Grid view" aria-label="Grid view" aria-pressed={view === "grid"} onclick={() => setView("grid")}><Icon name="squaresFour" size={18} /></button>
-      <button type="button" class="outlined" title="List view" aria-label="List view" aria-pressed={view === "list"} onclick={() => setView("list")}><Icon name="listBullets" size={18} /></button>
+      <button type="button" class="outlined" data-tooltip="Grid view" aria-label="Grid view" aria-pressed={view === "grid"} onclick={() => setView("grid")}><Icon name="squaresFour" size={18} /></button>
+      <button type="button" class="outlined" data-tooltip="List view" aria-label="List view" aria-pressed={view === "list"} onclick={() => setView("list")}><Icon name="listBullets" size={18} /></button>
     </div>
     <div class="media-select">
       <Select ariaLabel={inline ? "Media type" : "Image format"} value={format} onchange={next => { format = String(next); }} options={inline ? [{ value: "", label: "All media items" }, ...MEDIA_CATEGORIES.map(category => ({ value: category, label: category }))] : [{ value: "", label: "All images" }, ...["jpeg", "png", "webp", "gif", "avif"].map(format => ({ value: `image/${format}`, label: format === "jpeg" ? "JPEG" : format === "webp" ? "WebP" : format.toUpperCase() }))]} />
     </div>
     <div class="media-select">
-      <Select ariaLabel="Modified month" title="Filesystem modified month (UTC), not upload date" value={month} onchange={next => { month = String(next); }} options={[{ value: "", label: "All modified dates" }, ...months.map(date => ({ value: date, label: new Date(date + "-01T00:00:00Z").toLocaleDateString(undefined, { month: "long", year: "numeric", timeZone: "UTC" }) }))]} />
+      <Select ariaLabel="Modified month" data-tooltip="Filesystem modified month (UTC), not upload date" value={month} onchange={next => { month = String(next); }} options={[{ value: "", label: "All modified dates" }, ...months.map(date => ({ value: date, label: new Date(date + "-01T00:00:00Z").toLocaleDateString(undefined, { month: "long", year: "numeric", timeZone: "UTC" }) }))]} />
     </div>
     <button type="button" class="outlined" onclick={() => { tab = "library"; void run(); }} disabled={loading || picking}>Refresh</button>
     {#if filter || format || month}<button type="button" class="outlined" onclick={resetFilters}>Reset filters</button>{/if}
@@ -181,7 +181,7 @@
   </div>
   {#if view === "grid"}<div class="grid">
     {#each filtered as asset}
-      <figure><button type="button" class="thumb" title={asset.name} aria-pressed={librarySelection === asset.url} onclick={() => selectAsset(asset)}>{#if asset.type?.startsWith("image/")}<img src={asset.url} alt={asset.name} loading="lazy" />{:else}<span class="media-file-icon"><Icon name="listBullets" size={40} /><span>{mediaMetadata(asset.name)?.category} · {mediaMetadata(asset.name)?.extension.toUpperCase()}</span></span>{/if}</button><figcaption>{asset.name}</figcaption></figure>
+      <figure><button type="button" class="thumb" aria-label={asset.name} data-tooltip={asset.name} aria-pressed={librarySelection === asset.url} onclick={() => selectAsset(asset)}>{#if asset.type?.startsWith("image/")}<img src={asset.url} alt={asset.name} loading="lazy" />{:else}<span class="media-file-icon"><Icon name="listBullets" size={40} /><span>{mediaMetadata(asset.name)?.category} · {mediaMetadata(asset.name)?.extension.toUpperCase()}</span></span>{/if}</button><figcaption>{asset.name}</figcaption></figure>
     {/each}
   </div>
   {:else}<div class="table-card media-table"><table aria-label="Media library"><thead><tr><th scope="col">File</th><th scope="col">Type</th><th scope="col">Size</th><th scope="col">Modified (UTC)</th></tr></thead><tbody>
@@ -253,7 +253,7 @@
           {#if searched && !results.length && !error}<p class="hint" role="status">No photos found. Try another search.</p>{/if}
           <div class="grid">
             {#each results as r (r.url)}
-              <figure><button type="button" class="thumb" disabled={picking} onclick={() => selected = {url: r.url, stock: r}} title={r.credit}><img src={r.thumb} alt={r.credit} loading="lazy" /></button><figcaption>{#if r.creditURL?.startsWith("https://")}<a href={r.creditURL} target="_blank" rel="noopener noreferrer">{r.credit}</a>{:else}{r.credit}{/if}</figcaption></figure>
+              <figure><button type="button" class="thumb" disabled={picking} onclick={() => selected = {url: r.url, stock: r}} data-tooltip={r.credit}><img src={r.thumb} alt={r.credit} loading="lazy" /></button><figcaption>{#if r.creditURL?.startsWith("https://")}<a href={r.creditURL} target="_blank" rel="noopener noreferrer">{r.credit}</a>{:else}{r.credit}{/if}</figcaption></figure>
             {/each}
           </div>
         {/if}

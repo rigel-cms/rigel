@@ -3,10 +3,11 @@
   import Icon from "./Icon.svelte";
   import type { ICONS } from "./icons";
 
-  let { label = "", ariaLabel = label, title, icon, value = "", options, multiple = false, disabled = false, onchange = () => {} }: {
+  let { label = "", ariaLabel = label, title, "data-tooltip": tooltip = title, icon, value = "", options, multiple = false, disabled = false, onchange = () => {} }: {
     label?: string;
     ariaLabel?: string;
     title?: string;
+    "data-tooltip"?: string;
     icon?: keyof typeof ICONS;
     value?: string | string[];
     options: { value: string; label: string; icon?: keyof typeof ICONS; disabled?: boolean }[];
@@ -120,7 +121,7 @@
 
 <div class="custom-select" onfocusout={() => { if (open) requestAnimationFrame(() => { if (trigger.ownerDocument.activeElement?.tagName === "IFRAME") close(); }); }}>
   {#if label}<span class="select-label" id={`${id}-label`}>{label}</span>{/if}
-  <button bind:this={trigger} type="button" class="select-trigger" class:icon-only={!!icon} role="combobox" aria-label={label ? undefined : ariaLabel} aria-labelledby={label ? `${id}-label` : undefined} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`} aria-activedescendant={open && active >= 0 ? `${id}-option-${active}` : undefined} popovertarget={`${id}-list`} {title} {disabled} onclick={event => { event.preventDefault(); menu.matches(":popover-open") ? close() : void reveal(); }} onkeydown={onkey}>
+  <button bind:this={trigger} type="button" class="select-trigger" class:icon-only={!!icon} role="combobox" aria-label={label ? undefined : ariaLabel} aria-labelledby={label ? `${id}-label` : undefined} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`} aria-activedescendant={open && active >= 0 ? `${id}-option-${active}` : undefined} popovertarget={`${id}-list`} data-tooltip={tooltip} {disabled} onclick={event => { event.preventDefault(); menu.matches(":popover-open") ? close() : void reveal(); }} onkeydown={onkey}>
     {#if icon}<Icon name={icon} size={18} />{:else}<span>{text || (multiple ? `Select ${label.toLowerCase() || "options"}…` : "Choose…")}</span><Icon name="caretDown" size={12} />{/if}
   </button>
   <select hidden aria-hidden="true" tabindex="-1" aria-label={ariaLabel} {multiple} {disabled} {value} onchange={event => { value = multiple ? Array.from(event.currentTarget.selectedOptions, option => option.value) : event.currentTarget.value; onchange(value); }}>

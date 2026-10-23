@@ -119,10 +119,10 @@
               {#if devMode}<span class="schema-key">{section._key}</span>{/if}
             </button>
             <div class="structure-actions">
-              <button type="button" aria-label={`Move ${sectionLabel(schema, section._type)} up`} title="Move up" disabled={index === 0} onclick={() => setSections(moveItem(sections, index, -1) as Record<string, unknown>[])}>↑</button>
-              <button type="button" aria-label={`Move ${sectionLabel(schema, section._type)} down`} title="Move down" disabled={index === sections.length - 1} onclick={() => setSections(moveItem(sections, index, 1) as Record<string, unknown>[])}>↓</button>
-              <button type="button" aria-label={`Duplicate ${sectionLabel(schema, section._type)}`} title="Duplicate" onclick={() => setSections(duplicateItem(sections, index) as Record<string, unknown>[])}>⧉</button>
-              <button type="button" aria-label={`Remove ${sectionLabel(schema, section._type)}`} title="Remove" onclick={() => removeSection(index)}>×</button>
+              <button type="button" aria-label={`Move ${sectionLabel(schema, section._type)} up`} data-tooltip="Move up" disabled={index === 0} onclick={() => setSections(moveItem(sections, index, -1) as Record<string, unknown>[])}>↑</button>
+              <button type="button" aria-label={`Move ${sectionLabel(schema, section._type)} down`} data-tooltip="Move down" disabled={index === sections.length - 1} onclick={() => setSections(moveItem(sections, index, 1) as Record<string, unknown>[])}>↓</button>
+              <button type="button" aria-label={`Duplicate ${sectionLabel(schema, section._type)}`} data-tooltip="Duplicate" onclick={() => setSections(duplicateItem(sections, index) as Record<string, unknown>[])}>⧉</button>
+              <button type="button" aria-label={`Remove ${sectionLabel(schema, section._type)}`} data-tooltip="Remove" onclick={() => removeSection(index)}>×</button>
             </div>
           </li>
         {/each}

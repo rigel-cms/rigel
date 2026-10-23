@@ -221,6 +221,8 @@
   let settings = $state(getSettings());
   let settingsError = $state("");
   const userName = $derived(githubMode ? githubAccess?.user.login ?? "GitHub user" : "Local user");
+  const userAvatar = $derived(githubMode && /^https:\/\/avatars\.githubusercontent\.com\//.test(githubAccess?.user.avatar_url ?? "") ? githubAccess!.user.avatar_url : "");
+  let failedAvatar = $state("");
   const userMode = $derived(githubMode ? `${manifest.github?.repo} · ${manifest.github?.branch}` : "Local mode");
   let content: HTMLDivElement;
   let contentWidth = $state(0);
@@ -627,6 +629,16 @@
 
 </script>
 
+{#snippet avatar()}
+  <span class="avatar">
+    {#if userAvatar && failedAvatar !== userAvatar}
+      <img src={userAvatar} alt="" width="36" height="36" referrerpolicy="no-referrer" onerror={() => { failedAvatar = userAvatar; }} />
+    {:else}
+      <Icon name="user" size={20} />
+    {/if}
+  </span>
+{/snippet}
+
 <svelte:window
   onresize={endPreviewResize}
   onblur={endPreviewResize}
@@ -719,14 +731,14 @@
     <div class="aside-foot">
       <div class="user-menu-wrap">
         <button class="user-btn" aria-label={githubMode ? "GitHub user menu" : "Local user menu"} title={githubMode ? "GitHub user menu" : "Local user menu"} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
-          <span class="avatar"><Icon name="user" size={20} /></span>
+          {@render avatar()}
           <span class="user-details"><span class="uname">{userName}</span><small>{userMode}</small></span>
           <span class="user-menu-icon"><Icon name="dotsThreeOutlineVertical" size={18} /></span>
         </button>
         {#if userOpen}
           <div class="user-menu" role="menu">
             <div class="user-menu-head">
-              <span class="avatar"><Icon name="user" size={20} /></span>
+              {@render avatar()}
               <div class="user-details"><strong>{userName}</strong><small>{userMode}</small></div>
             </div>
             <div class="divider"></div>

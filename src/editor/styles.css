@@ -263,6 +263,7 @@
   justify-content: center;
   flex-shrink: 0;
 }
+.rigel .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .rigel .uname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rigel .user-details { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 0.125rem; }
 .rigel .user-details small { color: var(--text-muted); font-size: 0.75rem; font-weight: 400; }

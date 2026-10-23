@@ -1,6 +1,10 @@
 {
   "name": "@rigel-cms/rigel",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
+  },
   "description": "Rigel CMS — the copy editor for Astro sites. Clients edit text, git keeps the history.",
   "author": {
     "name": "FreshJuice",
@@ -28,7 +32,8 @@
   "scripts": {
     "build": "pnpm typecheck",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "publish:beta": "npm publish --access public --tag beta"
   },
   "exports": {
     ".": "./src/index.ts",

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+_temp/
+*.log
+.DS_Store
+.vitest/
+.env
+.env.*
+!.env.example

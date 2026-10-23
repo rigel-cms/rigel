@@ -1,0 +1,25 @@
+---
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Rigel — Content Editor</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html { background: #F8FAFC; color-scheme: light; }
+      html[data-theme="dark"] { background: #080F1C; color-scheme: dark; }
+      html[data-contrast="high"] { background: #FFFFFF; }
+      html[data-theme="dark"][data-contrast="high"] { background: #000000; }
+      body { margin: 0; background: inherit; }
+    </style>
+  </head>
+  <body>
+    <div id="rigel"></div>
+    <script type="module">
+      import "../editor/main.ts";
+    </script>
+  </body>
+</html>

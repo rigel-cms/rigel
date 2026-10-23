@@ -1,12 +1,13 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
-  import { patchPreview, previewPath, type PreviewConfig, type PreviewTarget } from "../../preview";
+  import { patchPreview, previewUrl, type PreviewConfig, type PreviewTarget } from "../../preview";
+  import PreviewFrame from "./PreviewFrame.svelte";
   let { target, config, values, body, isNew = false, devMode = false }: { target: PreviewTarget; config: PreviewConfig; values: Record<string, unknown>; body: "" | import("../../article-body").ArticleBody; isNew?: boolean; devMode?: boolean } = $props();
 
-  const livePath = $derived(previewPath(config, target));
+  const livePath = $derived(previewUrl(config, target, "live"));
   const key = $derived(`${target.kind}:${target.collection ?? ""}:${target.slug}`);
-  let frame: HTMLIFrameElement;
+  let frame: HTMLIFrameElement | undefined = $state();
   let loaded = $state(false);
   let error = $state("");
   let path = $state<string | null>(null);
@@ -14,7 +15,7 @@
     void key;
     loaded = false;
     error = "";
-    path = untrack(() => previewPath(config, target, isNew));
+    path = untrack(() => previewUrl(config, target, "draft", isNew));
   });
   function patch() {
     if (!loaded || !frame?.contentDocument) return;
@@ -22,9 +23,9 @@
   }
   function onload() {
     try {
-      const doc = frame.contentDocument;
+      const doc = frame?.contentDocument;
       doc?.addEventListener("contextmenu", event => { if (!devMode) event.preventDefault(); }, true);
-      if (!doc || new URL(doc.URL).pathname !== path) throw new Error("The prepared same-origin page could not be loaded.");
+      if (!doc) throw new Error("The prepared page could not be loaded.");
       if (!doc.querySelector('[data-rigel-text], [data-rigel-richtext], [data-rigel-image]')) throw new Error("This page has no prepared Rigel anchors.");
       doc.addEventListener("click", event => event.preventDefault(), true);
       doc.addEventListener("submit", event => event.preventDefault(), true);
@@ -42,7 +43,7 @@
   </div>
   {#if error}<p role="status" class="preview-error">{error}</p>{/if}
   {#if path}
-    {#key key}<iframe bind:this={frame} title="Live website draft preview" sandbox="allow-same-origin" referrerpolicy="no-referrer" src={path} {onload}></iframe>{/key}
+    {#key key}<PreviewFrame bind:frame url={path} title="Live website draft preview" {onload} onloading={() => { loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />{/key}
     <small>Prepared template · Scripts, navigation and forms disabled. Unanchored fields and lists are not previewed.</small>
   {:else}
     <p role="status">{target.kind === "menu" ? "Menu preview is not supported." : "No prepared preview URL is mapped to this content."}</p>

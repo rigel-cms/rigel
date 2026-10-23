@@ -3,6 +3,7 @@ import { validateSchema } from "./schema/validate";
 import type { Schema } from "./schema/types";
 import { validateSidebar, type SidebarEntry } from "./manifest/navigation";
 import { withSeoFields } from "./manifest/seo";
+import { previewBaseUrl } from "./preview-urls";
 
 export interface RigelConfig {
   copyDir: string;
@@ -41,6 +42,10 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
   if (cfg.demo === undefined) cfg.demo = true;
   if (typeof cfg.demo !== "boolean") throw new Error("rigel: demo must be boolean");
+  if (cfg.preview) {
+    cfg.preview = { ...cfg.preview };
+    for (const key of ["liveUrl", "draftUrl"] as const) if (cfg.preview[key] !== undefined) cfg.preview[key] = previewBaseUrl(cfg.preview[key]);
+  }
   if (cfg.mediaDir !== undefined && (typeof cfg.mediaDir !== "string" || !cfg.mediaDir.split("/").every(part => /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/.test(part)))) throw new Error("rigel: mediaDir must be a relative folder inside publicDir");
   if (cfg.backend === "github") {
     if (typeof cfg.repo !== "string" || !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\/[a-zA-Z0-9_.-]+$/.test(cfg.repo) || [".", ".."].includes(cfg.repo.split("/")[1])) throw new Error("rigel: github backend requires `repo: owner/name`");

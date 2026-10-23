@@ -8,6 +8,7 @@
   import SchemaPanel from "./SchemaPanel.svelte";
   import SidebarIcon from "./SidebarIcon.svelte";
   import Icon from "./Icon.svelte";
+  import PreviewFrame from "./PreviewFrame.svelte";
   import { fieldForPath, replaceAt, type SelectedField } from "./schema-edit";
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
@@ -338,7 +339,6 @@
       doc.addEventListener("mouseout", onOut, true);
       doc.addEventListener("submit", (event) => event.preventDefault(), true);
       doc.defaultView?.addEventListener("scroll", () => closeInline(), { passive: true });
-      if (previewPath && new URL(doc.URL).pathname.replace(/\/$/, "") !== previewPath.replace(/\/$/, "")) throw new Error("The prepared page could not be loaded.");
       if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error("This page isn’t set up for live editing. Changes won’t appear in this preview.");
       loaded = true;
       bodyAvailable = !schema && !!body && !!doc.querySelector('[data-rigel-richtext="$body"]');
@@ -448,9 +448,7 @@
       {#if !previewPath}
         <p class="visual-error" role="status">{creating ? "New page — Save writes the file. The route renders once the site has it." : "No preview URL is mapped to this document. Use the properties panel to edit."}</p>
       {:else}
-        {#key `${previewPath}:${reloadToken}`}
-          <iframe bind:this={frame} title="Website page editor" sandbox="allow-same-origin" referrerpolicy="no-referrer" src={previewPath} onload={onLoad}></iframe>
-        {/key}
+        <PreviewFrame bind:frame url={previewPath} {reloadToken} title="Website page editor" onload={onLoad} onloading={() => { stopBodyEdit(); inline = null; loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />
       {/if}
       {#if inline}
         <input

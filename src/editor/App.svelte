@@ -27,7 +27,7 @@
   import ActionDialog from "./lib/ActionDialog.svelte";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
-  import { previewPath } from "../preview";
+  import { previewUrl } from "../preview";
   import type { ContentDocument, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
@@ -369,10 +369,10 @@
     if (current?.kind === "document") map[current.id] = draft;
     return map;
   });
-  const previewDocPath = $derived.by(() => {
+  function documentPreview(mode: "live" | "draft") {
     if (sel?.kind !== "document" || newDocument?.id === sel.id) return null;
-    return previewPath(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: sel.id.slice(sel.type.length + 1) });
-  });
+    return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: sel.id.slice(sel.type.length + 1) }, mode);
+  }
   const standaloneDocument = $derived(sel?.kind === "document" && activeDocType?.shared === true);
   const visualSelection = $derived(sel?.kind === "post" || (sel?.kind === "document" && !standaloneDocument));
 
@@ -871,7 +871,8 @@
           docType={activeDocType}
           values={draft}
           documents={draftDocuments}
-          previewPath={previewDocPath}
+          previewPath={documentPreview("draft")}
+          livePath={documentPreview("live")}
           creating={newDocument?.id === sel.id}
           devMode={settings.devMode}
           reloadToken={documentReload}
@@ -918,8 +919,8 @@
             body={bodyDraft}
             bodyInline={settings.userPref.editorExperience === "inline"}
             onbody={(value) => { bodyDraft = value; touch(); }}
-            previewPath={manifest.preview ? previewPath(manifest.preview, sel, !!newEntry) : null}
-            livePath={manifest.preview ? previewPath(manifest.preview, sel) : null}
+            previewPath={manifest.preview ? previewUrl(manifest.preview, sel, "draft", !!newEntry) : null}
+            livePath={manifest.preview ? previewUrl(manifest.preview, sel, "live") : null}
             creating={!!newEntry}
             devMode={settings.devMode}
             onchange={(next) => { draft = next; touch(); }}

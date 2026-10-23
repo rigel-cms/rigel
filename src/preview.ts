@@ -2,7 +2,7 @@ import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
 import { pageRoute } from "./schema/paths";
 import { renderArticle } from "./article-render";
-import { safePreviewUrl } from "./preview-urls";
+import { safePreviewUrl, previewBaseUrl } from "./preview-urls";
 export { safePreviewUrl } from "./preview-urls";
 
 export interface PreviewDocumentMapping {
@@ -11,6 +11,8 @@ export interface PreviewDocumentMapping {
 }
 
 export interface PreviewConfig {
+  liveUrl?: string;
+  draftUrl?: string;
   pages?: Record<string, string>;
   collections?: Record<string, { url: string; new: string }>;
   documents?: Record<string, PreviewDocumentMapping>;
@@ -23,10 +25,16 @@ export interface PreviewTarget {
 }
 
 export function previewPath(config: PreviewConfig, target: PreviewTarget, isNew = false): string | null {
-  if (target.kind === "document") return pageRoute(target.slug, config.documents?.[target.type ?? ""]);
   const mapping = target.kind === "post" ? config.collections?.[target.collection ?? ""] : undefined;
-  const path = target.kind === "page" ? config.pages?.[target.slug] : mapping ? (isNew ? mapping.new : mapping.url.replaceAll("{slug}", encodeURIComponent(target.slug))) : undefined;
-  return typeof path === "string" && /^\/(?!\/)/.test(path) && !/[\\\s?#]/.test(path) && !path.split("/").includes("..") && !/^\/rigel(?:\/|$)/.test(path) ? path : null;
+  const path = target.kind === "document" ? pageRoute(target.slug, config.documents?.[target.type ?? ""]) : target.kind === "page" ? config.pages?.[target.slug] : mapping ? (isNew ? mapping.new : mapping.url.replaceAll("{slug}", encodeURIComponent(target.slug))) : undefined;
+  return typeof path === "string" && /^\/(?!\/)/.test(path) && !/[\\\s?#]/.test(path) && !/%(?:2e|2f|5c)/i.test(path) && !path.split("/").some(part => part === "." || part === "..") && !/^\/rigel(?:\/|$)/.test(path) ? path : null;
+}
+
+export function previewUrl(config: PreviewConfig, target: PreviewTarget, mode: "live" | "draft" = "draft", isNew = false): string | null {
+  const path = previewPath(config, target, mode === "draft" && isNew);
+  const base = mode === "live" ? config.liveUrl : config.draftUrl;
+  if (!path || base === undefined) return path;
+  try { return new URL(path.slice(1), previewBaseUrl(base)).href; } catch { return null; }
 }
 
 export function anchorValue(values: unknown, path: string): { found: boolean; value: unknown } {

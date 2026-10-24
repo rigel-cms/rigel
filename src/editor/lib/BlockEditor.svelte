@@ -7,7 +7,7 @@
   import * as Links from "@lexical/link";
   import * as Tables from "@lexical/table";
   import { ImageNode, type ImageData } from "../blocks/image";
-  import { VideoNode } from "../blocks/video";
+  import { VideoNode, type VideoData } from "../blocks/video";
   import { EmbedNode, type EmbedData } from "../blocks/embed";
   import ImagePicker from "./ImagePicker.svelte";
   import MediaPicker from "./MediaPicker.svelte";
@@ -65,6 +65,8 @@
   let mediaPicker: MediaPicker;
   let imageData = $state<ImageData | null>(null);
   let embedData = $state<EmbedData | null>(null);
+  let videoData = $state<VideoData | null>(null);
+  const selectedVideo = $derived(embedData ?? videoData);
   let altOpen = $state(false);
   let altText = $state("");
   let altKey = "";
@@ -114,6 +116,7 @@
       if (node) {
         imageData = node instanceof ImageNode ? { ...node.__image } : null;
         embedData = node instanceof EmbedNode ? { ...node.__embed } : null;
+        videoData = node instanceof VideoNode ? { ...node.__video } : null;
         activeKey = node.getKey();
         blockType = Rich.$isHeadingNode(node) ? node.getTag() : Lists.$isListNode(node) ? node.getListType() : node.getType();
         activeMarks = L.$isRangeSelection(selection) ? marks.filter(mark => selection.hasFormat(mark.type)).map(mark => mark.type) : [];
@@ -133,16 +136,17 @@
     positionInsertion();
   }
   function positionFloating() {
-    if (imageJob) return;
+    if (imageJob || mediaJob) return;
     const selection = view.getSelection();
     if (!root.ownerDocument.hasFocus()) { floating = ""; return; }
     if (editorHost.contains(root.ownerDocument.activeElement) && !root.contains(root.ownerDocument.activeElement)) return;
-    if (inline || imageData) {
-      if (imageData ? root.ownerDocument.activeElement !== root : !selection?.rangeCount || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) { floating = ""; return; }
+    if (inline || imageData || selectedVideo) {
+      if (imageData || selectedVideo ? root.ownerDocument.activeElement !== root : !selection?.rangeCount || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) { floating = ""; return; }
       const block = editor.getElementByKey(activeKey);
       if (!block) { floating = ""; return; }
-      const rect = imageData || selection!.isCollapsed ? block.getBoundingClientRect() : selection!.getRangeAt(0).getBoundingClientRect();
+      const rect = imageData || selectedVideo || selection!.isCollapsed ? block.getBoundingClientRect() : selection!.getRangeAt(0).getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > view.innerHeight) { floating = ""; return; }
+      if (selectedVideo) { floating = ""; return; }
       const toolbarRect = editorHost.querySelector(imageData ? '.image-toolbar' : '.body-toolbar')?.getBoundingClientRect();
       const toolbarHeight = toolbarRect?.height || 42, toolbarWidth = toolbarRect?.width || 330;
       const top = rect.top >= toolbarHeight + 12 ? rect.top - toolbarHeight - 8 : rect.bottom + 8;
@@ -200,7 +204,7 @@
     }, L.COMMAND_PRIORITY_CRITICAL));
     cleanups.push(editor.registerCommand(L.DROP_COMMAND, event => { event.preventDefault(); return true; }, L.COMMAND_PRIORITY_CRITICAL));
     cleanups.push(editor.registerCommand(L.KEY_DOWN_COMMAND, event => {
-      if ((inline || imageData) && event.altKey && event.key === "F10") { event.preventDefault(); editorHost.querySelector<HTMLButtonElement>(imageData ? '.image-toolbar button' : '.body-toolbar button')?.focus(); return true; }
+      if ((inline || imageData || selectedVideo) && event.altKey && event.key === "F10") { event.preventDefault(); (selectedVideo ? editor.getElementByKey(activeKey)?.querySelector<HTMLButtonElement>('[data-rigel-edit-video]') : editorHost.querySelector<HTMLButtonElement>(imageData ? '.image-toolbar button' : '.body-toolbar button'))?.focus(); return true; }
       return slashKeydown(event);
     }, L.COMMAND_PRIORITY_HIGH));
     const updates = editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
@@ -217,7 +221,7 @@
     toolbarObserver.observe(root);
     const outside = (event: PointerEvent) => {
       if (linkOpen && !editorHost.querySelector('.markdown-link')?.contains(event.target as Node)) linkOpen = false;
-      if ((inline || imageData) && !root.contains(event.target as Node) && !editorHost.contains(event.target as Node)) { floating = ""; linkOpen = false; altOpen = false; closeMenu(); }
+      if ((inline || imageData || selectedVideo) && !root.contains(event.target as Node) && !editorHost.contains(event.target as Node)) { floating = ""; linkOpen = false; altOpen = false; closeMenu(); }
       if (slash !== null && !slashMenu?.contains(event.target as Node) && !root.contains(event.target as Node) && !(event.target as Element).closest('.block-add')) dismissSlash();
     };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { endDrag(true); closeMenu(); dismissSlash(); if (inline) { floating = ""; editor.focus(); } } };
@@ -404,10 +408,28 @@
     });
     imageJob = null; editor.focus();
   }
+  function editMedia(key: string) {
+    editor.getEditorState().read(() => {
+      const node = L.$getNodeByKey(key);
+      if (!(node instanceof EmbedNode || node instanceof VideoNode)) return;
+      mediaJob = { key, replace: true };
+      mediaPicker.edit(node instanceof EmbedNode ? node.__embed : node.__video);
+    });
+  }
+  export function editVideoAt(index: number) {
+    const key = editor.getEditorState().read(() => L.$getRoot().getChildren()[index]?.getKey());
+    if (key) editMedia(key);
+  }
   function insertMedia(create: () => L.LexicalNode) {
     const job = mediaJob ?? { key: activeKey, replace: false };
     editor.update(() => {
       const node = create(), previous = L.$getNodeByKey(job.key), paragraph = L.$createParagraphNode();
+      if (job.replace && (previous instanceof EmbedNode || previous instanceof VideoNode)) {
+        if (previous instanceof VideoNode && node instanceof VideoNode) node.__video = { ...previous.__video, ...node.__video };
+        previous.replace(node);
+        const selection = L.$createNodeSelection(); selection.add(node.getKey()); L.$setSelection(selection); hoverKey = "";
+        return;
+      }
       if (previous && job.replace) previous.replace(node);
       else if (previous && L.$isRootNode(previous.getParent())) previous.insertAfter(node);
       else L.$getRoot().append(node);
@@ -532,6 +554,11 @@
   }
   function contentClick(event: MouseEvent) {
     const element = (event.target as Element).closest<HTMLElement>('figure[data-block-key],hr[data-block-key]');
+    if (element && (event.target as Element).closest('[data-rigel-edit-video]')) {
+      event.preventDefault();
+      if (event.type === "click") editMedia(element.dataset.blockKey!);
+      return;
+    }
     if (event.type === "pointerdown" && !element) {
       editor.update(() => { if (L.$isNodeSelection(L.$getSelection())) L.$setSelection(null); }, { discrete: true });
       return;
@@ -559,7 +586,7 @@
   </div>
 {/snippet}
 {#snippet toolbar(image: boolean)}
-  <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? "Image editing" : "Body formatting"} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData)}>
+  <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? "Image editing" : "Body formatting"} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData) || (inline && !!selectedVideo)}>
     {#if image}
       <button type="button" aria-label="Edit alt text" data-tooltip="Edit alt text" onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
       <button type="button" aria-label={imageData?.url ? "Edit image link" : "Add image link"} data-tooltip={imageData?.url ? "Edit image link" : "Add image link"} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
@@ -570,7 +597,7 @@
     {#if image}
       <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel="Replace image" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {:else}
-      <MediaPicker bind:this={mediaPicker} triggerLabel={embedData ? "Replace media" : "Insert media"} onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} onclose={() => { mediaJob = null; refocus(); }} />
+      <button type="button" data-media-trigger aria-label="Insert media" data-tooltip="Insert media" aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={() => mediaPicker.toggleMenu()}><Icon name="image" size={18} /></button>
       <ImagePicker toolbar hiddenTrigger value="" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {/if}
     {#if !image}
@@ -587,9 +614,11 @@
   </div>
 {/snippet}
 <div class="block-editor" bind:this={editorHost}>
+  <MediaPicker bind:this={mediaPicker} hiddenTrigger onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} onclose={() => { mediaJob = null; refocus(); }} />
   {#if !inline}<div class="markdown-heading"><div class="field-label">Body</div><div class="markdown-modes"><button type="button" aria-pressed={markdownView} onclick={() => { markdownView = !markdownView; linkOpen = false; closeMenu(); dismissSlash(); }}>View as Markdown</button></div></div>{/if}
   {@render toolbar(inline && !!imageData)}
   {#if !inline}{@render toolbar(true)}{/if}
+
   {#if error}<p role="alert">{error}</p>{/if}
   {#if linkOpen}
     <div class="markdown-link" class:image-form={!!imageData} style={linkPosition} id={`${id}-link`} role="group" aria-label="Edit link" onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; refocus(); } if (event.key === "Enter") { event.preventDefault(); applyLink(); } }}>
@@ -613,7 +642,7 @@
       </div>
     </div>
   {/if}
-  {#if !inline && !imageData && floating && !markdownView}<div class="block-float" style={floating} role="group" aria-label="Selected text formatting">{@render formatButtons()}</div>{/if}
+  {#if !inline && !imageData && !selectedVideo && floating && !markdownView}<div class="block-float" style={floating} role="group" aria-label="Selected text formatting">{@render formatButtons()}</div>{/if}
   {#if markdownView}
     <div class="block-markdown-view">{#if inline}<button type="button" class="outlined" onclick={async () => { markdownView = false; await tick(); editor.focus(); }}>Close Markdown view</button>{/if}<pre class="block-markdown" aria-label="Body as Markdown" tabindex="0">{articleMarkdown(value)}</pre></div>
   {/if}

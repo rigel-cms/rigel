@@ -11,7 +11,7 @@ function renderText(node: ArticleNode): string {
   return text;
 }
 
-export function renderArticle(body: ArticleBody): string {
+export function renderArticle(body: ArticleBody, options: { preview?: boolean } = {}): string {
   validateBody(body);
   function walk(node: ArticleNode): string {
     const content = () => (node.children ?? []).map(walk).join("");
@@ -43,6 +43,7 @@ export function renderArticle(body: ArticleBody): string {
       const ref = safeEmbed(node);
       if (!ref) return "";
       const title = escape(typeof node.title === "string" && node.title ? node.title : `${embedProviderLabel(ref)} video`);
+      if (options.preview) return `<figure data-rigel-embed="${ref.provider}" data-rigel-video-id="${ref.id}" data-rigel-video-title="${title}"></figure>`;
       const src = escape(embedSrc(ref, node.privacy !== false));
       return `<figure class="media-embed"><iframe src="${src}" title="${title}" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></figure>`;
     }

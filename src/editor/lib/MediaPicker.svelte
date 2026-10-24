@@ -4,10 +4,13 @@
   import { mediaMetadata, mediaLimit } from "../../media-types";
   import { filterMedia, mediaSize, type MediaAsset } from "./media-library";
   import { uploadMedia } from "./images";
-  import { parseEmbedUrl, embedProviderLabel, type EmbedProvider, type EmbedRef } from "./embeds";
+  import { parseEmbedUrl, embedProviderLabel, embedWatchUrl, type EmbedProvider, type EmbedRef } from "./embeds";
+  import type { EmbedData } from "../blocks/embed";
+  import type { VideoData } from "../blocks/video";
 
-  let { triggerLabel = "Insert media", onimage, onvideo, onembed, onclose = () => {} }: {
+  let { triggerLabel = "Insert media", hiddenTrigger = false, onimage, onvideo, onembed, onclose = () => {} }: {
     triggerLabel?: string;
+    hiddenTrigger?: boolean;
     onimage?: () => void;
     onvideo?: (video: { src: string; caption?: string }) => void;
     onembed?: (embed: EmbedRef & { privacy: boolean; title?: string }) => void;
@@ -27,6 +30,7 @@
   let privacy = $state(true);
   let error = $state("");
   let busy = $state(false);
+  let editing = $state(false);
   let assets = $state<MediaAsset[]>([]);
   let writable = $state(false);
   let file: File | undefined;
@@ -37,7 +41,7 @@
     if (open && dialog && !dialog.open) dialog.showModal();
   });
 
-  function toggleMenu() {
+  export function toggleMenu() {
     if (!menu) return;
     if (menu.matches(":popover-open")) menu.hidePopover();
     else menu.showPopover();
@@ -58,8 +62,17 @@
     if (panel === "video") void library();
   }
   function reset() {
-    url = ""; title = ""; caption = ""; privacy = true; error = ""; busy = false; file = undefined;
+    url = ""; title = ""; caption = ""; privacy = true; error = ""; busy = false; editing = false; file = undefined;
     if (fileInput) fileInput.value = "";
+  }
+  export function edit(value: EmbedData | VideoData) {
+    reset();
+    editing = true;
+    if ("provider" in value) {
+      panel = "embed"; provider = value.provider; url = embedWatchUrl(value); title = value.title ?? ""; privacy = value.privacy;
+    } else {
+      panel = "video"; url = value.src; caption = value.caption ?? ""; void library();
+    }
   }
   async function library() {
     try {
@@ -116,7 +129,7 @@
   }
 </script>
 
-<button bind:this={trigger} data-media-trigger type="button" aria-label={triggerLabel} data-tooltip={triggerLabel} aria-haspopup="menu" aria-expanded={open} popovertarget={`${id}-media`} onmousedown={event => event.preventDefault()} onclick={event => { event.preventDefault(); toggleMenu(); }}><Icon name="image" size={18} /></button>
+{#if !hiddenTrigger}<button bind:this={trigger} data-media-trigger type="button" aria-label={triggerLabel} data-tooltip={triggerLabel} aria-haspopup="menu" aria-expanded={open} popovertarget={`${id}-media`} onmousedown={event => event.preventDefault()} onclick={event => { event.preventDefault(); toggleMenu(); }}><Icon name="image" size={18} /></button>{/if}
 <div bind:this={menu} id={`${id}-media`} class="block-menu media-menu" popover role="menu" aria-label="Insert media">
   <button type="button" role="menuitem" onclick={() => pick("image")}><Icon name="image" size={16} />Image</button>
   <button type="button" role="menuitem" onclick={() => pick("video")}><Icon name="filmStrip" size={16} />Video</button>
@@ -125,9 +138,9 @@
 </div>
 
 {#if open}
-  <dialog bind:this={dialog} class="rigel-modal-backdrop rigel media-insert" aria-label={panel === "video" ? "Add video" : "Add video link"} oncancel={event => { event.preventDefault(); close(); }} onclick={event => { if (event.target === dialog) close(); }}>
+  <dialog bind:this={dialog} class="rigel-modal-backdrop rigel media-insert" aria-label={editing ? "Edit video" : panel === "video" ? "Add video" : "Add video link"} oncancel={event => { event.preventDefault(); close(); }} onclick={event => { if (event.target === dialog) close(); }}>
     <div class="rigel-modal">
-      <div class="media-head"><h2>{panel === "video" ? "Add video" : `Add ${provider === "youtube" ? "YouTube" : "Vimeo"} video`}</h2><button type="button" class="close" aria-label="Close" onclick={close}><Icon name="x" size={14} weight="bold" /></button></div>
+      <div class="media-head"><h2>{editing ? "Edit" : "Add"} {panel === "video" ? "video" : `${provider === "youtube" ? "YouTube" : "Vimeo"} video`}</h2><button type="button" class="close" aria-label="Close" onclick={close}><Icon name="x" size={14} weight="bold" /></button></div>
       {#if panel === "video"}
         <p class="hint">Upload a file to the repository media folder, or paste a video URL. Files are stored and served like images.</p>
         <label class="media-file"><span>Video file</span><input type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" bind:this={fileInput} onchange={chooseFile} /></label>
@@ -151,7 +164,7 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="media-actions media-button-actions">
         <button type="button" class="outlined" disabled={busy} onclick={close}>Cancel</button>
-        <button type="button" class="primary" disabled={busy} onclick={confirm}>{busy ? "Adding…" : "Insert"}</button>
+        <button type="button" class="primary" disabled={busy} onclick={confirm}>{busy ? "Adding…" : editing ? "Update video" : "Insert"}</button>
       </div>
     </div>
   </dialog>

@@ -167,6 +167,16 @@ test("video and embed blocks survive Lexical, public HTML and Markdown", () => {
   expect(articleMarkdown(state)).toContain("[Launch tour](<https://www.youtube.com/watch?v=dQw4w9WgXcQ>)");
 });
 
+test("preview embeds retain validated metadata without executable players", () => {
+  const state = body([{ type: "embed", version: 1, provider: "youtube", id: "dQw4w9WgXcQ", title: '<img onerror="alert(1)">', privacy: true }]);
+  const html = renderArticle(state, { preview: true });
+  expect(html).toContain('data-rigel-embed="youtube"');
+  expect(html).toContain('data-rigel-video-id="dQw4w9WgXcQ"');
+  expect(html).not.toContain('<iframe');
+  expect(html).not.toContain('<img');
+  expect(renderArticle(state)).toContain('<iframe');
+});
+
 test("embed privacy can be switched off and invalid embeds are rejected at validation", () => {
   const embed = { type: "embed", version: 1, provider: "vimeo", id: "76979871", privacy: false };
   expect(renderArticle(body([embed]))).toContain('src="https://player.vimeo.com/video/76979871"');

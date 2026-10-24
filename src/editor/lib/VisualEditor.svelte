@@ -153,6 +153,7 @@
     const doc = docElement();
     if (!doc) return;
     patchPreview(doc, previewValues ?? values, body, { documents, primary: docId, editingBody });
+    for (const button of doc.querySelectorAll<HTMLButtonElement>('[data-rigel-edit-video]')) button.hidden = !inlineBodyEnabled || mode !== "edit";
     const signature = (Array.isArray(values.sections) ? (values.sections as Record<string, unknown>[]) : [])
       .map((section) => `${section._key}:${section._type}`)
       .join(",");
@@ -203,6 +204,7 @@
     if (bodyEditor) { element.focus(); return; }
     const doc = element.ownerDocument;
     const blockIndex = event ? [...element.children].findIndex(child => child.contains(event.target as Node)) : 0;
+    const editVideo = !!(event?.target as Element | undefined)?.closest('[data-rigel-edit-video]');
     const caret = event && doc.caretPositionFromPoint?.(event.clientX, event.clientY);
     let offset = 0;
     if (caret && element.children[blockIndex]?.contains(caret.offsetNode)) {
@@ -227,7 +229,8 @@
     const host = doc.createElement("div"); host.className = "rigel rigel-inline";
     scope.append(host); doc.body.append(scope); bodyScope = scope;
     removeTooltips = tooltipRoot(host).destroy;
-    bodyEditor = mount(BlockEditor, { target: host, props: { editableRoot: element, get value() { return body as ArticleBody; }, oninput: (next: ArticleBody) => onbody(next) } });
+    const mounted = mount(BlockEditor, { target: host, props: { editableRoot: element, get value() { return body as ArticleBody; }, oninput: (next: ArticleBody) => onbody(next) } });
+    bodyEditor = mounted;
     bodyThemeObserver = new MutationObserver(syncTheme);
     bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
     await tick();
@@ -242,6 +245,7 @@
       }
       const selection = doc.defaultView?.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
     }
+    if (editVideo) mounted.editVideoAt(blockIndex);
   }
   function focusBody() {
     const target = docElement()?.querySelector<HTMLElement>('[data-rigel-richtext="$body"]');

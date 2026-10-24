@@ -1,5 +1,6 @@
 import { DecoratorNode, type NodeKey } from "lexical";
-import { embedProviderLabel, embedSrc, type EmbedProvider, type EmbedRef } from "../lib/embeds";
+import type { EmbedProvider } from "../lib/embeds";
+import { createEmbedPreview } from "../lib/embed-preview";
 
 export type EmbedData = { provider: EmbedProvider; id: string; title?: string; privacy: boolean };
 export class EmbedNode extends DecoratorNode<null> {
@@ -10,17 +11,7 @@ export class EmbedNode extends DecoratorNode<null> {
   static importJSON(raw: unknown) { const embed = raw as EmbedData; return new EmbedNode({ provider: embed.provider, id: embed.id, title: embed.title, privacy: embed.privacy !== false }); }
   exportJSON() { return { ...this.__embed, type: "embed", version: 1 }; }
   createDOM() {
-    const figure = document.createElement("figure");
-    figure.className = "media-embed";
-    const frame = document.createElement("iframe");
-    frame.src = embedSrc(this.__embed as EmbedRef, this.__embed.privacy);
-    frame.title = this.__embed.title || `${embedProviderLabel(this.__embed as EmbedRef)} video`;
-    frame.loading = "lazy";
-    frame.allow = "accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-    frame.allowFullscreen = true;
-    frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-    figure.append(frame);
-    return figure;
+    return createEmbedPreview(this.__embed, document, true);
   }
   updateDOM() { return true; }
   decorate() { return null; }

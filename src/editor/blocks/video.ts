@@ -1,5 +1,6 @@
 import { DecoratorNode, type NodeKey } from "lexical";
 import { safePreviewUrl } from "../../preview-urls";
+import { createVideoOverlay } from "../lib/embed-preview";
 
 export type VideoData = { src: string; poster?: string; caption?: string };
 export class VideoNode extends DecoratorNode<null> {
@@ -18,7 +19,10 @@ export class VideoNode extends DecoratorNode<null> {
     video.controls = true;
     video.preload = "metadata";
     video.playsInline = true;
-    figure.append(video);
+    const preview = document.createElement("div");
+    preview.style.cssText = "position:relative;min-height:220px";
+    preview.append(video, createVideoOverlay(document, "Video", this.__video.src, true));
+    figure.append(preview);
     if (this.__video.caption) { const caption = document.createElement("figcaption"); caption.textContent = this.__video.caption; figure.append(caption); }
     return figure;
   }

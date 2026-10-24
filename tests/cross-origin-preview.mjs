@@ -28,9 +28,11 @@ function fixture(req, res) {
   if (req.url === '/pixel.svg') { res.setHeader('Content-Type', 'image/svg+xml'); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>'); return; }
   if (failure !== 'cors') res.setHeader('Access-Control-Allow-Origin', '*');
   if (failure === 'redirect') { res.writeHead(302, { Location: '/redirected/' }); res.end(); return; }
+  if (req.url.startsWith('/blog/new-remote-article')) { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('Not built yet'); return; }
   if (failure === '404') { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('Missing route'); return; }
   res.setHeader('Content-Type', failure === 'type' ? 'text/plain' : 'text/html');
-  res.end(failure === 'anchors' ? '<html><body><h1>Unprepared but visible</h1></body></html>' : sameOrigin ? html.replace(/<base[^>]+>|<meta[^>]+>/g, '') : html);
+  const prepared = req.url.startsWith('/preview/blog/') ? html.replace(' data-rigel-doc="page:about"', '') : html;
+  res.end(failure === 'anchors' ? '<html><body><h1>Unprepared but visible</h1></body></html>' : sameOrigin ? prepared.replace(/<base[^>]+>|<meta[^>]+>/g, '') : prepared);
 }
 const remote = httpServer(fixture);
 await new Promise(resolve => remote.listen(0, '127.0.0.1', resolve));
@@ -184,6 +186,8 @@ try {
   assert.equal(await evaluate(`${frameDoc}.baseURI`), `${draftOrigin}/preview/blog/`);
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), 'https://sunnypixels.io/blog/new-remote-article/');
   assert.equal(writes, 1, 'new article preview does not write');
+  await evaluate(`window.newArticlePreview = ${frameDoc}`);
+  const beforeSaveRequests = requests.length;
   rejectSave = true;
   await click('.save-button');
   await wait(`document.body.textContent.includes('Title: required')`, 'rejected save error');
@@ -197,6 +201,17 @@ try {
   assert.equal(savedPost.frontmatter.metaTitle, '');
   assert.equal(savedPost.frontmatter.ogImage, '');
   assert.equal(JSON.parse(await readFile(path.join(scratch, 'saved-post.json'), 'utf8')).frontmatter.description, '');
+  await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'saved article keeps its preview');
+  assert.equal(await evaluate(`${frameDoc} === window.newArticlePreview`), true, 'Save must not replace the prepared template');
+  assert.equal(requests.length, beforeSaveRequests, 'Save must not navigate to the unbuilt article route');
+  assert.equal(await evaluate(`${frameDoc}.baseURI`), `${draftOrigin}/preview/blog/`);
+  await click('.brand');
+  await click('[data-collection="blog"]'); await button('New remote article');
+  await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'reopened saved article uses template');
+  assert.equal(await evaluate(`${frameDoc}.baseURI`), `${draftOrigin}/preview/blog/`);
+  assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'New remote article');
+  assert.equal(await evaluate(`document.querySelector('.visual-live').href`), 'https://sunnypixels.io/blog/new-remote-article/');
+  assert(!requests.some(request => request.url.startsWith('/blog/new-remote-article')), 'Unbuilt public routes must not be requested for previews');
   await click('.brand');
   await click('[data-collection="blog"]'); await button('Add new');
   await input('.action-dialog input', 'New remote article'); await button('Create draft');
@@ -224,6 +239,19 @@ try {
   assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'Saved title');
   await input('[data-schema-path="title"] input', 'Same-origin unsaved');
   await wait(`${frameDoc}.querySelector('h1').textContent === 'Same-origin unsaved'`, 'same-origin patch');
+  await click('.brand'); await button('Discard changes');
+  await click('[data-collection="blog"]'); await button('Add new');
+  await input('.action-dialog input', 'New remote article'); await button('Create draft');
+  await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'same-origin new article template');
+  await evaluate(`window.sameOriginArticlePreview = ${frameDoc}`);
+  await click('.save-button'); await wait(`!!document.querySelector('.save-status.saved')`, 'same-origin new article Save');
+  await delay(250);
+  assert.equal(await evaluate(`${frameDoc} === window.sameOriginArticlePreview`), true, 'Same-origin Save preserves the template document');
+  assert.equal(await evaluate(`new URL(document.querySelector('iframe').src).pathname`), '/preview/blog/');
+  await click('.brand'); await click('[data-collection="blog"]'); await button('New remote article');
+  await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'same-origin reopened saved article');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'New remote article');
+  assert.equal(await evaluate(`new URL(document.querySelector('iframe').src).pathname`), '/preview/blog/');
   assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
   await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'preview.png'), Buffer.from(r.data, 'base64')));
   console.log('PASS: built editor with actual two-origin HTML, CSS and images; schema/legacy/article/new-entry previews; inline text/body; unsaved patch identity/scroll; new-post untouched SEO serialization; rejected-save draft retention and retry; Save/guards; credential-free HTML fetch; sandbox/sanitization; CORS/HTTP/type/redirect/anchors errors; same-origin defaults.');

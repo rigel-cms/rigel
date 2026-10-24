@@ -16,6 +16,26 @@ test("live and draft bases resolve independently without changing route mappings
   expect(previewUrl({ pages: { about: "/about/" } }, { kind: "page", slug: "about" }, "live")).toBe("/about/");
 });
 
+test("collection draft previews keep the prepared template after Save and reopening", () => {
+  const config = {
+    liveUrl: "https://live.test/",
+    draftUrl: "https://draft.test/",
+    collections: {
+      blog: { url: "/blog/{slug}/", new: "/preview/blog/" },
+      news: { url: "/news/{slug}/", new: "/preview/news/" },
+    },
+  };
+  for (const collection of ["blog", "news"]) {
+    const target = { kind: "post" as const, collection, slug: "not-built-yet" };
+    const template = `https://draft.test/preview/${collection}/`;
+    expect(previewUrl(config, target, "draft", true)).toBe(template);
+    expect(previewUrl(config, target, "draft", false)).toBe(template);
+    expect(previewUrl(config, target)).toBe(template);
+    expect(previewUrl(config, target, "live", true)).toBe(`https://live.test/${collection}/not-built-yet/`);
+    expect(previewUrl(config, target, "live", false)).toBe(`https://live.test/${collection}/not-built-yet/`);
+  }
+});
+
 test("preview bases reject unsafe or ambiguous URLs", () => {
   for (const key of ["liveUrl", "draftUrl"]) {
     for (const value of ["", "/relative/", "//example.test", "http://example.test", "javascript:alert(1)", "https://u:p@example.test", "https://@example.test", "https:///example.test", "https://example.test/\u0000", "https://example.test/?token=x", "https://example.test/#x", "https://example.test/../x", "https://example.test/%2e%2e/x", " https://example.test", "https://example.test/\\x", 123, null]) {

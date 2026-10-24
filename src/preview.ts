@@ -31,7 +31,7 @@ export function previewPath(config: PreviewConfig, target: PreviewTarget, isNew 
 }
 
 export function previewUrl(config: PreviewConfig, target: PreviewTarget, mode: "live" | "draft" = "draft", isNew = false): string | null {
-  const path = previewPath(config, target, mode === "draft" && isNew);
+  const path = previewPath(config, target, mode === "draft" && (target.kind === "post" || isNew));
   const base = mode === "live" ? config.liveUrl : config.draftUrl;
   if (!path || base === undefined) return path;
   try { return new URL(path.slice(1), previewBaseUrl(base)).href; } catch { return null; }

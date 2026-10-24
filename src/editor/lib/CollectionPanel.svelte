@@ -15,12 +15,13 @@
   import type { ContentDocument } from "../../schema/types";
   import { slugify } from "../../slugs";
 
-  let { fields, values, storageSlug, body, selected, focusToken, devMode, documents = [], bodyInline = false, oneditbody = () => {}, onchange, onbody }: {
+  let { fields, values, storageSlug, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, oneditbody = () => {}, onchange, onbody }: {
     fields: CollectionField[];
     values: Record<string, unknown>;
     storageSlug: string;
     body: ArticleBody;
     bodyInline?: boolean;
+    bodyLoading?: boolean;
     oneditbody?: () => void;
     selected: SelectedField | null;
     focusToken: number;
@@ -83,8 +84,8 @@
   </section>
   <section data-collection-field="$body">
     {#if bodyInline}
-      <button class="outlined" onclick={oneditbody}>Edit article body in preview</button>
-      <p class="hint">Click the article body in the preview to edit. Content changes require Save.</p>
+      <button class="outlined" disabled={bodyLoading} onclick={oneditbody}>Edit article body in preview</button>
+      <p class="hint">{bodyLoading ? "Loading preview…" : "Click the article body in the preview to edit. Content changes require Save."}</p>
     {:else}<BlockEditor value={body} oninput={onbody} />{/if}
   </section>
   </div>

@@ -25,7 +25,7 @@
     previewPath: string | null;
     websitePath?: string | null;
     body?: "" | import("../../article-body").ArticleBody;
-    properties?: Snippet<[SelectedField | null, number, boolean, () => void]>;
+    properties?: Snippet<[SelectedField | null, number, boolean, () => void, boolean]>;
     bodyInline?: boolean;
     onbody?: (body: ArticleBody) => void;
     creating: boolean;
@@ -39,7 +39,9 @@
   let stage: HTMLDivElement;
   let loaded = $state(false);
   let bodyAvailable = $state(false);
-  const inlineBodyEnabled = $derived(bodyInline && loaded && bodyAvailable);
+  let error = $state("");
+  const inlineBodyEnabled = $derived(bodyInline && !!previewPath && loaded && bodyAvailable && !error);
+  const inlineBodyLoading = $derived(bodyInline && !!previewPath && !loaded && !error);
   let bodyEditor: ReturnType<typeof mount> | undefined;
   let bodyThemeObserver: MutationObserver | undefined;
   let editingBody: HTMLElement | null = null;
@@ -47,7 +49,6 @@
   let bodyAttributes: [string, string | null][] = [];
   let bodyScope: HTMLElement | null = null;
   let removeTooltips: (() => void) | undefined;
-  let error = $state("");
   let mode = $state<"browse" | "edit">("edit");
   let panelOpen = $state(true);
   let editorWidth = $state(0);
@@ -452,7 +453,7 @@
       {#if !previewPath}
         <p class="visual-error" role="status">{creating ? "New page — Save writes the file. The route renders once the site has it." : "No preview URL is mapped to this document. Use the properties panel to edit."}</p>
       {:else}
-        <PreviewFrame bind:frame url={previewPath} {reloadToken} title="Website page editor" onload={onLoad} onloading={() => { stopBodyEdit(); inline = null; loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />
+        <PreviewFrame bind:frame url={previewPath} {reloadToken} title="Website page editor" onload={onLoad} onloading={() => { stopBodyEdit(); inline = null; loaded = false; bodyAvailable = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />
       {/if}
       {#if inline}
         <input
@@ -475,7 +476,7 @@
     <div class="properties-divider" role="separator" tabindex="0" aria-label="Properties panel width" aria-orientation="vertical" aria-valuemin="280" aria-valuemax={panelMax} aria-valuenow={panelWidth} aria-valuetext={`${Math.round(panelWidth)} pixels`} onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize} onpointercancel={endResize} onlostpointercapture={endResize} onkeydown={keyResize}></div>
   {/if}
   {#if panelOpen && properties}
-    {@render properties(selected, focusToken, inlineBodyEnabled, focusBody)}
+    {@render properties(selected, focusToken, inlineBodyEnabled || inlineBodyLoading, focusBody, inlineBodyLoading)}
   {:else if panelOpen && schema && docType}
     <SchemaPanel
       {schema}

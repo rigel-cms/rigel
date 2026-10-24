@@ -8,7 +8,7 @@ import { createServer, build } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const scratch = path.join(root, '_temp/preview-loading');
+const scratch = path.join(root, '_temp/inline-body-flash');
 await mkdir(scratch, { recursive: true });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn, label) {
@@ -31,7 +31,7 @@ function fixture(req, res) {
   setTimeout(() => {
     res.setHeader('Content-Type', 'text/html');
     if (url.pathname === '/missing') { res.statusCode = 404; res.end('Missing'); return; }
-    res.end(`<!doctype html><html><head>${url.searchParams.has('assets') ? '<link rel="stylesheet" href="/style.css">' : ''}</head><body><h1 ${url.searchParams.has('unprepared') || url.pathname.includes('unprepared') ? '' : 'data-rigel-text="title"'}>Deployed ${url.pathname}</h1><button>Hidden control</button>${url.searchParams.has('assets') ? '<img src="/asset.svg">' : ''}</body></html>`);
+    res.end(`<!doctype html><html><head>${url.searchParams.has('assets') ? '<link rel="stylesheet" href="/style.css">' : ''}</head><body><h1 ${url.searchParams.has('unprepared') || url.pathname.includes('unprepared') ? '' : 'data-rigel-text="title"'}>Deployed ${url.pathname}</h1>${url.searchParams.has('body') ? '<div data-rigel-richtext="$body"><p>Article body</p></div>' : ''}<button>Hidden control</button>${url.searchParams.has('assets') ? '<img src="/asset.svg">' : ''}</body></html>`);
   }, Number(url.searchParams.get('delay') ?? 0));
 }
 const remote = httpServer(fixture);
@@ -42,13 +42,18 @@ await writeFile(path.join(scratch, 'main.js'), `import { mount } from 'svelte'; 
 await writeFile(path.join(scratch, 'Harness.svelte'), `<script>
 import PreviewFrame from '/src/editor/lib/PreviewFrame.svelte';
 import SitePreview from '/src/editor/lib/SitePreview.svelte';
+import VisualEditor from '/src/editor/lib/VisualEditor.svelte';
+import CollectionPanel from '/src/editor/lib/CollectionPanel.svelte';
+import { emptyBody } from '/src/article-body';
 let consumer = $state('shared');
+let bodyInline = $state(true), body = $state(emptyBody());
 let url = $state('/fast'), reloadToken = $state(0), mounted = $state(true), layout = $state('visual');
 let frame = $state(), value = $state('Unsaved title'), error = $state(''), events = $state([]);
 window.previewTest = {
   navigate(next) { url = next; }, reload() { reloadToken++; }, unmount() { mounted = false; },
   layout(next) { layout = next; }, edit(next) { value = next; if(frame?.contentDocument?.querySelector('h1')) frame.contentDocument.querySelector('h1').textContent = next; },
   consumer() { consumer = 'legacy'; },
+  article(next) { url = next; consumer = 'article'; }, preference(next) { bodyInline = next; },
   events() { return events; }
 };
 function loaded() { frame.contentDocument.querySelector('h1').textContent = value; events.push({type:'ready', time: performance.now(), url}); }
@@ -56,11 +61,18 @@ function loaded() { frame.contentDocument.querySelector('h1').textContent = valu
 <div class="rigel" style="display:block;height:700px">
 <button onclick={() => layout = layout === 'visual' ? 'legacy' : 'visual'}>Properties</button>
 <p role="status">{error}</p>
+{#if consumer === 'article'}
+<VisualEditor docId="blog:first" values={{title:value}} previewPath={url} {body} {bodyInline} {reloadToken} creating={false} devMode={false} onchange={() => {}} onbody={next => body = next}>
+{#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading)}
+<CollectionPanel fields={[]} values={{}} storageSlug="first" {body} {selected} {focusToken} {bodyInline} {bodyLoading} {oneditbody} devMode={false} onchange={() => {}} onbody={next => body = next} />
+{/snippet}
+</VisualEditor>
+{:else}
 <div class={layout === 'visual' ? 'canvas-stage' : 'site-preview'} style="height:550px;position:relative;padding:0">
 {#if consumer === 'legacy'}
   {#key url}<SitePreview target={{kind:'page', slug:'copy'}} config={{draftUrl:new URL(url,location.href).origin, pages:{copy:new URL(url,location.href).pathname}}} values={{title:value}} body="" />{/key}
 {:else if mounted}<PreviewFrame bind:frame {url} {reloadToken} title="Loading regression" onloading={() => { error = ''; events.push({type:'loading', time:performance.now(), url}); }} onload={loaded} onerror={message => {error = message; events.push({type:'error', time:performance.now(), url});}} />{/if}
-</div></div>`);
+</div>{/if}</div>`);
 const options = {
   configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte()],
   resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] },
@@ -173,6 +185,47 @@ try {
     await wait(idle, 'legacy error clears busy and reveals unprepared page');
     assert.equal(await evaluate(`document.querySelector('iframe').inert`), false); checks++;
   }
+  const bodyPanel = `document.querySelector('[data-collection-field="$body"]')`;
+  const inlinePending = `${bodyPanel}?.querySelector('button')?.disabled === true && !${bodyPanel}?.querySelector('[contenteditable="true"]')`;
+  const inlineReady = `${bodyPanel}?.querySelector('button')?.disabled === false && !${bodyPanel}?.querySelector('[contenteditable="true"]')`;
+  const panelReady = `!!${bodyPanel}?.querySelector('[contenteditable="true"]')`;
+  await cdp('Emulation.setDeviceMetricsOverride', {width:1200,height:850,deviceScaleFactor:1,mobile:false});
+  await evaluate(`previewTest.article('/slow?delay=900&body')`);
+  await wait(busy, 'article preview pending');
+  assert.equal(await evaluate(inlinePending), true, 'inline preference must not mount the sidebar BlockEditor while preview is pending'); checks++;
+  await delay(450);
+  assert.equal(await evaluate(inlinePending), true, 'sidebar stays in loading state until the delayed preview is ready'); checks++;
+  await screenshot('article-pending.png');
+  await wait(idle, 'article preview ready');
+  assert.equal(await evaluate(inlineReady), true); checks++;
+  await evaluate(`${bodyPanel}.querySelector('button').click()`);
+  await wait(`document.querySelector('iframe')?.contentDocument?.querySelector('[data-rigel-richtext="$body"]')?.getAttribute('contenteditable') === 'true'`, 'sidebar button starts inline body editing'); checks++;
+  await evaluate(`previewTest.reload()`); await wait(busy, 'article reload pending');
+  assert.equal(await evaluate(inlinePending), true, 'reload clears old inline readiness'); checks++;
+  await wait(idle, 'article reload ready');
+  assert.equal(await evaluate(inlineReady), true); checks++;
+  await navigate('/slow?delay=900&next=1&body'); await wait(busy, 'article navigation pending');
+  assert.equal(await evaluate(inlinePending), true, 'navigation clears old inline readiness'); checks++;
+  await evaluate(`previewTest.preference(false)`);
+  await wait(panelReady, 'panel preference immediately mounts full editor while loading'); checks++;
+  await wait(idle, 'panel preview loaded'); assert.equal(await evaluate(panelReady), true); checks++;
+  await evaluate(`previewTest.preference(true)`); await wait(inlineReady, 'inline preference restored');
+  await navigate('/slow?delay=900'); await wait(busy, 'missing body anchor pending');
+  assert.equal(await evaluate(inlinePending), true); await wait(idle, 'missing body anchor loaded');
+  await wait(panelReady, 'missing body anchor falls back to panel'); checks++;
+  await navigate('/slow/unprepared?delay=900'); await wait(busy, 'unprepared article pending');
+  assert.equal(await evaluate(inlinePending), true);
+  await wait(`!!document.querySelector('.visual-error')`, 'unprepared article error');
+  await wait(panelReady, 'unprepared article panel fallback'); checks++;
+  await navigate(`${remoteOrigin}/missing?delay=900`); await wait(busy, 'failed article pending');
+  assert.equal(await evaluate(inlinePending), true);
+  await wait(`document.querySelector('.visual-error')?.textContent.includes('HTTP 404')`, 'failed article error');
+  await wait(panelReady, 'failed preview panel fallback'); checks++;
+  await navigate(null); await wait(panelReady, 'no preview URL panel fallback');
+  assert.equal(await evaluate(`!!document.querySelector('.preview-frame')`), false); checks++;
+  await navigate('/fast?body'); await wait(idle, 'article recovery'); await wait(inlineReady, 'inline recovery');
+  await screenshot('article-ready.png');
+  await navigate(null); await wait(panelReady, 'no URL clears old ready state'); checks++;
   assert.equal(exceptions.length,0,JSON.stringify(exceptions));
   await writeFile(path.join(scratch,'results.json'), JSON.stringify({checks,elapsed,reduced,opacity,requests,exceptions},null,2));
   console.log(`PASS ${checks} loading regression groups; fast ${elapsed.toFixed(1)}ms; reduced ${reduced.toFixed(1)}ms; intermediate opacity ${opacity}. Screenshots and results: ${scratch}`);

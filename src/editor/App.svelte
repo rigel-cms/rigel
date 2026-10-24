@@ -1071,8 +1071,8 @@
             devMode={settings.devMode}
             onchange={(next) => { draft = next; touch(); }}
           >
-            {#snippet properties(selected, focusToken, bodyInline, oneditbody)}
-              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {oneditbody} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
+            {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading)}
+              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {oneditbody} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
             {/snippet}
           </VisualEditor>
         {/key}

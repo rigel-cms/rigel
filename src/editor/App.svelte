@@ -704,8 +704,8 @@
 {#if !ready || (githubMode && !connected)}
 <div class="rigel connection-shell">
   <main id="github-connection" class="connection-card" aria-busy={connectionBusy}>
-    <img src={logo} alt="" width="64" height="64" />
-    <h1>{!ready ? "RigelCMS" : "Connect GitHub"}</h1>
+    <div class="connection-brand"><img src={logo} alt="" width="64" height="64" /><span>Rigel <span class="brand-suffix">CMS</span></span></div>
+    <h1>{!ready ? "Loading editor" : "Connect GitHub"}</h1>
     {#if !ready}
       {#if loadError}<p class="connection-error" role="alert">{loadError}</p><button class="primary" onclick={loadBlueprint}>Retry loading</button>
       {:else}<p role="status">Loading the editor configuration…</p>{/if}
@@ -739,7 +739,7 @@
   <aside id="rigel-sidebar">
     <a class="brand" href="/rigel/" role="button" aria-label="Welcome" aria-describedby="rigel-beta" onclick={(event) => { event.preventDefault(); goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
-      <span>RigelCMS</span>
+      <span>Rigel <span class="brand-suffix">CMS</span></span>
       <span id="rigel-beta" class="badge">Beta</span>
     </a>
     <TopBar {manifest} {sel} onselect={select} />
@@ -993,7 +993,7 @@
       {:else}
         <div class="welcome">
           <img src={logo} alt="" width="64" height="64" />
-          <h2>Welcome to RigelCMS</h2>
+          <h2>Welcome to Rigel CMS</h2>
           <p>The best CMS in the whole space.</p>
           <p class="welcome-hint">Select a page or collection from the sidebar to start editing.</p>
         </div>

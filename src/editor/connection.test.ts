@@ -2,6 +2,15 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { compile } from "svelte/compiler";
 
+test("visible branding consistently uses Rigel CMS and includes the login wordmark", () => {
+  const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");
+  const connection = source.slice(source.indexOf('<main id="github-connection"'), source.indexOf("</main>"));
+  expect(connection).toContain('class="connection-brand"');
+  expect(connection).toContain('<span>Rigel <span class="brand-suffix">CMS</span></span>');
+  expect(source).toContain('Welcome to Rigel CMS');
+  expect(source).not.toContain('RigelCMS');
+});
+
 test("connection screen links legal pages without displaying repository or branch details", () => {
   const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");
   const connection = source.slice(source.indexOf('<main id="github-connection"'), source.indexOf("</main>"));

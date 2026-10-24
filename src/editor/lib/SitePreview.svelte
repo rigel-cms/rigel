@@ -5,7 +5,7 @@
   import PreviewFrame from "./PreviewFrame.svelte";
   let { target, config, values, body, isNew = false, devMode = false }: { target: PreviewTarget; config: PreviewConfig; values: Record<string, unknown>; body: "" | import("../../article-body").ArticleBody; isNew?: boolean; devMode?: boolean } = $props();
 
-  const livePath = $derived(previewUrl(config, target, "live"));
+  const websitePath = $derived(previewUrl(config, target, "website"));
   const key = $derived(`${target.kind}:${target.collection ?? ""}:${target.slug}`);
   let frame: HTMLIFrameElement | undefined = $state();
   let loaded = $state(false);
@@ -39,7 +39,7 @@
 <div class="site-preview" aria-label="Website preview">
   <div class="preview-heading">
     <strong>Website preview</strong>
-    {#if livePath}<a class="icon-btn visual-live" href={livePath} target="_blank" rel="noopener noreferrer" aria-label="View live page" data-tooltip="View live page"><Icon name="external" size={18} /></a>{/if}
+    {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label="Preview on website" data-tooltip="Preview on website"><Icon name="external" size={18} /></a>{/if}
   </div>
   {#if error}<p role="status" class="preview-error">{error}</p>{/if}
   {#if path}

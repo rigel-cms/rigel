@@ -36,6 +36,36 @@ test("collection draft previews keep the prepared template after Save and reopen
   }
 });
 
+test("website previews use real routes on the draft host before and after Save", () => {
+  const config = {
+    liveUrl: "https://live.test/",
+    draftUrl: "https://draft.test/site/",
+    pages: { about: "/about/" },
+    documents: { page: { url: "/page/{slug}/", index: "/" } },
+    collections: {
+      blog: { url: "/blog/{slug}/", new: "/preview/blog/" },
+      news: { url: "/news/{slug}/", new: "/preview/news/" },
+    },
+  };
+  for (const collection of ["blog", "news"]) {
+    for (const isNew of [true, false]) {
+      const target = { kind: "post" as const, collection, slug: "not-built-yet" };
+      expect(previewUrl(config, target, "website", isNew)).toBe(`https://draft.test/site/${collection}/not-built-yet/`);
+      expect(previewUrl({ ...config, draftUrl: undefined }, target, "website", isNew)).toBe(`/${collection}/not-built-yet/`);
+    }
+  }
+  expect(previewUrl(config, { kind: "page", slug: "about" }, "website")).toBe("https://draft.test/site/about/");
+  expect(previewUrl(config, { kind: "document", type: "page", slug: "about" }, "website")).toBe("https://draft.test/site/page/about/");
+  expect(previewUrl(config, { kind: "document", type: "page", slug: "home" }, "website")).toBe("https://draft.test/site/");
+  expect(previewUrl(config, { kind: "menu", slug: "footer" }, "website")).toBeNull();
+  for (const draftUrl of ["javascript:alert(1)", "//evil.test/", "https://u:p@evil.test/", "https://draft.test/?x=1"]) {
+    expect(previewUrl({ ...config, draftUrl }, { kind: "page", slug: "about" }, "website")).toBeNull();
+  }
+  for (const url of ["//evil.test/{slug}", "/../{slug}/", "/%2e%2e/{slug}/", "/rigel/{slug}/", "/blog/{slug}/?x=1"]) {
+    expect(previewUrl({ ...config, collections: { blog: { url, new: "/preview/blog/" } } }, { kind: "post", collection: "blog", slug: "hello" }, "website")).toBeNull();
+  }
+});
+
 test("preview bases reject unsafe or ambiguous URLs", () => {
   for (const key of ["liveUrl", "draftUrl"]) {
     for (const value of ["", "/relative/", "//example.test", "http://example.test", "javascript:alert(1)", "https://u:p@example.test", "https://@example.test", "https:///example.test", "https://example.test/\u0000", "https://example.test/?token=x", "https://example.test/#x", "https://example.test/../x", "https://example.test/%2e%2e/x", " https://example.test", "https://example.test/\\x", 123, null]) {

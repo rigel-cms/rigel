@@ -14,7 +14,7 @@
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
   let {
-    docId, schema, docType, values, previewValues, documents = {}, previewPath, livePath = previewPath, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {},
+    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {},
   }: {
     docId: string;
     schema?: Schema;
@@ -23,7 +23,7 @@
     previewValues?: Record<string, unknown>;
     documents?: Record<string, Record<string, unknown>>;
     previewPath: string | null;
-    livePath?: string | null;
+    websitePath?: string | null;
     body?: "" | import("../../article-body").ArticleBody;
     properties?: Snippet<[SelectedField | null, number, boolean, () => void]>;
     bodyInline?: boolean;
@@ -439,7 +439,7 @@
       </div>
       <span class="visual-hint">{mode === "edit" ? "Click a region to edit it. Scripts, forms and links stay disabled." : "Scripts, forms and links are disabled in this preview."}</span>
       <div class="visual-actions">
-        {#if livePath}<a class="icon-btn visual-live" href={livePath} target="_blank" rel="noopener noreferrer" aria-label="View live page" data-tooltip="View live page"><Icon name="external" size={18} /></a>{/if}
+        {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label="Preview on website" data-tooltip="Preview on website"><Icon name="external" size={18} /></a>{/if}
         <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label="Toggle properties panel" data-tooltip="Toggle properties panel" onclick={() => (panelOpen = !panelOpen)}>
           <SidebarIcon name="square-half" />
         </button>

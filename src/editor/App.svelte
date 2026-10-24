@@ -410,7 +410,7 @@
     if (current?.kind === "document") map[current.id] = draft;
     return map;
   });
-  function documentPreview(mode: "live" | "draft") {
+  function documentPreview(mode: "draft" | "website") {
     if (sel?.kind !== "document" || newDocument?.id === sel.id) return null;
     return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: sel.id.slice(sel.type.length + 1) }, mode);
   }
@@ -931,7 +931,7 @@
           values={draft}
           documents={draftDocuments}
           previewPath={documentPreview("draft")}
-          livePath={documentPreview("live")}
+          websitePath={documentPreview("website")}
           creating={newDocument?.id === sel.id}
           devMode={settings.devMode}
           reloadToken={documentReload}
@@ -979,7 +979,7 @@
             bodyInline={settings.userPref.editorExperience === "inline"}
             onbody={(value) => { bodyDraft = value; touch(); }}
             previewPath={manifest.preview ? previewUrl(manifest.preview, sel, "draft", !!newEntry) : null}
-            livePath={manifest.preview ? previewUrl(manifest.preview, sel, "live") : null}
+            websitePath={manifest.preview ? previewUrl(manifest.preview, sel, "website") : null}
             creating={!!newEntry}
             devMode={settings.devMode}
             onchange={(next) => { draft = next; touch(); }}

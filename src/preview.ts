@@ -30,7 +30,7 @@ export function previewPath(config: PreviewConfig, target: PreviewTarget, isNew 
   return typeof path === "string" && /^\/(?!\/)/.test(path) && !/[\\\s?#]/.test(path) && !/%(?:2e|2f|5c)/i.test(path) && !path.split("/").some(part => part === "." || part === "..") && !/^\/rigel(?:\/|$)/.test(path) ? path : null;
 }
 
-export function previewUrl(config: PreviewConfig, target: PreviewTarget, mode: "live" | "draft" = "draft", isNew = false): string | null {
+export function previewUrl(config: PreviewConfig, target: PreviewTarget, mode: "live" | "draft" | "website" = "draft", isNew = false): string | null {
   const path = previewPath(config, target, mode === "draft" && (target.kind === "post" || isNew));
   const base = mode === "live" ? config.liveUrl : config.draftUrl;
   if (!path || base === undefined) return path;

@@ -365,7 +365,18 @@
 .rigel .preview-heading span, .rigel .site-preview small { color: var(--text-muted); font-size: 0.75rem; }
 .rigel .site-preview p { overflow-wrap: anywhere; font-size: 0.8125rem; }
 .rigel .site-preview .preview-error { color: var(--danger); }
-.rigel .site-preview iframe { flex: 1; width: 100%; min-height: 300px; border: 1px solid var(--border); background: white; }
+.rigel .preview-frame { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; background: var(--panel); }
+.rigel .preview-frame iframe { opacity: 0; visibility: hidden; transition: none; }
+.rigel .preview-frame iframe.revealed { opacity: 1; visibility: visible; transition: opacity 200ms ease-out; }
+.rigel .preview-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 0.625rem; color: var(--text); background: var(--panel); font-size: 0.8125rem; }
+.rigel .preview-spinner { width: 1rem; height: 1rem; border: 2px solid var(--border); border-top-color: currentColor; border-radius: 50%; animation: preview-spin 800ms linear infinite; }
+@keyframes preview-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rigel .preview-spinner { animation: none; }
+  .rigel .preview-frame iframe.revealed { transition: none; }
+}
+.rigel .site-preview .preview-frame { min-height: 300px; border: 1px solid var(--border); }
+.rigel .site-preview iframe { flex: 1; width: 100%; min-height: 0; border: 0; background: white; }
 .rigel .site-preview small { padding-top: 0.75rem; }
 .rigel .preview-retry { align-self: start; }
 @media (max-width: 1050px) {

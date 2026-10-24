@@ -8,7 +8,7 @@ import { createServer, build } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const scratch = path.join(root, '_temp/cross-origin-preview');
+const scratch = path.join(root, '_temp/preview-loading/cross-origin');
 await mkdir(scratch, { recursive: true });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn, label) {
@@ -112,6 +112,9 @@ try {
   await evaluate(`sessionStorage.setItem('preview-test-token','never-send-this'); document.cookie='preview-test-cookie=never-send-this; path=/'; localStorage.setItem('rigelcms.settings',JSON.stringify({userPref:{editorExperience:'inline'}}))`);
   await open();
   await page();
+  await wait(`!!document.querySelector('.preview-loading')`, 'preview-only loading splash');
+  assert.equal(await evaluate(`{const overlay=document.querySelector('.preview-loading').getBoundingClientRect(), stage=document.querySelector('.canvas-stage').getBoundingClientRect(), toolbar=document.querySelector('.visual-toolbar').getBoundingClientRect(); overlay.top >= toolbar.bottom && overlay.left >= stage.left && overlay.right <= stage.right && overlay.bottom <= stage.bottom}`), true, 'loading stays inside the iframe viewport');
+  await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'loading.png'), Buffer.from(r.data, 'base64')));
   await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'cross-origin prepared visual editor');
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/page/about/`);
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('aria-label')`), 'Preview on website');
@@ -126,7 +129,7 @@ try {
   assert.equal(await evaluate(`${frameDoc}.querySelectorAll('base').length`), 1);
   assert.equal(await evaluate(`${frameDoc}.querySelectorAll('meta[http-equiv="refresh"]').length`), 0);
   assert.equal(await evaluate(`document.querySelector('iframe').getAttribute('sandbox')`), 'allow-same-origin');
-  await evaluate(`window.originalPreviewDoc=${frameDoc}; ${frameDoc}.defaultView.scrollTo(0,150)`);
+  await evaluate(`window.originalPreviewDoc=${frameDoc}; ${frameDoc}.defaultView.scrollTo(0,150); window.previewLoadingRestarts=0; window.loadingObserver=new MutationObserver(records=>{for(const record of records) if(record.type==='attributes' && record.target.getAttribute('aria-busy')==='true') previewLoadingRestarts++}); loadingObserver.observe(document.querySelector('.preview-frame'), {attributes:true, attributeFilter:['aria-busy']})`);
   const count = requests.length;
   await input('[data-schema-path="title"] input', 'Unsaved cross-origin title');
   await wait(`${frameDoc}.querySelector('h1').textContent === 'Unsaved cross-origin title'`, 'unsaved patch');
@@ -142,6 +145,7 @@ try {
   assert.equal(await evaluate(`${frameDoc} === window.originalPreviewDoc`), true);
   assert.equal(requests.length, count, 'text editing must not refetch HTML/assets or navigate');
   assert.equal(writes, 0, 'no autosave');
+  assert.equal(await evaluate(`previewLoadingRestarts`), 0, 'typing and inline editing must not restart the preview loader');
   await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'cross-origin.png'), Buffer.from(r.data, 'base64')));
   await click('.brand'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`, 'unsaved guard');
   await button('Keep editing'); await wait(`!document.querySelector('.unsaved-dialog[open]')`, 'keep editing');
@@ -150,8 +154,10 @@ try {
   await wait(`!!document.querySelector('.welcome')`, 'discard navigation');
   await page(); await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'page reopened');
   assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'Saved title');
+  await evaluate(`loadingObserver.disconnect(); previewLoadingRestarts=0; window.beforeSaveFrame=document.querySelector('iframe'); loadingObserver.observe(document.querySelector('.preview-frame'), {attributes:true, attributeFilter:['aria-busy']})`);
   await input('[data-schema-path="title"] input', 'Explicit saved title');
   await click('.save-button'); await wait(`!!document.querySelector('.save-status.saved')`, 'explicit Save settled');
+  assert.equal(await evaluate(`previewLoadingRestarts === 0 && document.querySelector('iframe') === beforeSaveFrame && !document.querySelector('.preview-loading')`), true, 'editing and Save preserve the revealed iframe without loader restart');
   assert.equal(writes, 1, 'only explicit Save writes');
   assert(requests.every(r => !r.headers.authorization && !r.headers.referer), 'remote receives no token or referrer');
   assert(requests.filter(r => r.url.startsWith('/page/')).every(r => !r.headers.cookie), 'HTML fetch omits cookies');
@@ -160,8 +166,11 @@ try {
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/copy/`);
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('aria-label')`), 'Preview on website');
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('data-tooltip')`), 'Preview on website');
+  await wait(`!document.querySelector('.preview-loading')`, 'legacy reveal');
+  await evaluate(`loadingObserver.disconnect(); previewLoadingRestarts=0; window.legacyDoc=${frameDoc}; loadingObserver.observe(document.querySelector('.preview-frame'), {attributes:true, attributeFilter:['aria-busy']})`);
   await input('main input[type="text"]:not([readonly])', 'Unsaved copy');
   await wait(`${frameDoc}.querySelector('h2').textContent === 'Unsaved copy'`, 'legacy unsaved patch');
+  assert.equal(await evaluate(`previewLoadingRestarts === 0 && ${frameDoc} === legacyDoc && !document.querySelector('.preview-loading')`), true, 'legacy typing preserves the revealed iframe');
   await click('.brand'); await button('Discard changes');
   await click('[data-collection="blog"]'); await button(article.frontmatter.title);
   await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'article cross-origin');

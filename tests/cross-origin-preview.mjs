@@ -160,7 +160,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/copy/`);
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('aria-label')`), 'Preview on website');
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('data-tooltip')`), 'Preview on website');
-  await input('main input[type="text"]', 'Unsaved copy');
+  await input('main input[type="text"]:not([readonly])', 'Unsaved copy');
   await wait(`${frameDoc}.querySelector('h2').textContent === 'Unsaved copy'`, 'legacy unsaved patch');
   await click('.brand'); await button('Discard changes');
   await click('[data-collection="blog"]'); await button(article.frontmatter.title);
@@ -196,7 +196,7 @@ try {
   await click('.save-button');
   await wait(`document.body.textContent.includes('Title: required')`, 'rejected save error');
   assert.equal(await evaluate(`document.querySelector('.save-button').disabled`), false, 'rejected draft stays dirty');
-  assert.equal(await evaluate(`document.querySelector('main input[type="text"]').value`), 'New remote article', 'rejected save retains edits');
+  assert.equal(await evaluate(`document.querySelector('[data-collection-field="title"] input').value`), 'New remote article', 'rejected save retains edits');
   await click('.brand'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`, 'rejected save unsaved guard');
   await button('Keep editing');
   rejectSave = false;
@@ -222,7 +222,7 @@ try {
   await input('.action-dialog input', 'New remote article'); await button('Create draft');
   await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'duplicate-title template');
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/blog/new-remote-article-2/`);
-  await input('main input[type="text"]', 'Changed title, stable slug');
+  await input('[data-collection-field="title"] input', 'Changed title, stable slug');
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/blog/new-remote-article-2/`);
   await click('.save-button'); await wait(`!!document.querySelector('.save-status.saved')`, 'duplicate-title explicit save');
   await click('.brand');

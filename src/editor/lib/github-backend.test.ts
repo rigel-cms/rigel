@@ -16,34 +16,55 @@ const blueprint = (): Manifest => ({
 
 function server() {
   let seq = 0;
-  const files = new Map<string,{sha:string,text:string}>();
-  const put = (path:string,text:string) => files.set(path,{sha:(++seq).toString(16).padStart(40,"0"),text});
-  put("playground/src/content/copy/contact.ts",readFileSync("tests/fixtures/site/src/content/copy/contact.ts","utf8"));
-  put("playground/src/content/authors/alex.json",JSON.stringify({name:"Álex 🌍"}));
-  put("playground/src/content/blog/hello.json",JSON.stringify({frontmatter:{title:"Hello",author:"author:alex"},body:emptyBody()}));
-  put("playground/src/content/menus/main.json",JSON.stringify({slug:"main",title:"Main",items:[]}));
-  put("unrelated/unsafe.ts","throw Error('do not fetch')");
-  const calls:{path:string,method:string,body:any}[]=[];
-  const state = {exists:true,race:false,truncated:false,status:0,malformed:false,files,put,calls};
-  vi.stubGlobal("fetch",vi.fn(async (input:string,init:RequestInit={}) => {
-    const url = new URL(input); const path=decodeURIComponent(url.pathname.replace("/repos/owner/site",""));
-    const method=init.method??"GET"; const body=init.body?JSON.parse(String(init.body)):undefined;
-    calls.push({path,method,body});
-    const json=(data:any,status=200)=>Response.json(data,{status});
-    if(state.status) return json({message:"secret-token raw body"},state.status);
-    if(path==="/git/ref/heads/drafts") return state.exists?json({object:{sha:"a".repeat(40)}}):json({},404);
-    if(path==="/git/ref/heads/main") return json({object:{sha:"b".repeat(40)}});
-    if(path==="/git/refs" && method==="POST") {state.exists=true;return state.race?json({},422):json({ref:body.ref,object:{sha:body.sha}},201);}
-    if(path.startsWith("/git/trees/")) return json({truncated:state.truncated,tree:[...files].map(([path,f])=>({path,sha:f.sha,type:"blob",mode:"100644"}))});
-    if(path.startsWith("/git/blobs/")) {const f=[...files.values()].find(f=>path.endsWith(f.sha));return f?json({sha:f.sha,encoding:"base64",content:state.malformed?"%%%":Buffer.from(f.text).toString("base64")}):json({},404);}
-    if(path.startsWith("/contents/")) {
-      const key=path.slice(10);const f=files.get(key);
-      if(method==="GET") return f?json({type:"file",sha:f.sha,encoding:"base64",content:Buffer.from(f.text).toString("base64")}):json({},404);
-      if(body.branch!=="drafts") throw new Error("Publishing mutation!");
-      if((f && body.sha!==f.sha)||(!f && body.sha)) return json({},409);
-      if(method==="DELETE") {files.delete(key);return json({content:null});}
-      put(key,Buffer.from(body.content,"base64").toString("utf8"));return json({content:{sha:files.get(key)!.sha}},f?200:201);
+  type File = { sha: string; text: string; mode?: string };
+  const id = () => (++seq).toString(16).padStart(40, "0");
+  const files = new Map<string, File>();
+  const blobs = new Map<string, string>();
+  const trees = new Map<string, Map<string, File>>();
+  const commits = new Map<string, { tree: string; parents: string[] }>();
+  const put = (path: string, text: string) => { const sha = id(); blobs.set(sha, text); files.set(path, { sha, text }); };
+  put("playground/src/content/copy/contact.ts", readFileSync("tests/fixtures/site/src/content/copy/contact.ts", "utf8"));
+  put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Álex 🌍" }));
+  put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Hello", author: "author:alex" }, body: emptyBody() }));
+  put("playground/src/content/menus/main.json", JSON.stringify({ slug: "main", title: "Main", items: [] }));
+  put("unrelated/unsafe.ts", "throw Error('do not fetch')");
+  const remember = (head: string, parents: string[] = []) => { const tree = id(); trees.set(tree, new Map(files)); commits.set(head, { tree, parents }); };
+  remember("a".repeat(40)); remember("b".repeat(40));
+  const calls: { path: string; method: string; body: any }[] = [];
+  const state = { exists: true, race: false, truncated: false, status: 0, malformed: false, head: "a".repeat(40), files, calls,
+    put(path: string, text: string) { const parent = state.head; put(path, text); state.head = id(); remember(state.head, [parent]); },
+  };
+  vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit = {}) => {
+    const url = new URL(input), path = decodeURIComponent(url.pathname.replace("/repos/owner/site", ""));
+    const method = init.method ?? "GET", body = init.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ path, method, body });
+    const json = (data: any, status = 200) => Response.json(data, { status });
+    if (state.status) return json({ message: "secret-token raw body" }, state.status);
+    if (path === "/git/ref/heads/drafts") return state.exists ? json({ object: { sha: state.head } }) : json({}, 404);
+    if (path === "/git/ref/heads/main") return json({ object: { sha: "b".repeat(40) } });
+    if (path === "/git/refs" && method === "POST") { state.exists = true; state.head = body.sha; return state.race ? json({}, 422) : json({ ref: body.ref, object: { sha: body.sha } }, 201); }
+    if (path.startsWith("/git/trees/")) {
+      const key = path.slice(11), tree = trees.get(commits.get(key)?.tree ?? key);
+      return tree ? json({ truncated: state.truncated, tree: [...tree].map(([path, file]) => ({ path, sha: file.sha, type: "blob", mode: file.mode ?? "100644" })) }) : json({}, 404);
     }
+    if (path.startsWith("/git/blobs/")) { const sha = path.slice(11), text = blobs.get(sha); return text !== undefined ? json({ sha, encoding: "base64", content: state.malformed ? "%%%" : Buffer.from(text).toString("base64") }) : json({}, 404); }
+    if (path.startsWith("/git/commits/")) { const commit = commits.get(path.slice(13)); return commit ? json({ tree: { sha: commit.tree }, parents: commit.parents.map(sha => ({ sha })) }) : json({}, 404); }
+    if (path === "/git/blobs" && method === "POST") { const sha = id(); blobs.set(sha, Buffer.from(body.content, "base64").toString("utf8")); return json({ sha }, 201); }
+    if (path === "/git/trees" && method === "POST") {
+      const base = trees.get(body.base_tree); if (!base) return json({}, 422);
+      const next = new Map(base);
+      for (const entry of body.tree) { if (entry.sha === null) next.delete(entry.path); else { const text = blobs.get(entry.sha); if (text === undefined) return json({}, 422); next.set(entry.path, { sha: entry.sha, text, mode: entry.mode }); } }
+      const sha = id(); trees.set(sha, next); return json({ sha }, 201);
+    }
+    if (path === "/git/commits" && method === "POST") { if (!trees.has(body.tree) || body.parents.some((sha: string) => !commits.has(sha))) return json({}, 422); const sha = id(); commits.set(sha, { tree: body.tree, parents: body.parents }); return json({ sha }, 201); }
+    if (path === "/git/refs/heads/drafts" && method === "PATCH") {
+      const commit = commits.get(body.sha);
+      if (body.force !== false) throw new Error("Forced branch update!");
+      if (!commit || commit.parents[0] !== state.head) return json({}, 422);
+      state.head = body.sha; files.clear(); for (const [path, file] of trees.get(commit.tree)!) files.set(path, file);
+      return json({ object: { sha: state.head } });
+    }
+    if (path.startsWith("/contents/") && method === "GET") { const file = files.get(path.slice(10)); return file ? json({ type: "file", sha: file.sha, encoding: "base64", content: Buffer.from(file.text).toString("base64") }) : json({}, 404); }
     throw new Error(`Unexpected ${method} ${path}`);
   }));
   return state;
@@ -74,6 +95,82 @@ test("invalid collection saves never mutate GitHub or discard existing propertie
   expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter).toMatchObject({ description: "", custom: { keep: true } });
 });
 
+test("remote URL edits preserve paths, ids, references, omissions and reject duplicate fallbacks", async () => {
+  const s = server();
+  const original = blueprint();
+  const m = await loadManifestRemote(ctx, original);
+  const post = { title: "Spanish", slug: "Árbol y NIÑO!", author: "author:alex", custom: { keep: true } };
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, post, emptyBody(), false);
+  const reloaded = await loadManifestRemote(ctx, original);
+  expect(reloaded.collections![0].posts[0]).toMatchObject({ slug: "hello", frontmatter: { ...post, slug: "arbol-y-nino" } });
+  await expect(saveRemoteSelection(ctx, reloaded, { kind: "post", collection: "blog", slug: "other" }, { slug: "arbol-y-nino" }, emptyBody(), true)).rejects.toThrow(/already used/);
+  await expect(saveRemoteSelection(ctx, reloaded, { kind: "post", collection: "blog", slug: "other" }, { slug: "!!!" }, emptyBody(), true)).rejects.toThrow(/slug/);
+  await saveRemoteSelection(ctx, reloaded, { kind: "post", collection: "blog", slug: "legacy" }, { title: "Legacy" }, emptyBody(), true);
+  expect(JSON.parse(s.files.get("playground/src/content/blog/legacy.json")!.text).frontmatter).not.toHaveProperty("slug");
+  await expect(saveRemoteSelection(ctx, reloaded, { kind: "post", collection: "blog", slug: "other" }, { slug: "legacy" }, emptyBody(), true)).rejects.toThrow(/already used/);
+  const doc = { name: "Álex", slug: "Página española", custom: { keep: true } };
+  await saveRemoteSelection(ctx, reloaded, { kind: "document", type: "author", id: "author:alex" }, doc, "", false);
+  const after = await loadManifestRemote(ctx, original);
+  expect(after.documents![0]).toMatchObject({ id: "author:alex", slug: "alex", data: { ...doc, slug: "pagina-espanola", _id: "author:alex" } });
+  expect([...s.files.keys()].filter(path => path.includes("authors/"))).toEqual(["playground/src/content/authors/alex.json"]);
+});
+
+test("remote read and save boundaries reject explicit-versus-legacy URL collisions", async () => {
+  const s = server();
+  const postPath = "playground/src/content/blog/other.json";
+  s.put(postPath, JSON.stringify({ frontmatter: { title: "Other", slug: "hello" }, body: emptyBody() }));
+  await expect(loadManifestRemote(ctx, blueprint())).rejects.toThrow(/already used/);
+  s.files.delete(postPath);
+  const docPath = "playground/src/content/authors/other.json";
+  s.put(docPath, JSON.stringify({ name: "Other", slug: "alex" }));
+  await expect(loadManifestRemote(ctx, blueprint())).rejects.toThrow(/already used/);
+  s.put(docPath, JSON.stringify({ name: "Other" }));
+  const m = await loadManifestRemote(ctx, blueprint());
+  await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Spanish", slug: "other" }, "", false)).rejects.toThrow(/already used/);
+  for (const slug of ["", "!!!", null]) await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Spanish", slug }, "", false)).rejects.toThrow(/slug/);
+  s.put(postPath, JSON.stringify({ frontmatter: { slug: "BAD URL" }, body: emptyBody() }));
+  await expect(loadManifestRemote(ctx, blueprint())).rejects.toThrow(/slug/);
+});
+
+test("remote saves reject URL claims added to another file since loading", async () => {
+  const s = server();
+  const m = await loadManifestRemote(ctx, blueprint());
+  s.put("playground/src/content/blog/other.json", JSON.stringify({ frontmatter: { title: "Other", slug: "claimed" }, body: emptyBody() }));
+  s.head = "b".repeat(40);
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft", slug: "claimed" }, emptyBody(), false)).rejects.toThrow(/reload/);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("concurrent remote drafts cannot claim the same effective URL slug", async () => {
+  const s = server();
+  const m = await loadManifestRemote(ctx, blueprint());
+  const results = await Promise.allSettled(["one", "two"].map(slug => saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug }, { title: "Race", slug: "shared-url" }, emptyBody(), true)));
+  expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+  expect(s.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+});
+
+test("independent remote editors atomically compete for a URL slug on different filenames", async () => {
+  const s = server();
+  const one = await loadManifestRemote(ctx, blueprint());
+  const two = await loadManifestRemote(ctx, blueprint());
+  const original = fetch;
+  let arrivals = 0;
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (init?.method === "PATCH") { if (++arrivals === 2) release(); await gate; }
+    return original(input, init);
+  });
+  const results = await Promise.allSettled([one, two].map((m, index) => saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: `editor-${index}` }, { title: "Race", slug: "shared-url" }, emptyBody(), true)));
+  expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+  const reloaded = await loadManifestRemote(ctx, blueprint());
+  expect(reloaded.collections![0].posts.filter(post => post.frontmatter.slug === "shared-url")).toHaveLength(1);
+  expect(s.calls.filter(call => call.method === "PATCH")).toHaveLength(2);
+  expect(s.calls.filter(call => call.method === "PATCH").every(call => call.body.force === false)).toBe(true);
+});
+
 test("remote collection loads validate present types without filling optional omissions", async () => {
   const s = server();
   const original = blueprint();
@@ -102,7 +199,8 @@ test("loads real draft content and CAS saves all kinds with Unicode without touc
   const reloaded=await loadManifestRemote(ctx,original);
   expect(reloaded.documents?.[0].data.name).toBe("Zoë");
   expect(reloaded.collections?.[0].posts[0].frontmatter.title).toBe("世界");
-  expect(s.calls.filter(c=>c.method!=="GET").every(c=>c.body.branch==="drafts")).toBe(true);
+  expect(s.calls.filter(c=>c.method==="PATCH").every(c=>c.path === "/git/refs/heads/drafts" && c.body.force === false)).toBe(true);
+  expect(s.calls.some(c=>c.method === "PUT" || c.method === "DELETE")).toBe(false);
 });
 
 test.each([false,true])("creates absent drafts from publish head without forcing, including race=%s",async race=>{
@@ -137,10 +235,9 @@ test("CAS keeps loaded SHA and refuses collisions for updates, deletes and creat
   s.put(path,original.text+"\n");
   const before=s.calls.length;
   await expect(saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"hello"},{title:"Changed"},emptyBody(),false)).rejects.toThrow(/conflict.*reload/i);
-  expect(s.calls.slice(before).map(c=>c.method)).toEqual(["PUT"]);
-  expect(s.calls.at(-1)?.body.sha).toBe(original.sha);
+  expect(s.calls.slice(before).map(c=>c.method)).toEqual(["GET"]);
   await expect(deleteRemotePost(ctx,m,"blog","hello")).rejects.toThrow(/conflict/i);
-  await expect(saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"hello"},{},emptyBody(),true)).rejects.toThrow(/exists/);
+  await expect(saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"hello"},{},emptyBody(),true)).rejects.toThrow(/conflict/);
   s.put("playground/src/content/blog/new.json",original.text);
   await expect(saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"new"},{},emptyBody(),true)).rejects.toThrow(/conflict/);
   expect(s.files.get(path)?.text).toBe(original.text+"\n");
@@ -157,9 +254,29 @@ test.each(["update", "create", "delete"])("retry reconciles a completed %s after
   const save=()=>action === "delete" ? deleteRemotePost(ctx,m,"blog",slug) : saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug},{title:"Confirmed retry"},emptyBody(),action === "create");
   await expect(save()).rejects.toThrow(/request failed/);
   await expect(save()).resolves.toBeUndefined();
-  expect(s.calls.filter(call=>call.method !== "GET")).toHaveLength(1);
+  expect(s.calls.filter(call=>call.method === "PATCH")).toHaveLength(1);
   if(action === "delete") expect(s.files.has(`playground/src/content/blog/${slug}.json`)).toBe(false);
   else expect(JSON.parse(s.files.get(`playground/src/content/blog/${slug}.json`)!.text).frontmatter.title).toBe("Confirmed retry");
+});
+
+test.each([false, true])("retry reconciles a lost ref-update response, applied=%s", async applied => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  const original = fetch;
+  let fail = true;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (init?.method === "PATCH" && fail) {
+      fail = false;
+      if (applied) await original(input, init);
+      throw new Error("Lost branch update response");
+    }
+    return original(input, init);
+  });
+  const save = () => saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "new" }, { title: "Retained draft", slug: "spanish-url" }, emptyBody(), true);
+  await expect(save()).rejects.toThrow(/request failed/);
+  await expect(save()).resolves.toBeUndefined();
+  expect(s.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+  expect(s.calls.filter(call => call.path === "/git/commits" && call.method === "POST")).toHaveLength(1);
+  expect(JSON.parse(s.files.get("playground/src/content/blog/new.json")!.text).frontmatter.slug).toBe("spanish-url");
 });
 
 test("uncertain write reconciliation rejects another editor's changes without adopting their SHA",async()=>{
@@ -174,7 +291,7 @@ test("uncertain write reconciliation rejects another editor's changes without ad
   const path="playground/src/content/blog/hello.json";
   s.put(path,JSON.stringify({frontmatter:{title:"Another editor"},body:emptyBody()}));
   await expect(save()).rejects.toThrow(/changed|conflict/);
-  expect(s.calls.filter(call=>call.method !== "GET")).toHaveLength(1);
+  expect(s.calls.filter(call=>call.method === "PATCH")).toHaveLength(1);
   expect(JSON.parse(s.files.get(path)!.text).frontmatter.title).toBe("Another editor");
 });
 
@@ -187,11 +304,11 @@ test("new edits after an unconfirmed create reconcile before a SHA-protected upd
   });
   const save=(title:string)=>saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"new"},{title},emptyBody(),true);
   await expect(save("First draft")).rejects.toThrow();
-  const firstSha=s.files.get("playground/src/content/blog/new.json")!.sha;
+  const firstHead=s.head;
   await save("Newer unsaved draft");
-  const mutations=s.calls.filter(call=>call.method === "PUT");
+  const mutations=s.calls.filter(call=>call.method === "PATCH");
   expect(mutations).toHaveLength(2);
-  expect(mutations[1].body.sha).toBe(firstSha);
+  expect(s.calls.filter(call=>call.path === "/git/commits" && call.method === "POST")[1].body.parents).toEqual([firstHead]);
   expect(JSON.parse(s.files.get("playground/src/content/blog/new.json")!.text).frontmatter.title).toBe("Newer unsaved draft");
 });
 
@@ -248,7 +365,7 @@ test("validation parity rejects broken references, bodies, menus and documents",
   await expect(saveRemoteSelection(ctx,m,{kind:"menu",slug:"main"},{title:"Main",items:[{id:"x",label:"X",url:"javascript:alert(1)",children:[]}]},"",false)).rejects.toThrow(/Unsafe/);
   expect(s.calls.length).toBe(before);
   await saveRemoteSelection(ctx,m,{kind:"document",type:"author",id:"author:zoe"},{name:"Zoë"},"",true);
-  expect(JSON.parse(s.files.get("playground/src/content/authors/zoe.json")!.text)).toEqual({_id:"author:zoe",_type:"author",slug:"zoe",name:"Zoë"});
+  expect(JSON.parse(s.files.get("playground/src/content/authors/zoe.json")!.text)).toEqual({_id:"author:zoe",_type:"author",name:"Zoë"});
 });
 
 test("rejects malformed remote JSON without exposing its content",async()=>{

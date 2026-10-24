@@ -46,7 +46,7 @@ export const GET: APIRoute = async ({ params }) => {
   const target = validateDocumentId(guarded.schema, id);
   if (!target) return new Response("Unknown document", { status: 404 });
   try {
-    const documents = await readDocuments(guarded.schema, guarded.root);
+    const documents = await readDocuments(guarded.schema, guarded.root, config.preview);
     const document = documents.find((entry) => entry.id === id);
     if (!document) return new Response("Unknown document", { status: 404 });
     return Response.json(document);
@@ -66,10 +66,10 @@ const handle: APIRoute = async ({ request, params }) => {
   if (!target) return new Response("Unknown document type or slug", { status: 400 });
   try {
     const data = await readBody(request);
-    const documents = await readDocuments(guarded.schema, guarded.root);
-    const next = { ...data, _id: id, _type: target.type.name, slug: target.slug };
+    const documents = await readDocuments(guarded.schema, guarded.root, config.preview);
+    const next = { ...data, _id: id, _type: target.type.name };
     validateDocument(guarded.schema, target.type.name, target.slug, next, documents);
-    await writeDocument(guarded.schema, guarded.root, target.type.name, target.slug, next, request.method === "POST" ? "create" : "update");
+    await writeDocument(guarded.schema, guarded.root, target.type.name, target.slug, next, request.method === "POST" ? "create" : "update", config.preview);
     return new Response(null, { status: 204 });
   } catch (error) {
     if (error instanceof DocumentStoreError) return new Response(error.message, { status: error.status });

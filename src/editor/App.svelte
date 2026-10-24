@@ -20,6 +20,7 @@
   import { isSeoField } from "../manifest/seo";
   import { initialCollectionValues } from "../manifest/collections";
   import { slugify } from "./lib/slugify";
+  import { effectiveSlug, normalizeUrlSlug } from "../slugs";
   import Icon from "./lib/Icon.svelte";
   import SidebarIcon from "./lib/SidebarIcon.svelte";
   import logo from "./assets/rigelcms-icon.png?url";
@@ -215,6 +216,10 @@
         const docSel = sel?.kind === "document" ? sel : null;
         const creatingDoc = docSel !== null && newDocument?.id === docSel.id;
         try {
+          if ((selection?.kind === "post" || (docSel && !activeDocType?.shared)) && Object.hasOwn(values, "slug")) {
+            values.slug = normalizeUrlSlug(values.slug);
+            draft.slug = values.slug;
+          }
           if (githubMode) {
             if (!selection) throw new Error("Select content before saving.");
             await saveRemoteSelection(requireGitContext(), manifest, selection, values, body, !!creating || creatingDoc);
@@ -234,7 +239,7 @@
             newDocument = null;
             docBase = JSON.parse(JSON.stringify(values));
           } else if (m) { m.title = values.title; m.items = values.items; }
-          else if (po) { po.frontmatter = { slug: po.slug, ...values }; po.body = body; bodyBase = body; }
+          else if (po) { po.frontmatter = values; po.body = body; bodyBase = body; }
           else if (p) p.values = values;
           if (creating && po && c) c.posts.push(po);
           newEntry = null;
@@ -411,8 +416,8 @@
     return map;
   });
   function documentPreview(mode: "draft" | "website") {
-    if (sel?.kind !== "document" || newDocument?.id === sel.id) return null;
-    return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: sel.id.slice(sel.type.length + 1) }, mode);
+    if (sel?.kind !== "document" || (mode === "draft" && newDocument?.id === sel.id)) return null;
+    return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: sel.id.slice(sel.type.length + 1), urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, mode);
   }
   const standaloneDocument = $derived(sel?.kind === "document" && activeDocType?.shared === true);
   const visualSelection = $derived(sel?.kind === "post" || (sel?.kind === "document" && !standaloneDocument));
@@ -422,13 +427,13 @@
       ...manifest.pages.filter((p) => !p.shared && (pageCategory === undefined || p.category === pageCategory))
         .map((p) => ({ slug: p.slug, title: p.label, category: p.category, draft: false, target: { kind: "page", slug: p.slug } as Sel })),
       ...(pageCategory === undefined ? pageDocuments
-        .map((doc) => ({ slug: doc.slug, title: String(doc.data.title ?? doc.slug), category: undefined, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel })) : []),
+        .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), title: String(doc.data.title ?? doc.slug), category: undefined, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel })) : []),
     ];
     const key = sortBy === "slug" || sortBy === "category" ? sortBy : "title";
     return rows.sort((a, b) => String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * sortDir);
   });
   function documentCell(doc: ContentDocument, key: string): string {
-    return String(key === "title" ? doc.data.title ?? doc.data.name ?? doc.slug : key === "slug" ? doc.slug : doc.data[key] ?? "");
+    return String(key === "title" ? doc.data.title ?? doc.data.name ?? doc.slug : key === "slug" ? activeDocType?.shared ? doc.slug : effectiveSlug(doc.data, doc.slug) : doc.data[key] ?? "");
   }
   const typeDocuments = $derived((manifest.documents ?? []).filter((doc) => doc.type === docTypeName(sel)).sort((a, b) => documentCell(a, sortBy).localeCompare(documentCell(b, sortBy)) * sortDir));
 
@@ -564,7 +569,6 @@
       const po = post;
       if (!po) return;
       const fm: Record<string, unknown> = { ...po.frontmatter };
-      delete fm.slug;
       draft = JSON.parse(JSON.stringify(fm));
       bodyDraft = po.body;
       bodyBase = po.body;
@@ -590,9 +594,7 @@
     }
     const ref =
       sel?.kind === "menu" && menu ? { title: menu.title, items: menu.items } : sel?.kind === "post" && post
-        ? Object.fromEntries(
-            Object.entries(post.frontmatter).filter(([k]) => k !== "slug"),
-          )
+        ? post.frontmatter
         : page?.values;
     dirty =
       newEntry !== null ||
@@ -602,7 +604,7 @@
   }
 
   function cellValue(p: { slug: string; frontmatter: Record<string, unknown> }, key: string): string {
-    const v = key === "slug" ? p.slug : p.frontmatter[key];
+    const v = key === "slug" ? effectiveSlug(p.frontmatter, p.slug) : p.frontmatter[key];
     const field = coll?.fields.find(field => field.key === key);
     if (field?.type === "reference") return referenceLabel(v, referenceOptions(field, manifest.documents)) || "—";
     if (v === true) return "✓";
@@ -618,7 +620,7 @@
       onconfirm: (title) => {
         const slug = slugify(title);
         if (!slug) throw new Error("Enter a title containing letters or numbers.");
-        const taken = [...(manifest.documents ?? []).filter(doc => !type.shared || doc.type === type.name).map((doc) => doc.slug), ...(!type.shared ? manifest.pages.map((page) => page.slug) : [])];
+        const taken = [...(manifest.documents ?? []).filter(doc => !type.shared || doc.type === type.name).flatMap((doc) => [doc.slug, ...(type.shared || docTypes.find(type => type.name === doc.type)?.shared ? [] : [effectiveSlug(doc.data, doc.slug)])]), ...(!type.shared ? manifest.pages.map((page) => page.slug) : [])];
         if (taken.includes(slug)) throw new Error(`The slug "${slug}" is already used by another document or page.`);
         const id = `${type.name}:${slug}`;
         const data = newDocumentFromTemplate(schema, type.name, title, slug);
@@ -634,9 +636,9 @@
     actionDialog = {
       title: `Add to ${c.label}`, description: "Enter a title to start a draft. Nothing is written until you press Save.", fieldLabel: "Title", confirmLabel: "Create draft",
       onconfirm: (title) => {
-        const slug = slugify(title, c.posts.map((post) => post.slug));
+        const slug = slugify(title, c.posts.flatMap((post) => [post.slug, effectiveSlug(post.frontmatter, post.slug)]));
         if (!slug) throw new Error("Enter a title containing letters or numbers.");
-        newEntry = { collection: c.name, post: { slug, frontmatter: initialCollectionValues(c.fields, title), body: emptyBody() } };
+        newEntry = { collection: c.name, post: { slug, frontmatter: { ...initialCollectionValues(c.fields, title), slug }, body: emptyBody() } };
         openSelection({ kind: "post", collection: c.name, slug });
       },
     };
@@ -951,6 +953,9 @@
         <MenuEditor items={draft.items as MenuItem[]} maxDepth={manifest.menus.maxDepth} oninput={(items) => { draft.items = items; touch(); }} />
 
       {:else if sel?.kind === "page" && page}
+        {#if !page.shared}
+          <section><label><span>Website route</span><input type="text" value={manifest.preview?.pages?.[page.slug] ?? "Not configured"} readonly /></label><p class="hint">This copy page uses a fixed Astro route. Its URL can only be changed in the website code; slug metadata cannot move it.</p></section>
+        {/if}
         {#each page.groups as group (group.id)}
           <section>
             <h3>{group.label}</h3>
@@ -979,13 +984,13 @@
             bodyInline={settings.userPref.editorExperience === "inline"}
             onbody={(value) => { bodyDraft = value; touch(); }}
             previewPath={manifest.preview ? previewUrl(manifest.preview, sel, "draft", !!newEntry) : null}
-            websitePath={manifest.preview ? previewUrl(manifest.preview, sel, "website") : null}
+            websitePath={manifest.preview ? previewUrl(manifest.preview, { ...sel, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null}
             creating={!!newEntry}
             devMode={settings.devMode}
             onchange={(next) => { draft = next; touch(); }}
           >
             {#snippet properties(selected, focusToken, bodyInline, oneditbody)}
-              <CollectionPanel fields={coll.fields} values={draft} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {oneditbody} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
+              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {oneditbody} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
             {/snippet}
           </VisualEditor>
         {/key}

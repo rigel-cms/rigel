@@ -66,6 +66,15 @@ test("website previews use real routes on the draft host before and after Save",
   }
 });
 
+test("website URL slugs use unsaved metadata while draft canvases keep their storage route", () => {
+  const config = { documents: { page: { url: "/{slug}/" } }, collections: { blog: { url: "/blog/{slug}/", new: "/preview/blog/" } } };
+  const target = { kind: "post" as const, collection: "blog", slug: "stable-file", urlSlug: "Árbol español!" };
+  expect(previewUrl(config, target, "website")).toBe("/blog/arbol-espanol/");
+  expect(previewUrl(config, target, "draft")).toBe("/preview/blog/");
+  expect(previewUrl(config, { kind: "document", type: "page", slug: "stable-file", urlSlug: "Página nueva" }, "website")).toBe("/pagina-nueva/");
+  expect(previewUrl(config, { ...target, urlSlug: "!!!" }, "website")).toBeNull();
+});
+
 test("preview bases reject unsafe or ambiguous URLs", () => {
   for (const key of ["liveUrl", "draftUrl"]) {
     for (const value of ["", "/relative/", "//example.test", "http://example.test", "javascript:alert(1)", "https://u:p@example.test", "https://@example.test", "https:///example.test", "https://example.test/\u0000", "https://example.test/?token=x", "https://example.test/#x", "https://example.test/../x", "https://example.test/%2e%2e/x", " https://example.test", "https://example.test/\\x", 123, null]) {

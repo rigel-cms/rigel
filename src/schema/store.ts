@@ -4,6 +4,8 @@ import path from "node:path";
 import { constants } from "node:fs";
 import { isPlainObject } from "./validate";
 import { SLUG_PATTERN, type ContentDocument, type Schema } from "./types";
+import { normalizeUrlSlug, validateDocumentSlugs } from "../slugs";
+import type { PreviewConfig } from "../preview";
 
 const MAX_BYTES = 1024 * 1024;
 const FOLDER_PART = /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/;
@@ -68,7 +70,7 @@ async function ensureFolder(root: string, folder: string): Promise<string> {
   return directory;
 }
 
-export async function readDocuments(schema: Schema, root: string): Promise<ContentDocument[]> {
+export async function readDocuments(schema: Schema, root: string, preview?: PreviewConfig): Promise<ContentDocument[]> {
   const documents: ContentDocument[] = [];
   for (const type of schema.documents) {
     let directory: string;
@@ -88,6 +90,8 @@ export async function readDocuments(schema: Schema, root: string): Promise<Conte
       documents.push({ id: `${type.name}:${slug}`, type: type.name, slug, data: data as Record<string, unknown> });
     }
   }
+  try { validateDocumentSlugs(schema, documents, preview); }
+  catch (error) { throw new DocumentStoreError((error as Error).message); }
   return documents;
 }
 
@@ -96,13 +100,21 @@ export async function readDocument(schema: Schema, root: string, typeName: strin
   return documents.find((doc) => doc.type === typeName && doc.slug === slug) ?? null;
 }
 
-export async function writeDocument(
+let writes: Promise<void> = Promise.resolve();
+export function writeDocument(...args: Parameters<typeof writeDocumentFile>): Promise<void> {
+  const result = writes.then(() => writeDocumentFile(...args));
+  writes = result.catch(() => {});
+  return result;
+}
+
+async function writeDocumentFile(
   schema: Schema,
   root: string,
   typeName: string,
   slug: string,
   data: Record<string, unknown>,
   mode: "create" | "update",
+  preview?: PreviewConfig,
 ): Promise<void> {
   const type = schema.documents.find((entry) => entry.name === typeName);
   if (!type) throw new DocumentStoreError(`Unknown document type ${typeName}`, 404);
@@ -118,6 +130,13 @@ export async function writeDocument(
   if (existing && (existing.isSymbolicLink() || !existing.isFile())) throw new DocumentStoreError("Document path is unsafe", 409);
   if (mode === "create" && existing) throw new DocumentStoreError("A document with that slug already exists", 409);
   if (mode === "update" && !existing) throw new DocumentStoreError("No such document", 404);
+  if (Buffer.byteLength(JSON.stringify(data)) > MAX_BYTES) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
+  data = { ...data };
+  try {
+    if (!type.shared && Object.hasOwn(data, "slug")) data.slug = normalizeUrlSlug(data.slug);
+    const documents = await readDocuments(schema, root, preview);
+    validateDocumentSlugs(schema, [...documents.filter(doc => doc.id !== `${typeName}:${slug}`), { id: `${typeName}:${slug}`, type: typeName, slug, data }], preview);
+  } catch (error) { throw new DocumentStoreError((error as Error).message); }
   const serialized = JSON.stringify(data, null, 2) + "\n";
   if (Buffer.byteLength(serialized) > MAX_BYTES) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
   const temporary = path.join(directory, `.${slug}-${randomUUID()}.tmp`);

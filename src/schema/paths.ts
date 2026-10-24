@@ -1,4 +1,5 @@
 import { documentDef, isPlainObject, objectDef } from "./validate";
+import { effectiveSlug } from "../slugs";
 import {
   SLUG_PATTERN,
   type ContentDocument,
@@ -128,8 +129,9 @@ export function assertUniqueSlug(documents: ContentDocument[], typeName: string,
   if (legacySlugs.includes(slug)) throw new Error(`The slug "${slug}" is already used by a copy page.`);
 }
 
-export function pageRoute(slug: string, mapping: { url: string; index?: string } | undefined): string | null {
+export function pageRoute(target: string | Pick<ContentDocument, "slug" | "data">, mapping: { url: string; index?: string } | undefined): string | null {
   if (!mapping) return null;
+  const slug = typeof target === "string" ? target : effectiveSlug(target.data, target.slug);
   if (slug === "home" && mapping.index) return mapping.index;
   const path = mapping.url.replaceAll("{slug}", slug);
   return /^\/(?!\/)/.test(path) && !/[\\\s?#]/.test(path) && !path.split("/").includes("..") && !/^\/rigel(?:\/|$)/.test(path) ? path : null;

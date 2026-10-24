@@ -75,6 +75,21 @@ test("creates and updates validated documents, then reads them back", async () =
   expect((await call("PUT", { data: home }, "page:missing")).status).toBe(404);
 });
 
+test("editable URL slug preserves document identity, references and legacy omissions", async () => {
+  expect((await call("POST")).status).toBe(204);
+  const data = { ...home, slug: "Árbol español!", custom: { keep: true } };
+  expect((await call("PUT", { data })).status).toBe(204);
+  const stored = await (await call("GET")).json();
+  expect(stored).toEqual({ id: "page:home", type: "page", slug: "home", data: { ...data, slug: "arbol-espanol" } });
+  expect(await readdir(path.join(root, "content/pages"))).toEqual(["home.json"]);
+  expect((await call("POST", { data: { title: "Other", slug: "arbol-espanol" } }, "page:other")).status).toBe(400);
+  expect((await call("PUT", { data: { ...home, slug: "!!!" } })).status).toBe(400);
+  await writeFile(path.join(root, "content/pages/legacy.json"), JSON.stringify({ title: "Legacy" }));
+  expect((await call("PUT", { data: { ...home, slug: "legacy" } })).status).toBe(400);
+  expect((await call("PUT", { data: { title: "Edited legacy" } }, "page:legacy")).status).toBe(204);
+  expect((await (await call("GET", undefined, "page:legacy")).json()).data).not.toHaveProperty("slug");
+});
+
 test("rejects invalid ids, payloads and broken references without writing", async () => {
   for (const id of ["../escape", "page:Bad Slug", "unknown:home", "page", "page:home:extra", "%zz"]) expect((await call("POST", { data: home }, id)).status).toBe(400);
   for (const body of [null, {}, { data: {} }, { data: { ...home, title: "" } }, { data: { ...home, sections: [{ _type: "hero" }] } }, { data: { ...home, callout: { _ref: "callout:missing" } } }])

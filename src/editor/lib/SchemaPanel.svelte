@@ -19,6 +19,7 @@
   import { resolvePath } from "../../schema/paths";
   import { isSeoField } from "../../manifest/seo";
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
+  import { slugify } from "../../slugs";
 
   let {
     schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, onchange, onselect, oneditdocument,
@@ -46,7 +47,7 @@
   const selectedField = $derived(selected?.docId === docId ? fieldForPath(schema, docType, values, selected.path) : null);
   const selectedSection = $derived(selected?.sectionKey ? sectionTypeDef(schema, sections.find((section) => section._key === selected?.sectionKey)?._type) : undefined);
   const selectedValue = $derived(selected && selectedField ? resolvePath(values, selected.path).value : undefined);
-  const docFields = $derived(docType.fields.filter((field) => field.key !== "sections"));
+  const docFields = $derived(docType.fields.filter((field) => field.key !== "sections" && (docType.shared || field.key !== "slug")));
   const seoFields = $derived(docType.shared ? [] : docFields.filter(field => isSeoField(field.key)));
 
   $effect(() => {
@@ -97,6 +98,10 @@
   {#if seoFields.length}<PropertiesTabs bind:tab />{/if}
   <section class="document-properties" hidden={tab !== "content"}>
     <h3>{docType.shared ? "Content" : "Page properties"}</h3>
+    {#if !docType.shared}
+      <label><span>URL slug</span><input type="text" value={String(values.slug ?? docId.slice(docType.name.length + 1))} oninput={(event) => onchange({ ...values, slug: event.currentTarget.value })} onblur={() => { if (Object.hasOwn(values, "slug")) onchange({ ...values, slug: slugify(String(values.slug)) }); }} /></label>
+      <p class="hint">Changes the URL, not the document identifier or filename. The website route must use the slug metadata.</p>
+    {/if}
     {#each docFields.filter(field => docType.shared || !isSeoField(field.key)) as field (field.key)}
       <div data-schema-path={field.key}>
         <SchemaField {schema} {documents} {devMode} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />

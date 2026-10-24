@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
 import { pageRoute } from "./schema/paths";
+import { slugify } from "./slugs";
 import { renderArticle } from "./article-render";
 import { safePreviewUrl, previewBaseUrl } from "./preview-urls";
 export { safePreviewUrl } from "./preview-urls";
@@ -20,6 +21,7 @@ export interface PreviewConfig {
 export interface PreviewTarget {
   kind: "page" | "post" | "menu" | "document";
   slug: string;
+  urlSlug?: string;
   collection?: string;
   type?: string;
 }
@@ -31,6 +33,11 @@ export function previewPath(config: PreviewConfig, target: PreviewTarget, isNew 
 }
 
 export function previewUrl(config: PreviewConfig, target: PreviewTarget, mode: "live" | "draft" | "website" = "draft", isNew = false): string | null {
+  if (mode !== "draft" && target.kind !== "page" && target.urlSlug !== undefined) {
+    const slug = slugify(target.urlSlug);
+    if (!slug) return null;
+    target = { ...target, slug };
+  }
   const path = previewPath(config, target, mode === "draft" && (target.kind === "post" || isNew));
   const base = mode === "live" ? config.liveUrl : config.draftUrl;
   if (!path || base === undefined) return path;

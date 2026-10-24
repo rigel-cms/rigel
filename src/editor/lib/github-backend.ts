@@ -5,12 +5,13 @@ import { validateMenu } from "../../manifest/menu";
 import { validateCollectionValues } from "../../manifest/collections";
 import { documentIndex, isPlainObject, validateDocument, validateDocumentId, validateSchema } from "../../schema/validate";
 import { applyValues, readValues } from "../../routes/serialize";
+import { assertUniqueUrlSlugs, normalizeUrlSlug, validateDocumentSlugs } from "../../slugs";
 
 export interface GitContext { token: string; repo: string; branch: string }
 
-type FileSnapshot = { sha: string; text: string };
-type PendingWrite = { sha: string; text: string | null; creating: boolean };
-type Snapshot = { target: string; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite> };
+type FileSnapshot = { sha: string; text: string; mode: string };
+type PendingWrite = { sha: string; text: string | null; creating: boolean; head: string; mode: string };
+type Snapshot = { target: string; head: string; writes: Promise<void>; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite> };
 const REMOTE_SNAPSHOT = Symbol("rigel-remote-snapshot");
 const SHA = /^[a-f0-9]{40}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -111,7 +112,7 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest): 
   const tree = await gh(ctx, `/git/trees/${head}?recursive=1`);
   if (!tree || tree.truncated !== false || !Array.isArray(tree.tree)) throw new Error("Incomplete GitHub tree; content cannot be loaded safely");
   const manifest = structuredClone(blueprint);
-  const snapshot: Snapshot = {target:target(ctx,manifest),files:new Map(),paths:new Set(),pending:new Map()};
+  const snapshot: Snapshot = {target:target(ctx,manifest),head,writes:Promise.resolve(),files:new Map(),paths:new Set(),pending:new Map()};
   const entries = new Map<string, any>();
   for (const entry of tree.tree) {
     if (!entry || typeof entry.path !== "string" || entry.path.split("/").some((part: string) => !part || part === "." || part === "..") || /[\\\u0000-\u001f]/.test(entry.path) || !["blob","tree","commit"].includes(entry.type) || !SHA.test(entry.sha) || !["100644","100755","120000","040000","160000"].includes(entry.mode)) throw new Error("Malformed GitHub tree entry");
@@ -132,7 +133,7 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest): 
     const expected = sha(entry.sha);
     const blob = await gh(ctx, `/git/blobs/${expected}`);
     if (sha(blob?.sha) !== expected) throw new Error("GitHub blob SHA mismatch");
-    const text = decode(blob); snapshot.files.set(path,{sha:expected,text}); return text;
+    const text = decode(blob); snapshot.files.set(path,{sha:expected,text,mode:entry.mode}); return text;
   };
   const list = (folder: string, pattern = SLUG) => {
     const prefix = [cfg.repoRoot,folder].filter(Boolean).join("/") + "/";
@@ -156,6 +157,7 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest): 
   }
   documentIndex(manifest.documents);
   for (const doc of manifest.documents) validateDocument(manifest.schema!,doc.type,doc.slug,doc.data,manifest.documents);
+  if (manifest.schema) validateDocumentSlugs(manifest.schema, manifest.documents, manifest.preview);
   for (const collection of manifest.collections ?? []) {
     const folder = cfg.collections.find(c => c.name === collection.name)?.folder;
     if (!folder) throw new Error("Missing configured GitHub collection");
@@ -166,6 +168,7 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest): 
       validateBody(post.body); validateCollectionValues(collection.fields,post.frontmatter,manifest.documents);
       collection.posts.push({slug:file.slug,frontmatter:post.frontmatter,body:post.body});
     }
+    assertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })));
   }
   if (cfg.menus) {
     manifest.menus = {maxDepth:cfg.menus.maxDepth,entries:[]};
@@ -188,8 +191,17 @@ function loaded(ctx: GitContext, manifest: Manifest): Snapshot {
 
 async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean) {
   const snapshot = loaded(ctx,manifest);
+  const head = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
+  const uncertain = snapshot.pending.get(path);
+  if (head !== snapshot.head && head !== uncertain?.head) throw new Error("GitHub draft branch conflict; reload before saving. Your unsaved edits are still here.");
   const endpoint = `/contents/${path.split("/").map(encodeURIComponent).join("/")}`;
   const verify = async (pending: PendingWrite) => {
+    const current = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
+    if (current !== pending.head) {
+      if (current !== snapshot.head) throw new Error("GitHub draft branch conflict; reload before saving.");
+      const result = await gh(ctx, `/git/refs/heads/${encodeURIComponent(ctx.branch)}`, { method: "PATCH", body: JSON.stringify({ sha: pending.head, force: false }) });
+      if (sha(result?.object?.sha) !== pending.head) throw new Error("GitHub branch update could not be verified; retry or reload.");
+    }
     let verified;
     try { verified = await gh(ctx,`${endpoint}?ref=${encodeURIComponent(ctx.branch)}`); }
     catch (error) {
@@ -200,11 +212,11 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
       snapshot.files.delete(path); snapshot.paths.delete(path);
     } else {
       if (verified?.type !== "file" || sha(verified.sha) !== pending.sha || decode(verified) !== pending.text) throw new Error("GitHub save changed before verification; reload");
-      snapshot.files.set(path,{sha:pending.sha,text:pending.text}); snapshot.paths.add(path);
+      snapshot.files.set(path,{sha:pending.sha,text:pending.text,mode:pending.mode}); snapshot.paths.add(path);
     }
+    snapshot.head = pending.head;
     snapshot.pending.delete(path);
   };
-  const uncertain = snapshot.pending.get(path);
   if (uncertain) {
     await verify(uncertain);
     if (uncertain.text === text && (!creating || uncertain.creating)) return;
@@ -212,14 +224,24 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
   }
   const previous = snapshot.files.get(path);
   if (creating ? snapshot.paths.has(path) : !previous) throw new Error(creating ? "Content already exists; choose another slug" : "Reload this content before changing it");
-  const payload = {message:`rigel: ${text === null ? "delete" : "save"} ${path}`,branch:ctx.branch,...(!creating ? {sha:previous!.sha} : {}),...(text === null ? {} : {content:encode(text)})};
-  const result = await gh(ctx,endpoint,{method:text === null ? "DELETE" : "PUT",body:JSON.stringify(payload)});
-  const pending = {sha:text === null ? previous!.sha : sha(result?.content?.sha),text,creating};
+  const blob = text === null ? null : sha((await gh(ctx, "/git/blobs", { method: "POST", body: JSON.stringify({ content: encode(text), encoding: "base64" }) }))?.sha);
+  const mode = previous?.mode ?? "100644";
+  const base = sha((await gh(ctx, `/git/commits/${snapshot.head}`))?.tree?.sha);
+  const tree = sha((await gh(ctx, "/git/trees", { method: "POST", body: JSON.stringify({ base_tree: base, tree: [{ path, mode, type: "blob", sha: blob }] }) }))?.sha);
+  const commit = sha((await gh(ctx, "/git/commits", { method: "POST", body: JSON.stringify({ message: `rigel: ${text === null ? "delete" : "save"} ${path}`, tree, parents: [snapshot.head] }) }))?.sha);
+  const pending = {sha:blob ?? previous!.sha,text,creating,head:commit,mode};
   snapshot.pending.set(path,pending);
   await verify(pending);
 }
 
-export async function saveRemoteSelection(ctx: GitContext, manifest: Manifest, selection: Selection, values: Record<string, unknown>, body: ArticleBody | "", creating: boolean): Promise<void> {
+export async function saveRemoteSelection(...args: Parameters<typeof saveSelection>): Promise<void> {
+  const snapshot = loaded(args[0], args[1]);
+  const result = snapshot.writes.then(() => saveSelection(...args));
+  snapshot.writes = result.catch(() => {});
+  return result;
+}
+
+async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Selection, values: Record<string, unknown>, body: ArticleBody | "", creating: boolean): Promise<void> {
   const cfg = config(ctx,manifest);
   const snapshot = loaded(ctx,manifest);
   if (!isPlainObject(values)) throw new Error("Content values must be an object");
@@ -238,15 +260,27 @@ export async function saveRemoteSelection(ctx: GitContext, manifest: Manifest, s
     if (!folder || !collection) throw new Error("Unknown collection");
     validateBody(body); validateCollectionValues(collection.fields,values,manifest.documents ?? []);
     path = filePath(ctx,manifest,folder,selection.slug,"json",POST_SLUG);
-    data = {frontmatter:{...values,slug:selection.slug},body};
+    const frontmatter = { ...values };
+    if (Object.hasOwn(frontmatter, "slug")) frontmatter.slug = normalizeUrlSlug(frontmatter.slug);
+    const prefix = filePath(ctx,manifest,folder,"placeholder","json",POST_SLUG).replace(/placeholder\.json$/, "");
+    const others = [...snapshot.files].filter(([file]) => file.startsWith(prefix) && file !== path && file.endsWith(".json")).map(([file, value]) => ({ slug: file.slice(prefix.length, -5), values: (parseJson(value.text) as { frontmatter: Record<string, unknown> }).frontmatter }));
+    assertUniqueUrlSlugs([...others, { slug: selection.slug, values: frontmatter }]);
+    data = {frontmatter,body};
   } else if (selection.kind === "document") {
     if (!manifest.schema) throw new Error("No document schema configured");
     const document = validateDocumentId(manifest.schema,selection.id);
     if (!document || document.type.name !== selection.type) throw new Error("Unknown document type or slug");
     if (creating && (document.type.creatable === false || document.type.singleton)) throw new Error("Creating entries is disabled for this document type");
-    data = {...values,_id:selection.id,_type:selection.type,slug:document.slug};
+    const next = {...values,_id:selection.id,_type:selection.type} as Record<string, unknown>;
+    if (!document.type.shared && Object.hasOwn(next, "slug")) next.slug = normalizeUrlSlug(next.slug);
+    data = next;
     validateDocument(manifest.schema,selection.type,document.slug,data as Record<string,unknown>,manifest.documents ?? []);
     path = filePath(ctx,manifest,document.type.folder,document.slug);
+    const documents = manifest.schema.documents.flatMap(type => {
+      const prefix = filePath(ctx,manifest,type.folder,"placeholder").replace(/placeholder\.json$/, "");
+      return [...snapshot.files].filter(([file]) => file.startsWith(prefix) && file !== path && file.endsWith(".json")).map(([file, value]) => ({ id: `${type.name}:${file.slice(prefix.length,-5)}`, type: type.name, slug: file.slice(prefix.length,-5), data: parseJson(value.text) as Record<string, unknown> }));
+    });
+    validateDocumentSlugs(manifest.schema, [...documents, { id: selection.id, type: selection.type, slug: document.slug, data: next }], manifest.preview);
   } else if (selection.kind === "menu") {
     if (!cfg.menus || creating) throw new Error("Menus must be configured by the site developer");
     data = validateMenu({...values,slug:selection.slug},cfg.menus.maxDepth);

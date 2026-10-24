@@ -22,7 +22,8 @@ export function rigelManifestPlugin(cfg: RigelConfig, publicDir?: URL, root?: UR
     ...(cfg.menus ? { menus: { folder: cfg.menus.folder, maxDepth: cfg.menus.maxDepth! } } : {}),
   } : undefined;
 
-  const documentsSrc = documentTypes.length
+  const slugHelpers = `import { assertUniqueUrlSlugs as __rigelAssertUniqueUrlSlugs, validateDocumentSlugs as __rigelValidateDocumentSlugs } from ${JSON.stringify(fileURLToPath(new URL("../slugs.ts", import.meta.url)))};`;
+  const documentsSrc = slugHelpers + (documentTypes.length
     ? `
 ${documentTypes.map((type, index) => `const __rigelDoc${index} = import.meta.glob(${JSON.stringify(`/${type.folder}/*.json`)}, { eager: true, import: "default" });`).join("\n")}
 export const documentTypes = ${JSON.stringify(documentTypes.map((type) => ({ name: type.name, shared: Boolean(type.shared) })))};
@@ -33,9 +34,10 @@ export const documents = Object.entries(__rigelRawDocuments)
     return { id: type + ":" + slug, type, slug, data: { ...data, _id: type + ":" + slug, _type: type } };
   }))
   .sort((a, b) => a.id.localeCompare(b.id));
+__rigelValidateDocumentSlugs(${JSON.stringify(cfg.schema)}, documents, ${JSON.stringify(cfg.preview)});
 const __rigelReservedSlugs = new Set(documents.filter((doc) => !documentTypes.find((type) => type.name === doc.type).shared).map((doc) => doc.slug));
 `
-    : `export const documentTypes = [];\nexport const documents = [];\nconst __rigelReservedSlugs = new Set();\n`;
+    : `export const documentTypes = [];\nexport const documents = [];\nconst __rigelReservedSlugs = new Set();\n`);
 
   const collectionCode = collections
     .map(
@@ -137,6 +139,7 @@ export const menus = {
           menus: cfg.menus,
           collections: cfg.collections ?? [],
           schema: cfg.schema,
+          preview: cfg.preview,
         })};`;
       }
       if (id === "\0" + CONTENT_ID) {
@@ -174,6 +177,7 @@ export const pages = loaded.filter((page) => !__rigelReservedSlugs.has(page.slug
 export const collections = [
 ${collectionCode}
 ];
+for (const collection of collections) __rigelAssertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })));
 ${menuCode}
 export default { pages, collections, documents${github ? ', backend: "github", github: ' + JSON.stringify(github) : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
 `;

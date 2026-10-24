@@ -66,6 +66,15 @@ test("rejects unsafe slugs, symlinked files and oversized documents", async () =
   await expect(writeDocument(schema, root, "page", "huge", huge, "create")).rejects.toThrow(/1 MiB/);
 });
 
+test("read boundary rejects duplicate effective URL slugs and invalid stored metadata", async () => {
+  await writeFile(path.join(root, "content/pages/one.json"), JSON.stringify({ title: "One", slug: "two" }));
+  await writeFile(path.join(root, "content/pages/two.json"), JSON.stringify({ title: "Two" }));
+  await expect(readDocuments(schema, root)).rejects.toThrow(/already used/);
+  await rm(path.join(root, "content/pages/two.json"));
+  await writeFile(path.join(root, "content/pages/one.json"), JSON.stringify({ title: "One", slug: "!!!" }));
+  await expect(readDocuments(schema, root)).rejects.toThrow(/slug/);
+});
+
 test("surfaces invalid stored JSON and wrong types instead of silently dropping them", async () => {
   const broken = path.join(root, "content/pages/broken.json");
   await writeFile(broken, "{");
@@ -97,6 +106,12 @@ test("creation policy rejects additions but permits editing declared entries", a
   await expect(writeDocument(fixed, root, "page", "extra", home, "create")).rejects.toMatchObject({ status: 403 });
   await writeDocument(fixed, root, "page", "home", { ...home, title: "Edited" }, "update");
   expect((await readDocuments(fixed, root))[0].data.title).toBe("Edited");
+});
+
+test("concurrent different document identities cannot claim the same URL slug", async () => {
+  const results = await Promise.allSettled(["one", "two"].map(slug => writeDocument(schema, root, "page", slug, { title: "Race", slug: "shared-url" }, "create")));
+  expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
 });
 
 test("concurrent creates cannot overwrite an author or another new document", async () => {

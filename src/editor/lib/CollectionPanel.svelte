@@ -13,10 +13,12 @@
   import { referenceOptions } from "../../manifest/references";
   import { isSeoField } from "../../manifest/seo";
   import type { ContentDocument } from "../../schema/types";
+  import { slugify } from "../../slugs";
 
-  let { fields, values, body, selected, focusToken, devMode, documents = [], bodyInline = false, oneditbody = () => {}, onchange, onbody }: {
+  let { fields, values, storageSlug, body, selected, focusToken, devMode, documents = [], bodyInline = false, oneditbody = () => {}, onchange, onbody }: {
     fields: CollectionField[];
     values: Record<string, unknown>;
+    storageSlug: string;
     body: ArticleBody;
     bodyInline?: boolean;
     oneditbody?: () => void;
@@ -49,7 +51,9 @@
   <div id="properties-content" role="tabpanel" aria-labelledby="properties-tab-content" hidden={tab !== "content"}>
   <section>
     <h3>Article details</h3>
-    {#each fields.filter(field => !isSeoField(field.key)) as field (field.key)}
+    <label><span>URL slug</span><input type="text" value={String(values.slug ?? storageSlug)} oninput={(event) => onchange("slug", event.currentTarget.value)} onblur={() => { if (Object.hasOwn(values, "slug")) onchange("slug", slugify(String(values.slug))); }} /></label>
+    <p class="hint">Changes the URL, not the content filename. The website route must use the slug metadata.</p>
+    {#each fields.filter(field => field.key !== "slug" && !isSeoField(field.key)) as field (field.key)}
       <div data-collection-field={field.key}>
         {#if field.type === "reference"}
           <ReferenceSelect label={field.label} value={values[field.key]} options={referenceOptions(field, documents)} multiple={field.multiple} onchange={(value) => onchange(field.key, value)} />

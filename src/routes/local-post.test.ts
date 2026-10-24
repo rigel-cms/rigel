@@ -29,6 +29,23 @@ test("creating a post cannot overwrite a slug created since loading the collecti
   expect(await readFile(file, "utf8")).toBe(before);
 });
 
+test("URL slug edits normalize without changing the storage filename or unknown metadata", async () => {
+  const frontmatter = { title: "Spanish", slug: "Árbol y NIÑO!", author: "alex", custom: { keep: true } };
+  expect((await save("spanish-file", frontmatter)).status).toBe(204);
+  const stored = JSON.parse(await readFile(path.join(folder, "spanish-file.json"), "utf8"));
+  expect(stored.frontmatter).toEqual({ ...frontmatter, slug: "arbol-y-nino" });
+  expect((await save("spanish-file", stored.frontmatter)).status).toBe(204);
+  expect((await save("another-file", { title: "Duplicate", slug: "arbol-y-nino" })).status).toBe(400);
+  expect((await save("invalid-file", { title: "Invalid", slug: "!!!" })).status).toBe(400);
+  expect((await save("legacy-url", { title: "Legacy" })).status).toBe(204);
+  expect((await save("another-file", { title: "Duplicate fallback", slug: "legacy-url" })).status).toBe(400);
+});
+
+test("concurrent different filenames cannot claim the same URL slug", async () => {
+  const responses = await Promise.all(["url-race-one", "url-race-two"].map(slug => save(slug, { title: "Race", slug: "shared-url" }, emptyBody(), true)));
+  expect(responses.map(response => response.status).sort()).toEqual([204, 400]);
+});
+
 test("concurrent creates persist one complete post without overwriting the winner", async () => {
   const responses = await Promise.all([
     save("simultaneous", { title: "First" }, emptyBody(), true),
@@ -45,7 +62,7 @@ test("existing article save route persists a Lexical tree without a Markdown rou
   const frontmatter = { title: "Block article", draft: true };
   expect((await save("blocks", frontmatter, body)).status).toBe(204);
   const text = await readFile(path.join(folder, "blocks.json"), "utf8");
-  expect(JSON.parse(text)).toEqual({ frontmatter: { ...frontmatter, slug: "blocks" }, body });
+  expect(JSON.parse(text)).toEqual({ frontmatter, body });
   expect(text).toBe(JSON.stringify(JSON.parse(text), null, 2) + "\n");
   expect((await save("blocks", frontmatter, { root: { type: "script", version: 1 } })).status).toBe(400);
   expect(await readFile(path.join(folder, "blocks.json"), "utf8")).toBe(text);

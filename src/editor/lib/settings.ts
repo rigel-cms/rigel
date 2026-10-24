@@ -26,7 +26,7 @@ const prefs = (theme: "system" | "light" | "dark" = "system", language: "en" | "
 const DEFAULTS: RigelSettings = {
   ...prefs(),
   apiKeys: {},
-  userPref: { previewSplit: 0.5, mediaView: "grid", sidebarCollapsed: false, editorExperience: "sidebar" },
+  userPref: { previewSplit: 0.5, mediaView: "grid", sidebarCollapsed: false, editorExperience: "inline" },
 };
 
 const PROVIDERS = ["pexels", "pixabay", "unsplash"] as const;
@@ -46,7 +46,7 @@ export function getSettings(): RigelSettings {
       apiKeys: mergedKeys,
       userPref: {
         sidebarCollapsed: saved?.userPref?.sidebarCollapsed === true,
-        editorExperience: saved?.userPref?.editorExperience === "inline" ? "inline" : "sidebar",
+        editorExperience: saved?.userPref?.editorExperience === "sidebar" ? "sidebar" : DEFAULTS.userPref.editorExperience,
         previewSplit: typeof saved?.userPref?.previewSplit === "number" && Number.isFinite(saved.userPref.previewSplit) && saved.userPref.previewSplit >= 0.2 && saved.userPref.previewSplit <= 0.8
           ? saved.userPref.previewSplit
           : typeof saved?.previewSplit === "number" && Number.isFinite(saved.previewSplit) && saved.previewSplit >= 0.2 && saved.previewSplit <= 0.8

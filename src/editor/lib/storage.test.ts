@@ -44,15 +44,17 @@ test("sidebar collapse is a validated preference and survives unrelated settings
   }
 });
 
-test("article editing experience defaults to sidebar and persists without affecting other preferences", () => {
-  expect(getSettings().userPref.editorExperience).toBe("sidebar");
-  setSettings({ userPref: { ...getSettings().userPref, editorExperience: "inline" } });
-  setSettings({ theme: "dark" });
+test("article editing experience defaults to inline and preserves an explicit sidebar preference", () => {
   expect(getSettings().userPref.editorExperience).toBe("inline");
-  for (const editorExperience of [null, true, "unknown"]) {
+  setSettings({ userPref: { ...getSettings().userPref, editorExperience: "sidebar" } });
+  setSettings({ theme: "dark" });
+  expect(getSettings().userPref.editorExperience).toBe("sidebar");
+  for (const editorExperience of [undefined, null, true, "unknown", "inline"]) {
     entries.set("rigelcms.settings", JSON.stringify({ userPref: { editorExperience } }));
-    expect(getSettings().userPref.editorExperience).toBe("sidebar");
+    expect(getSettings().userPref.editorExperience).toBe("inline");
   }
+  entries.set("rigelcms.settings", "broken JSON");
+  expect(getSettings().userPref.editorExperience).toBe("inline");
 });
 
 test("preview split validates stored proportions and safely falls back", () => {
@@ -79,7 +81,7 @@ test("migrates legacy settings and API keys into one settings store on save", ()
   expect(JSON.parse(entries.get("rigelcms.settings")!)).toEqual({
     theme: "dark", language: "en", devMode: true, highContrast: false,
     apiKeys: { pixabay: "test-key" },
-    userPref: { previewSplit: 0.5, mediaView: "grid", sidebarCollapsed: false, editorExperience: "sidebar" },
+    userPref: { previewSplit: 0.5, mediaView: "grid", sidebarCollapsed: false, editorExperience: "inline" },
   });
   expect([...entries.keys()].sort()).toEqual(["rigelcms.settings"]);
 });

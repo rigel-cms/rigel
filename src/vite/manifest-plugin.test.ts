@@ -15,11 +15,19 @@ function raw(cfg: RigelConfig): RawPlugin {
 
 const cfg: RigelConfig = { copyDir: "src/content/copy", backend: "local" };
 
+test.each([undefined, "pretty", "minified"] as const)("jsonOutput %s reaches local routes and GitHub browser configuration", (jsonOutput) => {
+  const plugin = raw({ ...cfg, backend: "github", repo: "owner/repo", jsonOutput });
+  const local = JSON.parse(plugin.load("\0virtual:rigel-config")!.slice("export default ".length, -1));
+  expect(local.jsonOutput).toBe(jsonOutput ?? "pretty");
+  const code = plugin.load("\0virtual:rigel-manifest")!;
+  expect(code).toContain('"jsonOutput":' + JSON.stringify(jsonOutput ?? "pretty"));
+});
+
 test("github manifest projects only public remote configuration", () => {
   const plugin = raw({ ...cfg, backend: "github", repo: "owner/repo", users: ["private-user"], collections: [{ name: "blog", folder: "src/content/blog", fields: [] }], menus: { folder: "src/content/menus" } });
   const code = plugin.load("\0virtual:rigel-manifest")!;
   expect(code).toContain('backend: "github"');
-  expect(code).toContain('github: {"repo":"owner/repo","branch":"drafts","publishBranch":"main","repoRoot":"","authOrigin":"https://auth.rigelcms.dev","appSlug":"rigel-cms","copyDir":"src/content/copy","collections":[{"name":"blog","folder":"src/content/blog"}],"menus":{"folder":"src/content/menus","maxDepth":3}}');
+  expect(code).toContain('github: {"repo":"owner/repo","branch":"drafts","publishBranch":"main","repoRoot":"","authOrigin":"https://auth.rigelcms.dev","appSlug":"rigel-cms","copyDir":"src/content/copy","collections":[{"name":"blog","folder":"src/content/blog"}],"jsonOutput":"pretty","menus":{"folder":"src/content/menus","maxDepth":3}}');
   expect(code).not.toContain("private-user");
   expect(raw(cfg).load("\0virtual:rigel-manifest")).not.toContain("github:");
 });

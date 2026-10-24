@@ -4,12 +4,14 @@ import type { Schema } from "./schema/types";
 import { validateSidebar, type SidebarEntry } from "./manifest/navigation";
 import { withSeoFields } from "./manifest/seo";
 import { previewBaseUrl } from "./preview-urls";
+import type { JsonOutput } from "./json-output";
 
 export interface RigelConfig {
   copyDir: string;
   mediaDir?: string;
   preview?: import("./preview").PreviewConfig;
   backend: "local" | "github";
+  jsonOutput?: JsonOutput;
   demo?: boolean;
   collections?: CollectionConfig[];
   menus?: { folder: string; maxDepth?: number };
@@ -40,6 +42,8 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  if (cfg.jsonOutput === undefined) cfg.jsonOutput = "pretty";
+  if (cfg.jsonOutput !== "pretty" && cfg.jsonOutput !== "minified") throw new Error("rigel: jsonOutput must be pretty or minified");
   if (cfg.demo === undefined) cfg.demo = true;
   if (typeof cfg.demo !== "boolean") throw new Error("rigel: demo must be boolean");
   if (cfg.preview) {

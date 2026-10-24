@@ -5,6 +5,7 @@ test("defaults to local backend + src/content/copy", () => {
   expect(parseConfig()).toEqual({
     copyDir: "src/content/copy",
     backend: "local",
+    jsonOutput: "pretty",
     demo: true,
   });
 });
@@ -33,6 +34,14 @@ test("document tables keep declared columns and reject invalid field keys", () =
   const schema = { documents: [document], objects: [] };
   expect(parseConfig({ schema }).schema?.documents[0].columns).toEqual(["photo", "email"]);
   for (const columns of ["email", [null], ["missing"]]) expect(() => parseConfig({ schema: { ...schema, documents: [{ ...document, columns } as never] } })).toThrow(/columns/);
+});
+
+test("jsonOutput defaults to pretty and only accepts declared formats", () => {
+  expect(parseConfig({ jsonOutput: undefined }).jsonOutput).toBe("pretty");
+  for (const jsonOutput of ["pretty", "minified"] as const) expect(parseConfig({ jsonOutput }).jsonOutput).toBe(jsonOutput);
+  for (const jsonOutput of ["compact", "", "Pretty", null, false, 2, {}, ["pretty"]]) {
+    expect(() => parseConfig({ jsonOutput } as never)).toThrow(/jsonOutput/);
+  }
 });
 
 test("respects overrides", () => {

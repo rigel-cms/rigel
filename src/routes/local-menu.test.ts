@@ -20,6 +20,7 @@ beforeEach(async () => {
   config.root = pathToFileURL(root + "/").href;
   config.backend = "local";
   config.menus = { folder: "content/menus", maxDepth: 3 };
+  config.jsonOutput = undefined;
 });
 
 afterEach(async () => {
@@ -38,6 +39,22 @@ async function declareMenu() {
   await mkdir(folder, { recursive: true });
   await writeFile(path.join(folder, "main.json"), JSON.stringify(menu));
 }
+
+test.each([undefined, "pretty", "minified"] as const)("menu saves use %s JSON without formatting on read", async (jsonOutput) => {
+  await declareMenu();
+  const file = path.join(folder, "main.json");
+  const before = await readFile(file, "utf8");
+  const other = { ...menu, slug: "other" };
+  await writeFile(path.join(folder, "other.json"), JSON.stringify(other));
+  config.jsonOutput = jsonOutput;
+  expect(await (await call("GET")).json()).toEqual(menu);
+  expect(await readFile(file, "utf8")).toBe(before);
+  const data = { ...menu, title: "Árbol 🌍" };
+  expect((await call("PUT", data)).status).toBe(204);
+  expect(await readFile(file, "utf8")).toBe(JSON.stringify(data, null, jsonOutput === "minified" ? undefined : 2) + "\n");
+  expect(await (await call("GET")).json()).toEqual(data);
+  expect(await readFile(path.join(folder, "other.json"), "utf8")).toBe(JSON.stringify(other));
+});
 
 test("reads and atomically updates developer-declared menus without allowing creation or deletion", async () => {
   expect((await call("GET")).status).toBe(404);

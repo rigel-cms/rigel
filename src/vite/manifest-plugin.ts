@@ -19,6 +19,7 @@ export function rigelManifestPlugin(cfg: RigelConfig, publicDir?: URL, root?: UR
   const github: GitHubBackendConfig | undefined = cfg.backend === "github" ? {
     repo: cfg.repo!, branch: cfg.branch!, publishBranch: cfg.publishBranch!, repoRoot: cfg.repoRoot!, authOrigin: cfg.authOrigin!, appSlug: cfg.appSlug!, copyDir: cfg.copyDir,
     collections: collections.map(({ name, folder }) => ({ name, folder })),
+    jsonOutput: cfg.jsonOutput,
     ...(cfg.menus ? { menus: { folder: cfg.menus.folder, maxDepth: cfg.menus.maxDepth! } } : {}),
   } : undefined;
 
@@ -132,6 +133,7 @@ export const menus = {
         return `export default ${JSON.stringify({
           copyDir: cfg.copyDir,
           backend: cfg.backend,
+          jsonOutput: cfg.jsonOutput,
           demo: cfg.demo,
           publicDir: publicDir?.href,
           mediaDir: cfg.mediaDir,

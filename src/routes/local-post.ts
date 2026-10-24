@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { serializeContentJson } from "../json-output";
 import { writeFile, mkdir, rm, readFile, readdir, rename, link } from "node:fs/promises";
 import { assertUniqueUrlSlugs, normalizeUrlSlug } from "../slugs";
 import { randomUUID } from "node:crypto";
@@ -66,7 +67,7 @@ const savePost: APIRoute = async ({ request, params }) => {
   const fm = { ...body.frontmatter };
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporary, JSON.stringify({ frontmatter: fm, body: body.body }, null, 2) + "\n", { flag: "wx" });
+    await writeFile(temporary, serializeContentJson({ frontmatter: fm, body: body.body }, config.jsonOutput), { flag: "wx" });
     if (request.headers.get("If-None-Match") === "*") {
       try { await link(temporary, file); }
       catch (error) {

@@ -1,4 +1,5 @@
 import type { Manifest } from "../../manifest/types";
+import { serializeContentJson } from "../../json-output";
 import type { Selection } from "../../manifest/navigation";
 import { validateBody, type ArticleBody } from "../../article-body";
 import { validateMenu } from "../../manifest/menu";
@@ -289,7 +290,7 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     data = validateMenu({...values,slug:selection.slug},cfg.menus.maxDepth);
     path = filePath(ctx,manifest,cfg.menus.folder,selection.slug);
   } else throw new Error("Select editable content before saving");
-  await mutate(ctx,manifest,path,JSON.stringify(data,null,2) + "\n",creating);
+  await mutate(ctx,manifest,path,serializeContentJson(data,cfg.jsonOutput),creating);
 }
 
 export interface PublishFile { filename: string; status: "added" | "modified" | "removed" | "renamed"; previous_filename?: string }

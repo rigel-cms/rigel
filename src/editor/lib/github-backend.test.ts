@@ -71,6 +71,33 @@ function server() {
 }
 afterEach(()=>vi.unstubAllGlobals());
 
+test.each([undefined, "pretty", "minified"] as const)("GitHub saves use %s JSON for posts, documents and menus only", async (jsonOutput) => {
+  const s = server(), original = blueprint();
+  original.github!.jsonOutput = jsonOutput;
+  const before = new Map(s.files);
+  const m = await loadManifestRemote(ctx, original);
+  expect(s.files).toEqual(before);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+  const frontmatter = { title: "Árbol 🌍", author: "author:alex", custom: { keep: [false, "line\nbreak"] } };
+  const body = emptyBody();
+  const data = { name: "Zoë 🌍", custom: { keep: true }, _id: "author:alex", _type: "author" };
+  const menu = { slug: "main", title: "Menú 🌍", items: [{ id: "home", label: "Home", url: "/", newTab: false, children: [] }] };
+  const expected = (value: unknown) => JSON.stringify(value, null, jsonOutput === "minified" ? undefined : 2) + "\n";
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, frontmatter, body, false);
+  expect(s.files.get("playground/src/content/blog/hello.json")!.text).toBe(expected({ frontmatter, body }));
+  expect(s.files.get("playground/src/content/authors/alex.json")).toEqual(before.get("playground/src/content/authors/alex.json"));
+  await saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, data, "", false);
+  expect(s.files.get("playground/src/content/authors/alex.json")!.text).toBe(expected(data));
+  await saveRemoteSelection(ctx, m, { kind: "menu", slug: "main" }, menu, "", false);
+  expect(s.files.get("playground/src/content/menus/main.json")!.text).toBe(expected(menu));
+  expect(s.files.get("playground/src/content/copy/contact.ts")).toEqual(before.get("playground/src/content/copy/contact.ts"));
+  expect(s.files.get("unrelated/unsafe.ts")).toEqual(before.get("unrelated/unsafe.ts"));
+  const reloaded = await loadManifestRemote(ctx, original);
+  expect(reloaded.collections![0].posts[0]).toEqual({ slug: "hello", frontmatter, body });
+  expect(reloaded.documents![0].data).toEqual(data);
+  expect(reloaded.menus!.entries).toEqual([menu]);
+});
+
 test("invalid collection saves never mutate GitHub or discard existing properties", async () => {
   const s = server();
   const original = blueprint();
@@ -259,8 +286,10 @@ test.each(["update", "create", "delete"])("retry reconciles a completed %s after
   else expect(JSON.parse(s.files.get(`playground/src/content/blog/${slug}.json`)!.text).frontmatter.title).toBe("Confirmed retry");
 });
 
-test.each([false, true])("retry reconciles a lost ref-update response, applied=%s", async applied => {
-  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+test.each([false, true].flatMap(applied => ([undefined, "minified"] as const).map(jsonOutput => ({ applied, jsonOutput }))))("retry reconciles a lost ref-update response, applied=$applied format=$jsonOutput", async ({ applied, jsonOutput }) => {
+  const s = server(), originalManifest = blueprint();
+  originalManifest.github!.jsonOutput = jsonOutput;
+  const m = await loadManifestRemote(ctx, originalManifest);
   const original = fetch;
   let fail = true;
   vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
@@ -277,6 +306,7 @@ test.each([false, true])("retry reconciles a lost ref-update response, applied=%
   expect(s.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
   expect(s.calls.filter(call => call.path === "/git/commits" && call.method === "POST")).toHaveLength(1);
   expect(JSON.parse(s.files.get("playground/src/content/blog/new.json")!.text).frontmatter.slug).toBe("spanish-url");
+  expect(s.files.get("playground/src/content/blog/new.json")!.text).toBe(JSON.stringify({ frontmatter: { title: "Retained draft", slug: "spanish-url" }, body: emptyBody() }, null, jsonOutput === "minified" ? undefined : 2) + "\n");
 });
 
 test("uncertain write reconciliation rejects another editor's changes without adopting their SHA",async()=>{

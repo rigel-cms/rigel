@@ -69,7 +69,7 @@ const handle: APIRoute = async ({ request, params }) => {
     const documents = await readDocuments(guarded.schema, guarded.root, config.preview);
     const next = { ...data, _id: id, _type: target.type.name };
     validateDocument(guarded.schema, target.type.name, target.slug, next, documents);
-    await writeDocument(guarded.schema, guarded.root, target.type.name, target.slug, next, request.method === "POST" ? "create" : "update", config.preview);
+    await writeDocument(guarded.schema, guarded.root, target.type.name, target.slug, next, request.method === "POST" ? "create" : "update", config.preview, config.jsonOutput);
     return new Response(null, { status: 204 });
   } catch (error) {
     if (error instanceof DocumentStoreError) return new Response(error.message, { status: error.status });

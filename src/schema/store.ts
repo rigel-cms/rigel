@@ -6,6 +6,7 @@ import { isPlainObject } from "./validate";
 import { SLUG_PATTERN, type ContentDocument, type Schema } from "./types";
 import { normalizeUrlSlug, validateDocumentSlugs } from "../slugs";
 import type { PreviewConfig } from "../preview";
+import { serializeContentJson, type JsonOutput } from "../json-output";
 
 const MAX_BYTES = 1024 * 1024;
 const FOLDER_PART = /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/;
@@ -115,6 +116,7 @@ async function writeDocumentFile(
   data: Record<string, unknown>,
   mode: "create" | "update",
   preview?: PreviewConfig,
+  jsonOutput?: JsonOutput,
 ): Promise<void> {
   const type = schema.documents.find((entry) => entry.name === typeName);
   if (!type) throw new DocumentStoreError(`Unknown document type ${typeName}`, 404);
@@ -137,7 +139,7 @@ async function writeDocumentFile(
     const documents = await readDocuments(schema, root, preview);
     validateDocumentSlugs(schema, [...documents.filter(doc => doc.id !== `${typeName}:${slug}`), { id: `${typeName}:${slug}`, type: typeName, slug, data }], preview);
   } catch (error) { throw new DocumentStoreError((error as Error).message); }
-  const serialized = JSON.stringify(data, null, 2) + "\n";
+  const serialized = serializeContentJson(data, jsonOutput);
   if (Buffer.byteLength(serialized) > MAX_BYTES) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
   const temporary = path.join(directory, `.${slug}-${randomUUID()}.tmp`);
   try {

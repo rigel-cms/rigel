@@ -21,6 +21,25 @@ function save(slug: string, frontmatter: Record<string, unknown>, body: unknown 
   return POST({ params: { collection: "blog", slug }, request: new Request("http://localhost/", { method: "POST", headers: creating ? { "If-None-Match": "*" } : {}, body: JSON.stringify({ frontmatter, body }) }) } as unknown as APIContext);
 }
 
+test.each([undefined, "pretty", "minified"] as const)("post saves use %s JSON without rewriting other posts", async (jsonOutput) => {
+  const frontmatter = { title: "Árbol 🌍", custom: { keep: [false, "line\nbreak"] } };
+  const body = emptyBody();
+  const untouched = path.join(folder, "format-untouched.json");
+  expect((await save("format-untouched", { title: "Untouched" })).status).toBe(204);
+  const before = await readFile(untouched, "utf8");
+  config.jsonOutput = jsonOutput;
+  try {
+    expect(await readFile(untouched, "utf8")).toBe(before);
+    const slug = `format-${jsonOutput ?? "default"}`;
+    expect((await save(slug, frontmatter, body, true)).status).toBe(204);
+    expect((await save(slug, frontmatter, body)).status).toBe(204);
+    const text = await readFile(path.join(folder, `${slug}.json`), "utf8");
+    expect(text).toBe(JSON.stringify({ frontmatter, body }, null, jsonOutput === "minified" ? undefined : 2) + "\n");
+    expect(JSON.parse(text)).toEqual({ frontmatter, body });
+    expect(await readFile(untouched, "utf8")).toBe(before);
+  } finally { config.jsonOutput = undefined; }
+});
+
 test("creating a post cannot overwrite a slug created since loading the collection", async () => {
   expect((await save("occupied", { title: "Original" })).status).toBe(204);
   const file = path.join(folder, "occupied.json");

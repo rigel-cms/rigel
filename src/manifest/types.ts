@@ -30,6 +30,7 @@ export interface GitHubBackendConfig {
   authOrigin: string;
   appSlug: string;
   copyDir: string;
+  jsonOutput?: import("../json-output").JsonOutput;
   collections: { name: string; folder: string }[];
   menus?: { folder: string; maxDepth: number };
 }

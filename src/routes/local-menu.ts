@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { serializeContentJson } from "../json-output";
 import { constants } from "node:fs";
 import { lstat, open, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -60,7 +61,7 @@ const handle: APIRoute = async ({ request, params }) => {
     temporary = path.join(path.dirname(file), `.${slug}-${randomUUID()}.tmp`);
     const output = await open(temporary, "wx", 0o600);
     try {
-      await output.writeFile(JSON.stringify(menu, null, 2) + "\n", "utf8");
+      await output.writeFile(serializeContentJson(menu, config.jsonOutput), "utf8");
       await output.sync();
     } finally { await output.close(); }
     await menuFile(slug);

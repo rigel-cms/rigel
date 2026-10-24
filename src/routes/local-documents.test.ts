@@ -45,6 +45,7 @@ beforeEach(async () => {
   config.root = pathToFileURL(root + "/").href;
   config.backend = "local";
   config.schema = schema;
+  config.jsonOutput = undefined;
   await writeFile(path.join(root, "content/shared/studio.json"), JSON.stringify(callout));
 });
 
@@ -63,6 +64,20 @@ function call(method: "GET" | "POST" | "PUT" | "DELETE", body: unknown = { data:
     }),
   } as unknown as APIContext);
 }
+
+test.each([undefined, "pretty", "minified"] as const)("document saves use %s JSON only on explicit writes", async (jsonOutput) => {
+  const untouched = path.join(root, "content/shared/studio.json");
+  const before = await readFile(untouched, "utf8");
+  config.jsonOutput = jsonOutput;
+  const data = { ...home, title: "Árbol 🌍", custom: { keep: [false, "line\nbreak"] } };
+  expect((await call("POST", { data })).status).toBe(204);
+  const file = path.join(root, "content/pages/home.json");
+  expect(await readFile(file, "utf8")).toBe(JSON.stringify(data, null, jsonOutput === "minified" ? undefined : 2) + "\n");
+  expect((await (await call("GET")).json()).data).toEqual(data);
+  expect((await call("PUT", { data })).status).toBe(204);
+  expect(await readFile(file, "utf8")).toBe(JSON.stringify(data, null, jsonOutput === "minified" ? undefined : 2) + "\n");
+  expect(await readFile(untouched, "utf8")).toBe(before);
+});
 
 test("creates and updates validated documents, then reads them back", async () => {
   expect((await call("GET")).status).toBe(404);

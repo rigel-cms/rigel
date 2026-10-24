@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { tooltipRoot } from "./lib/tooltip";
   onMount(() => tooltipRoot(document.body).destroy);
   import type {
@@ -30,13 +30,14 @@
   import type { MenuItem } from "../manifest/menu";
   import UnsavedChanges from "./lib/UnsavedChanges.svelte";
   import ActionDialog from "./lib/ActionDialog.svelte";
+  import PublishDialog from "./lib/PublishDialog.svelte";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
   import { previewUrl } from "../preview";
   import type { ContentDocument, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
-  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, type GitContext } from "./lib/github-backend";
+  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, reviewRemotePublish, confirmRemotePublish, type GitContext, type PublishReview } from "./lib/github-backend";
 
   type Sel = Selection;
 
@@ -62,6 +63,75 @@
   let saveState = $state<"idle" | "saving" | "saved" | "error">("idle");
   let saveTask: Promise<boolean> | null = null;
   let saveError = $state("");
+  let publishOpen = $state(false);
+  let publishLoading = $state(false);
+  let publishBusy = $state(false);
+  let publishReview = $state<PublishReview | null>(null);
+  let publishError = $state("");
+  let publishMessage = $state("");
+  let publishRevision = 0;
+
+  function closePublish() {
+    publishRevision += 1;
+    publishOpen = false;
+    publishReview = null;
+    void tick().then(() => document.querySelector<HTMLButtonElement>("#publish-button")?.focus());
+  }
+
+  function publishGuard(context: GitContext, revision: number, auth: number) {
+    if (!publishOpen || revision !== publishRevision || auth !== authRevision || gitContext !== context) throw new Error("Publish review is no longer active. Reconnect and review again.");
+    requireGitContext();
+    if (dirty || saveTask || saveState === "saving") throw new Error("Save your unsaved edits first, then review publishing. Your edits are still here.");
+  }
+
+  async function reviewPublish() {
+    if (publishBusy || publishLoading) return;
+    publishOpen = true;
+    publishReview = null;
+    publishError = "";
+    publishMessage = "";
+    publishLoading = true;
+    const revision = ++publishRevision, auth = authRevision;
+    try {
+      const context = requireGitContext();
+      const guard = () => publishGuard(context, revision, auth);
+      guard();
+      const review = await reviewRemotePublish(context, manifest, guard);
+      guard();
+      publishReview = review;
+    } catch (error) {
+      handleAuthError(error);
+      if (revision === publishRevision) publishError = error instanceof Error ? error.message : "Could not review saved changes.";
+    } finally { publishLoading = false; }
+  }
+
+  async function publish() {
+    if (publishBusy || publishLoading || !publishReview) return;
+    publishBusy = true;
+    publishError = "";
+    const review = publishReview, revision = publishRevision, auth = authRevision;
+    try {
+      const context = requireGitContext();
+      const guard = () => publishGuard(context, revision, auth);
+      guard();
+      const result = await confirmRemotePublish(context, manifest, review, guard);
+      guard();
+      publishReview = null;
+      if (result === "synced") {
+        const remote = await loadManifestRemote(context, blueprint!, false);
+        guard();
+        manifest = remote;
+        openSelection(sel);
+        publishMessage = "Drafts synced. Nothing was published. Close this dialog and review again before publishing.";
+      } else publishMessage = `Published to ${review.publishBranch}. Your configured deployment can now start; the site is not instantly live. The drafts branch is preserved.`;
+    } catch (error) {
+      handleAuthError(error);
+      if (revision === publishRevision) {
+        publishError = error instanceof Error ? error.message : "Could not verify publishing. Check GitHub before retrying.";
+        if (/changed|no longer matches/.test(publishError)) publishReview = null;
+      }
+    } finally { publishBusy = false; }
+  }
   let pendingNavigation = $state<(() => void) | null>(null);
   let actionDialog = $state<{ title: string; description: string; confirmLabel: string; fieldLabel?: string; danger?: boolean; onconfirm: (value: string) => void | Promise<void> } | null>(null);
   let newEntry = $state<{ collection: string; post: CollectionPost } | null>(null);
@@ -130,6 +200,7 @@
   }
 
   function invalidateSession() {
+    closePublish();
     authRevision += 1;
     clearSession();
     gitContext = null;
@@ -143,7 +214,8 @@
   }
 
   async function connectGitHub() {
-    if (connectionBusy || saveState === "saving" || !manifest.github) return;
+    if (connectionBusy || saveState === "saving" || publishBusy || !manifest.github) return;
+    closePublish();
     connectionBusy = true;
     connectionError = "";
     const revision = ++authRevision;
@@ -174,6 +246,8 @@
   function signOut() {
     if (saveState === "saving" || connectionBusy) return;
     userOpen = false;
+    if (publishBusy) { invalidateSession(); connected = false; return; }
+    closePublish();
     requestNavigation(() => {
       invalidateSession();
       connected = false;
@@ -203,6 +277,7 @@
   });
 
   function save(): Promise<boolean> {
+    if (publishOpen || publishBusy) return Promise.resolve(false);
     if (saveTask) return saveTask;
     saveTask = (async () => {
       if (dirty) {
@@ -512,6 +587,7 @@
   }
 
   function requestNavigation(action: () => void) {
+    if (publishOpen || publishBusy) return;
     if (dirty || saveState === "saving") pendingNavigation = action;
     else action();
   }
@@ -645,6 +721,7 @@
   }
 
   function deletePost() {
+    if (publishOpen || publishBusy) return;
     const current = post, collection = coll, unsaved = newEntry !== null;
     if (!current || !collection) return;
     actionDialog = {
@@ -691,7 +768,7 @@
   onresize={endPreviewResize}
   onblur={endPreviewResize}
   oncontextmenu={(event) => { if (!settings.devMode) event.preventDefault(); }}
-  onbeforeunload={(event) => { if (dirty || saveState === "saving") { event.preventDefault(); event.returnValue = ""; } }}
+  onbeforeunload={(event) => { if (dirty || saveState === "saving" || publishBusy) { event.preventDefault(); event.returnValue = ""; } }}
   onclick={(e) => {
     if (!(e.target instanceof Element) || !e.target.closest('.user-menu-wrap')) userOpen = false;
   }}
@@ -773,6 +850,11 @@
       {/each}
     </nav>
 
+    {#if githubMode && manifest.github?.publishBranch}
+      <button id="publish-button" class="sidebar-publish" aria-label="Publish" data-tooltip={dirty ? "Save your edits before publishing" : "Publish saved branch changes"} disabled={publishBusy || publishLoading || saveState === "saving" || connectionBusy || tokenExpired || githubAccess?.status !== "ready"} onclick={reviewPublish}>
+        <Icon name="external" size={18} /><span class="sidebar-label">Publish</span>
+      </button>
+    {/if}
     <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} data-tooltip={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
       <SidebarIcon name="sidebar-simple" /><span class="sidebar-label">Collapse sidebar</span>
     </button>
@@ -1029,4 +1111,7 @@
 {/if}
 {#if actionDialog}
   <ActionDialog {...actionDialog} onclose={() => { actionDialog = null; }} />
+{/if}
+{#if publishOpen}
+  <PublishDialog review={publishReview} loading={publishLoading} busy={publishBusy} error={publishError} message={publishMessage} onrefresh={reviewPublish} onconfirm={publish} onclose={closePublish} />
 {/if}

@@ -72,11 +72,11 @@ function sha(value: unknown): string {
   return value;
 }
 
-async function draftHead(ctx: GitContext, manifest: Manifest): Promise<string> {
+async function draftHead(ctx: GitContext, manifest: Manifest, create = true): Promise<string> {
   const cfg = config(ctx, manifest);
   const ref = `/git/ref/heads/${encodeURIComponent(ctx.branch)}`;
   try { return sha((await gh(ctx, ref))?.object?.sha); }
-  catch (error) { if (!(error instanceof GitError) || error.status !== 404) throw error; }
+  catch (error) { if (!create || !(error instanceof GitError) || error.status !== 404) throw error; }
   const base = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(cfg.publishBranch)}`))?.object?.sha);
   try { await gh(ctx, "/git/refs", {method:"POST", body:JSON.stringify({ref:`refs/heads/${ctx.branch}`,sha:base})}); }
   catch (error) { if (!(error instanceof GitError) || ![409,422].includes(error.status)) throw error; }
@@ -106,9 +106,9 @@ function parseJson(text: string): unknown {
   try { return JSON.parse(text); } catch { throw new Error("Invalid remote content JSON"); }
 }
 
-export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest): Promise<Manifest> {
+export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, createDraft = true): Promise<Manifest> {
   const cfg = config(ctx, blueprint);
-  const head = await draftHead(ctx, blueprint);
+  const head = await draftHead(ctx, blueprint, createDraft);
   const tree = await gh(ctx, `/git/trees/${head}?recursive=1`);
   if (!tree || tree.truncated !== false || !Array.isArray(tree.tree)) throw new Error("Incomplete GitHub tree; content cannot be loaded safely");
   const manifest = structuredClone(blueprint);
@@ -235,10 +235,13 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
 }
 
 export async function saveRemoteSelection(...args: Parameters<typeof saveSelection>): Promise<void> {
+  const key = writeKey(args[0]);
+  if (publishing.has(key)) throw new Error("Wait for publishing to finish before saving.");
   const snapshot = loaded(args[0], args[1]);
+  saving.set(key, (saving.get(key) ?? 0) + 1);
   const result = snapshot.writes.then(() => saveSelection(...args));
   snapshot.writes = result.catch(() => {});
-  return result;
+  try { await result; } finally { saving.set(key, (saving.get(key) ?? 1) - 1); }
 }
 
 async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Selection, values: Record<string, unknown>, body: ArticleBody | "", creating: boolean): Promise<void> {
@@ -289,9 +292,171 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
   await mutate(ctx,manifest,path,JSON.stringify(data,null,2) + "\n",creating);
 }
 
+export interface PublishFile { filename: string; status: "added" | "modified" | "removed" | "renamed"; previous_filename?: string }
+export interface PublishReview {
+  repo: string; branch: string; publishBranch: string; head: string; base: string;
+  files: PublishFile[]; needsSync: boolean; prNumber?: number; creationUncertain?: boolean;
+}
+
+async function publishHeads(ctx: GitContext, publishBranch: string, request: typeof gh) {
+  const head = sha((await request(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
+  const base = sha((await request(ctx, `/git/ref/heads/${encodeURIComponent(publishBranch)}`))?.object?.sha);
+  return { head, base };
+}
+
+async function publishTree(ctx: GitContext, head: string, request: typeof gh) {
+  const data = await request(ctx, `/git/trees/${head}?recursive=1`);
+  if (data?.truncated !== false || !Array.isArray(data.tree)) throw new Error("Incomplete GitHub tree. Publishing is unavailable; review this change on GitHub.");
+  const files = new Map<string, string>();
+  const paths = new Set<string>();
+  for (const entry of data.tree) {
+    if (!entry || typeof entry.path !== "string" || !entry.path || /[\u0000-\u001f\u007f\\\\]/.test(entry.path) || entry.path.split("/").some((p: string) => !p || p === "." || p === "..") || paths.has(entry.path) || !["blob", "tree", "commit"].includes(entry.type) || !["100644", "100755", "120000", "040000", "160000"].includes(entry.mode)) throw new Error("Malformed GitHub publish tree");
+    if (!({ blob: ["100644", "100755", "120000"], tree: ["040000"], commit: ["160000"] } as Record<string, string[]>)[entry.type]?.includes(entry.mode)) throw new Error("Malformed GitHub publish tree mode");
+    paths.add(entry.path);
+    const id = sha(entry.sha);
+    if (entry.type !== "tree") files.set(entry.path, `${entry.mode}:${entry.type}:${id}`);
+  }
+  return files;
+}
+
+export async function reviewRemotePublish(ctx: GitContext, manifest: Manifest, assertActive: () => void = () => {}): Promise<PublishReview> {
+  const cfg = config(ctx, manifest);
+  const request: typeof gh = (context, path, init) => { assertActive(); return gh(context, path, init); };
+  const repository = await request(ctx, "");
+  if (repository?.permissions?.push !== true) throw new Error("Publishing requires repository write access.");
+  if (repository.allow_squash_merge !== true) throw new Error("Squash merging is disabled. Ask the repository owner to enable it before publishing.");
+  if (repository.delete_branch_on_merge !== false) throw new Error("Ask the repository owner to disable automatic head-branch deletion before publishing, so the drafts branch is preserved.");
+  const { head, base } = await publishHeads(ctx, cfg.publishBranch, request);
+  const [source, destination] = await Promise.all([publishTree(ctx, head, request), publishTree(ctx, base, request)]);
+  const changed = new Set([...source.keys(), ...destination.keys()].filter(path => source.get(path) !== destination.get(path)));
+  const review: PublishReview = { repo: ctx.repo, branch: ctx.branch, publishBranch: cfg.publishBranch, head, base, files: [], needsSync: false };
+  if (changed.size) {
+    const comparison = await request(ctx, `/compare/${base}...${head}?per_page=1&page=1`);
+    if (sha(comparison?.base_commit?.sha) !== base) throw new Error("GitHub comparison does not match the reviewed target.");
+    review.needsSync = sha(comparison?.merge_base_commit?.sha) !== base;
+    if (review.needsSync) {
+      review.files = [...changed].sort().map(filename => ({ filename, status: !source.has(filename) ? "removed" : !destination.has(filename) ? "added" : "modified" }));
+    } else {
+      if (!Array.isArray(comparison.files) || comparison.files.length >= 300) throw new Error("GitHub comparisons of 300 or more files are not supported. Publish this change on GitHub; no partial list is shown.");
+      const covered = new Set<string>();
+      for (const file of comparison.files) {
+        if (!file || typeof file.filename !== "string" || covered.has(file.filename) || !changed.has(file.filename) || !["added", "removed", "modified", "renamed"].includes(file.status)) throw new Error("Incomplete or unsupported GitHub file comparison. Publish this change on GitHub.");
+        covered.add(file.filename);
+        if (file.status === "renamed") {
+          if (typeof file.previous_filename !== "string" || !changed.has(file.previous_filename) || covered.has(file.previous_filename)) throw new Error("Incomplete GitHub rename comparison");
+          covered.add(file.previous_filename);
+        }
+        review.files.push({ filename: file.filename, status: file.status, ...(file.status === "renamed" ? { previous_filename: file.previous_filename } : {}) });
+      }
+      if (covered.size !== changed.size) throw new Error("Incomplete GitHub file comparison. Publishing is unavailable; no partial list is shown.");
+    }
+    if (review.files.length >= 300) throw new Error("Publishing 300 or more files is not supported. Review and publish this change on GitHub.");
+  }
+  const current = await publishHeads(ctx, cfg.publishBranch, request);
+  if (current.head !== head || current.base !== base) throw new Error("Branches changed during review. Review changes again before publishing.");
+  assertActive();
+  return review;
+}
+
+const publishing = new Set<string>();
+const saving = new Map<string, number>();
+const writeKey = (ctx: GitContext) => `${ctx.repo}:${ctx.branch}`;
+
+export async function confirmRemotePublish(ctx: GitContext, manifest: Manifest, review: PublishReview, assertActive: () => void = () => {}): Promise<"published" | "synced"> {
+  const cfg = config(ctx, manifest), key = writeKey(ctx);
+  if (publishing.has(key) || saving.get(key)) throw new Error("Wait for the current save or publish to finish.");
+  if (review.repo !== ctx.repo || review.branch !== ctx.branch || review.publishBranch !== cfg.publishBranch || !review.files.length) throw new Error("Review saved changes before publishing.");
+  sha(review.head); sha(review.base);
+  publishing.add(key);
+  const request: typeof gh = (context, path, init) => { assertActive(); return gh(context, path, init); };
+  const unchanged = async () => {
+    const current = await publishHeads(ctx, cfg.publishBranch, request);
+    if (current.head !== review.head || current.base !== review.base) throw new Error("Branches changed. Review changes again before publishing.");
+  };
+  const matches = (pr: any) => pr?.head?.repo?.full_name?.toLowerCase() === ctx.repo.toLowerCase() && pr?.base?.repo?.full_name?.toLowerCase() === ctx.repo.toLowerCase() && pr.head.ref === ctx.branch && pr.base.ref === cfg.publishBranch;
+  const validate = (pr: any) => {
+    if (!matches(pr) || !Number.isSafeInteger(pr.number) || pr.number <= 0 || pr.head.sha !== review.head) throw new Error("Pull request no longer matches this review. Review changes again.");
+    return pr;
+  };
+  const merged = (pr: any) => {
+    validate(pr);
+    if (pr.merged === true && pr.state === "closed") { sha(pr.merge_commit_sha); return true; }
+    return false;
+  };
+  const find = async () => {
+    const found: any[] = [];
+    for (let page = 1; page <= 100; page++) {
+      const query = new URLSearchParams({ state: "open", head: `${ctx.repo.split("/")[0]}:${ctx.branch}`, base: cfg.publishBranch, per_page: "100", page: String(page) });
+      const list = await request(ctx, `/pulls?${query}`);
+      if (!Array.isArray(list)) throw new Error("Incomplete GitHub pull request listing");
+      found.push(...list.filter(matches));
+      if (found.length > 1) throw new Error("Multiple matching pull requests. Resolve them on GitHub before publishing.");
+      if (list.length < 100) return found[0];
+    }
+    throw new Error("Incomplete GitHub pull request listing; publishing stopped.");
+  };
+  try {
+    if (review.prNumber) {
+      const previous = await request(ctx, `/pulls/${review.prNumber}`);
+      if (merged(previous)) return "published";
+    }
+    await unchanged();
+    const repository = await request(ctx, "");
+    if (repository?.permissions?.push !== true || repository.allow_squash_merge !== true || repository.delete_branch_on_merge !== false) throw new Error("Publishing settings or access changed. Enable squash merges, disable automatic branch deletion and verify write access, then review again.");
+    let pr = review.prNumber ? await request(ctx, `/pulls/${review.prNumber}`) : await find();
+    if (!pr) {
+      if (review.creationUncertain) throw new Error("The previous pull request creation is unconfirmed. Check GitHub before retrying; no duplicate was created.");
+      await unchanged();
+      review.creationUncertain = true;
+      try {
+        pr = await request(ctx, "/pulls", { method: "POST", body: JSON.stringify({ title: `Publish ${ctx.branch} to ${cfg.publishBranch}`, head: ctx.branch, base: cfg.publishBranch, draft: false, maintainer_can_modify: false }) });
+      } catch (error) {
+        pr = await find();
+        if (!pr) throw error;
+      }
+    }
+    validate(pr);
+    review.prNumber = pr.number;
+    pr = validate(await request(ctx, `/pulls/${pr.number}`));
+    if (merged(pr)) return "published";
+    if (pr.state !== "open" || pr.draft || pr.base.sha !== review.base) throw new Error("Pull request or target changed. Review changes again before publishing.");
+    if (review.needsSync) {
+      await unchanged();
+      await request(ctx, `/pulls/${pr.number}/update-branch`, { method: "PUT", body: JSON.stringify({ expected_head_sha: review.head }) });
+      const updated = await request(ctx, `/pulls/${pr.number}`);
+      if (!matches(updated) || updated.state !== "open" || sha(updated.head.sha) === review.head) throw new Error("GitHub is still syncing drafts, or the sync could not be verified. Wait, reload draft content and review again. Nothing was published.");
+      return "synced";
+    }
+    if (pr.mergeable !== true || pr.mergeable_state !== "clean") throw new Error("GitHub has not allowed this merge. Resolve conflicts, required checks, reviews or branch protections on GitHub, then retry. No protection is bypassed.");
+    await unchanged();
+    let failure: unknown;
+    try {
+      const result = await request(ctx, `/pulls/${pr.number}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "squash", sha: review.head }) });
+      if (result?.merged !== true) failure = new Error("GitHub did not merge the pull request. Check required checks, reviews and branch protections, then retry.");
+    } catch (error) { failure = error; }
+    let verified;
+    try { verified = await request(ctx, `/pulls/${pr.number}`); }
+    catch (error) {
+      if (error instanceof GitError && error.status === 401) throw error;
+      throw new Error(`Publish outcome is unconfirmed. Check pull request #${pr.number} on GitHub, or retry to verify it before starting another publish.`);
+    }
+    if (merged(verified)) return "published";
+    if (failure) throw failure;
+    throw new Error("The publish result could not be verified. Check this pull request on GitHub before retrying.");
+  } catch (error) {
+    if (error instanceof GitError && [403, 404].includes(error.status)) throw new GitError("Publishing requires GitHub App Contents and Pull requests read/write permissions, installation-owner approval and repository write access. Reconnect after approval. Branch protections still apply.", error.status);
+    if (error instanceof GitError && [405, 409, 422].includes(error.status)) throw new GitError("GitHub rejected publishing. Check conflicts, required checks/reviews, branch protections and squash settings. Review changes again if either branch moved.", error.status);
+    throw error;
+  } finally { publishing.delete(key); }
+}
+
 export async function deleteRemotePost(ctx: GitContext, manifest: Manifest, collection: string, slug: string): Promise<void> {
+  const key = writeKey(ctx);
+  if (publishing.has(key)) throw new Error("Wait for publishing to finish before deleting.");
   const cfg = config(ctx,manifest);
   const folder = cfg.collections.find(c => c.name === collection)?.folder;
   if (!folder || !manifest.collections?.some(c => c.name === collection)) throw new Error("Unknown collection");
-  await mutate(ctx,manifest,filePath(ctx,manifest,folder,slug,"json",POST_SLUG),null,false);
+  saving.set(key, (saving.get(key) ?? 0) + 1);
+  try { await mutate(ctx,manifest,filePath(ctx,manifest,folder,slug,"json",POST_SLUG),null,false); }
+  finally { saving.set(key, (saving.get(key) ?? 1) - 1); }
 }

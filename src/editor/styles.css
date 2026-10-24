@@ -175,6 +175,8 @@
 .rigel .rail-scroll > button:hover { background: var(--surface-raised); color: var(--text); }
 .rigel .sidebar-asset-icon { display: inline-block; width: 18px; height: 18px; flex-shrink: 0; background-color: currentColor; mask-image: var(--sidebar-icon); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
 .rigel .rail-scroll > button { gap: 0.625rem; }
+.rigel aside > button.sidebar-publish { gap: 0.625rem; width: calc(100% - 1.5rem); min-height: 44px; margin: 0 0.75rem 0.5rem; padding: 0.625rem; border: 1px solid var(--border-control); color: var(--text); }
+.rigel aside > button.sidebar-publish:disabled { opacity: 0.5; cursor: not-allowed; }
 .rigel aside > button.sidebar-toggle { gap: 0.625rem; width: calc(100% - 1.5rem); margin: 0 0.75rem 0.5rem; padding: 0.625rem; font-size: 0.75rem; }
 @media (min-width: 768px) {
   .rigel.sidebar-collapsed { --sidebar-w: 64px; }
@@ -186,6 +188,7 @@
   .rigel.sidebar-collapsed .user-btn > .user-menu-icon { display: none; }
   .rigel.sidebar-collapsed .rail-scroll > button,
   .rigel.sidebar-collapsed .search-trigger,
+  .rigel.sidebar-collapsed .sidebar-publish,
   .rigel.sidebar-collapsed .sidebar-toggle { justify-content: center; }
   .rigel.sidebar-collapsed .sidebar-heading { height: 1px; font-size: 0; padding: 0; margin: 0.75rem 0.625rem; border-top: 1px solid var(--border-subtle); }
   .rigel.sidebar-collapsed .aside-foot { padding: 0.75rem 0.5rem; }

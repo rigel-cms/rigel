@@ -877,11 +877,11 @@
               Live Site
             </a>
             <div class="divider"></div>
-            <button role="menuitem" onclick={() => { userOpen = false; requestNavigation(() => { settingsOpen = true; }); }}>
+            <button role="menuitem" onclick={() => { userOpen = false; settingsOpen = true; }}>
               <Icon name="gear" size={13} />
               Settings
             </button>
-            <button role="menuitem" onclick={() => { userOpen = false; requestNavigation(() => { shortcutsOpen = true; }); }}>
+            <button role="menuitem" onclick={() => { userOpen = false; shortcutsOpen = true; }}>
               <Icon name="keyboard" size={13} />
               Keyboard Shortcuts
             </button>

@@ -840,9 +840,9 @@
 .rigel .outlined:hover:not(:disabled), .rigel .image-picker input::file-selector-button:hover { background: var(--surface-raised); }
 .rigel .outlined:disabled, .rigel .image-picker .tabs button:disabled, .rigel .image-picker .thumb:disabled { opacity: 0.5; cursor: default; }
 .rigel .image-picker input::file-selector-button { margin-right: 0.75rem; }
-.rigel.image-dialog { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 1rem; border: none; }
-.rigel.image-dialog:not([open]) { display: none; }
-.rigel.image-dialog::backdrop { background: transparent; }
+.rigel:is(.image-dialog, .media-insert) { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 1rem; border: none; }
+.rigel:is(.image-dialog, .media-insert):not([open]) { display: none; }
+.rigel:is(.image-dialog, .media-insert)::backdrop { background: transparent; }
 .rigel .image-picker { width: min(760px, 100%); }
 .rigel .media-head, .rigel .media-tools, .rigel .media-actions { display: flex; align-items: center; gap: 0.75rem; }
 .rigel .media-head { justify-content: space-between; margin: calc(1rem * -1) calc(1.25rem * -1) 0; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
@@ -1209,7 +1209,7 @@
 .rigel .block-table-controls button:hover:not(:disabled) { background: var(--accent-soft); color: var(--on-accent-soft); }
 .rigel .block-table-controls button:disabled { opacity: 0.35; cursor: default; }
 .rigel .block-table-controls label.inline { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0 0; padding: 0.5rem; border-top: 1px solid var(--border-subtle); font-size: 0.8125rem; }
-.rigel .block-table-controls label.inline input.switch { flex-shrink: 0; margin-left: auto; }
+
 .rigel .block-content > p:has(> br:only-child)::before { content: "Type / to choose a block"; position: absolute; color: var(--text-2); pointer-events: none; }
 .rigel .block-handle { position: absolute; left: 2px; width: 28px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); border: 1px solid var(--border-control); color: var(--text); cursor: grab; touch-action: none; }
 .rigel .block-insert { position: fixed; z-index: 119; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: var(--panel); border: 1px solid var(--border-control); color: var(--text); cursor: pointer; }
@@ -1305,6 +1305,7 @@
 }
 
 .rigel .media-menu > button { display: flex; align-items: center; gap: 0.5rem; }
+.rigel .media-insert .media-button-actions { justify-content: space-between; margin: 1rem 0 0; }
 .rigel .media-insert .media-insert-list { display: grid; gap: 0.25rem; max-height: 9rem; overflow-y: auto; margin: 0.25rem 0 0.75rem; }
 .rigel .media-insert .media-insert-list button { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-width: 0; font-size: 0.75rem; }
 .rigel .media-insert .media-insert-list button > span { color: var(--text-2); flex-shrink: 0; }

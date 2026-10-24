@@ -6,11 +6,12 @@
   import { uploadMedia } from "./images";
   import { parseEmbedUrl, embedProviderLabel, type EmbedProvider, type EmbedRef } from "./embeds";
 
-  let { triggerLabel = "Insert media", onimage, onvideo, onembed }: {
+  let { triggerLabel = "Insert media", onimage, onvideo, onembed, onclose = () => {} }: {
     triggerLabel?: string;
     onimage?: () => void;
     onvideo?: (video: { src: string; caption?: string }) => void;
     onembed?: (embed: EmbedRef & { privacy: boolean; title?: string }) => void;
+    onclose?: () => void;
   } = $props();
   const id = $props.id();
 
@@ -41,12 +42,19 @@
     if (menu.matches(":popover-open")) menu.hidePopover();
     else menu.showPopover();
   }
-  function pick(choice: "image" | "video" | "youtube" | "vimeo") {
+  export function pick(choice: "image" | "video" | "youtube" | "vimeo") {
     if (menu?.matches(":popover-open")) menu.hidePopover();
     reset();
     if (choice === "image") { onimage?.(); return; }
     panel = choice === "video" ? "video" : "embed";
     provider = choice === "vimeo" ? "vimeo" : "youtube";
+    if (choice === "youtube") {
+      url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+      title = "Rick Astley - Never Gonna Give You Up (Rickroll)";
+    } else if (choice === "vimeo") {
+      url = "https://vimeo.com/861680818";
+      title = "The Rolling Stones - Angry";
+    }
     if (panel === "video") void library();
   }
   function reset() {
@@ -81,6 +89,7 @@
     panel = "";
     reset();
     trigger?.focus();
+    onclose();
   }
   function safeMediaUrl(value: string) {
     return safePreviewUrl(value, true) && (value.startsWith("/") || /^https:\/\//i.test(value));
@@ -121,9 +130,9 @@
       <div class="media-head"><h2>{panel === "video" ? "Add video" : `Add ${provider === "youtube" ? "YouTube" : "Vimeo"} video`}</h2><button type="button" class="close" aria-label="Close" onclick={close}><Icon name="x" size={14} weight="bold" /></button></div>
       {#if panel === "video"}
         <p class="hint">Upload a file to the repository media folder, or paste a video URL. Files are stored and served like images.</p>
-        <label class="media-file">Video file<input type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" bind:this={fileInput} onchange={chooseFile} /></label>
-        <label>Or video URL<input type="text" bind:value={url} placeholder="/rigel-media/… or https://…" oninput={() => { file = undefined; }} /></label>
-        <label>Caption (optional)<input type="text" maxlength="200" bind:value={caption} /></label>
+        <label class="media-file"><span>Video file</span><input type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" bind:this={fileInput} onchange={chooseFile} /></label>
+        <label><span>Or video URL</span><input type="text" bind:value={url} placeholder="/rigel-media/… or https://…" oninput={() => { file = undefined; }} /></label>
+        <label><span>Caption (optional)</span><input type="text" maxlength="200" bind:value={caption} /></label>
         {#if videos.length}
           <p class="hint">Repository videos</p>
           <div class="media-insert-list" role="group" aria-label="Repository videos">
@@ -135,12 +144,12 @@
         {#if !writable}<p class="hint">Uploads require the local dev server. GitHub uploads are not connected.</p>{/if}
       {:else}
         <p class="hint">Paste a {provider === "youtube" ? "YouTube" : "Vimeo"} link. The player is embedded without tracking cookies by default.</p>
-        <label>Video URL<input type="text" bind:value={url} placeholder={provider === "youtube" ? "https://www.youtube.com/watch?v=…" : "https://vimeo.com/…"} /></label>
-        <label>Title for accessibility (optional)<input type="text" maxlength="200" bind:value={title} /></label>
-        <label class="inline"><span>Privacy-enhanced (no cookies until play)</span><input type="checkbox" role="switch" class="switch" bind:checked={privacy} /></label>
+        <label><span>Video URL</span><input type="text" bind:value={url} placeholder={provider === "youtube" ? "https://www.youtube.com/watch?v=…" : "https://vimeo.com/…"} /></label>
+        <label><span>Title for accessibility (optional)</span><input type="text" maxlength="200" bind:value={title} /></label>
+        <label class="inline"><input type="checkbox" role="switch" class="switch" bind:checked={privacy} /><span>Privacy-enhanced (no cookies until play)</span></label>
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <div class="media-button-actions">
+      <div class="media-actions media-button-actions">
         <button type="button" class="outlined" disabled={busy} onclick={close}>Cancel</button>
         <button type="button" class="primary" disabled={busy} onclick={confirm}>{busy ? "Adding…" : "Insert"}</button>
       </div>

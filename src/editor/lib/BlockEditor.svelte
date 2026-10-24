@@ -61,6 +61,8 @@
   let linkPosition = $state("");
   let editorHost: HTMLDivElement;
   let imageJob: { key: string; replace: boolean } | null = null;
+  let mediaJob: { key: string; replace: boolean } | null = null;
+  let mediaPicker: MediaPicker;
   let imageData = $state<ImageData | null>(null);
   let embedData = $state<EmbedData | null>(null);
   let altOpen = $state(false);
@@ -85,7 +87,8 @@
   let tableRows = $state(0);
   let tableColumns = $state(0);
   let tableHeader = $state(false);
-  const choices = $derived(blockTypes.filter(block => block.label.toLowerCase().includes((slash ?? "").toLowerCase())));
+  const mediaTypes = [{ value: "video", label: "Video" }, { value: "youtube", label: "YouTube" }, { value: "vimeo", label: "Vimeo" }] as const;
+  const choices = $derived([...blockTypes, ...mediaTypes].filter(block => block.label.toLowerCase().includes((slash ?? "").toLowerCase())));
   const textBlocks = blockTypes.filter(block => !["image", "table", "bullet", "number"].includes(block.value));
   const activeBlock = $derived(blockTypes.find(block => block.value === blockType));
 
@@ -276,6 +279,12 @@
     return node.getChildren().flatMap(child => L.$isElementNode(child) && !child.isInline() ? [...inlineNodes(child), L.$createLineBreakNode()] : [child]);
   }
   function changeBlock(type: string, fromSlash = false) {
+    if (type === "video" || type === "youtube" || type === "vimeo") {
+      mediaJob = { key: fromSlash ? slashKey : activeKey, replace: fromSlash && !adding };
+      dismissSlash(); closeMenu();
+      mediaPicker.pick(type);
+      return;
+    }
     const definition = blockTypes.find(block => block.value === type);
     if (!definition) return;
     if (!fromSlash && type === blockType) { dismissSlash(); closeMenu(); return; }
@@ -396,14 +405,17 @@
     imageJob = null; editor.focus();
   }
   function insertMedia(create: () => L.LexicalNode) {
+    const job = mediaJob ?? { key: activeKey, replace: false };
     editor.update(() => {
-      const node = create(), previous = L.$getNodeByKey(activeKey), paragraph = L.$createParagraphNode();
-      if (previous && L.$isRootNode(previous.getParent())) previous.insertAfter(node);
+      const node = create(), previous = L.$getNodeByKey(job.key), paragraph = L.$createParagraphNode();
+      if (previous && job.replace) previous.replace(node);
+      else if (previous && L.$isRootNode(previous.getParent())) previous.insertAfter(node);
       else L.$getRoot().append(node);
       node.insertAfter(paragraph);
       paragraph.select();
       hoverKey = "";
     });
+    mediaJob = null;
     refocus();
   }
   function pickVideo(video: { src: string; caption?: string }) {
@@ -543,7 +555,7 @@
     <button type="button" disabled={!tableCell || tableColumns >= MAX_TABLE_COLUMNS} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("column")}><Icon name="plus" />Add column right</button>
     <button type="button" disabled={!tableCell || tableRows <= 1} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("delete-row")}><Icon name="minus" />Remove row</button>
     <button type="button" disabled={!tableCell || tableColumns <= 1} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("delete-column")}><Icon name="minus" />Remove column</button>
-    <label class="inline"><Icon name="table" /><span>Header row</span><input type="checkbox" role="switch" class="switch" checked={tableHeader} disabled={!tableCell} onchange={event => tableAction("header", event.currentTarget.checked)} /></label>
+    <label class="inline"><input type="checkbox" role="switch" class="switch" checked={tableHeader} disabled={!tableCell} onchange={event => tableAction("header", event.currentTarget.checked)} /><Icon name="table" /><span>Header row</span></label>
   </div>
 {/snippet}
 {#snippet toolbar(image: boolean)}
@@ -558,7 +570,7 @@
     {#if image}
       <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel="Replace image" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {:else}
-      <MediaPicker triggerLabel={embedData ? "Replace media" : "Insert media"} onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} />
+      <MediaPicker bind:this={mediaPicker} triggerLabel={embedData ? "Replace media" : "Insert media"} onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} onclose={() => { mediaJob = null; refocus(); }} />
       <ImagePicker toolbar hiddenTrigger value="" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {/if}
     {#if !image}

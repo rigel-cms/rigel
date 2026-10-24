@@ -1,5 +1,5 @@
 import { getSettings, setSettings } from "./settings";
-import { mediaMetadata, safeMediaName } from "../../media-types";
+import { mediaLimit, mediaMetadata, safeMediaName } from "../../media-types";
 export function getKeys(): StockKeys { return getSettings().apiKeys; }
 export function setKeys(keys: StockKeys) { setSettings({ apiKeys: keys }); }
 
@@ -174,7 +174,8 @@ export function currentAuthor(): string {
 
 export async function uploadMedia(file: File): Promise<string> {
   const metadata = mediaMetadata(file.name);
-  if (!safeMediaName(file.name) || !metadata || file.size > 10 * 1024 * 1024) throw new Error("Choose a supported file up to 10 MB with a safe filename.");
+  const limit = mediaLimit(metadata?.category);
+  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(`Choose a supported file up to ${Math.round(limit / 1024 / 1024)} MB with a safe filename.`);
   const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
   if (!response.ok) throw new Error(`Upload failed (${response.status}): ${await response.text()}`);
   const result = await response.json();

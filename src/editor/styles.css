@@ -1303,3 +1303,11 @@
   .rigel main.visual-pane { padding: 0.75rem; }
   .rigel .visual-editor.with-panel { grid-template-rows: minmax(0, 1fr) 50%; }
 }
+
+.rigel .media-menu > button { display: flex; align-items: center; gap: 0.5rem; }
+.rigel .media-insert .media-insert-list { display: grid; gap: 0.25rem; max-height: 9rem; overflow-y: auto; margin: 0.25rem 0 0.75rem; }
+.rigel .media-insert .media-insert-list button { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-width: 0; font-size: 0.75rem; }
+.rigel .media-insert .media-insert-list button > span { color: var(--text-2); flex-shrink: 0; }
+.rigel .media-insert label.media-file { display: block; margin-bottom: 0.75rem; }
+.rigel .media-insert label.media-file input { width: 100%; padding: 0.375rem; border: 1px dashed var(--border-control); background: var(--panel); color: var(--text); font: inherit; font-size: 0.75rem; }
+.rigel .block-content figure.media-video video, .rigel .block-content figure.media-embed iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; }

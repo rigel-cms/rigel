@@ -220,3 +220,25 @@ test("uploads exact bytes to the configured public directory and reuses the hash
   expect((await stat(file)).mtimeMs).toBe(before.mtimeMs);
   expect(await readdir(path.dirname(file))).toEqual([filename]);
 });
+
+test("video uploads are served inline so the player can stream them", async () => {
+  const mp4 = Buffer.concat([
+    Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isomiso2mp41"),
+    Buffer.alloc(64),
+  ]);
+  const response = await upload(mp4, { "Content-Type": "video/mp4", "X-Rigel-Filename": "clip.mp4" });
+  expect(response.status).toBe(200);
+  const { url } = await response.json();
+  const result = await GET({ params: { filename: url.split("/").pop() } } as unknown as APIContext);
+  expect(result.headers.get("Content-Type")).toBe("video/mp4");
+  expect(result.headers.get("Content-Disposition")).toMatch(/^inline;/);
+  expect(result.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  expect(Buffer.from(await result.arrayBuffer())).toEqual(mp4);
+});
+
+test("videos allow a larger body than images while oversized uploads are still rejected", async () => {
+  const header = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isomiso2mp41")]);
+  const elevenMegabytes = Buffer.concat([header, Buffer.alloc(11 * 1024 * 1024)]);
+  expect((await upload(elevenMegabytes, { "Content-Type": "video/mp4", "X-Rigel-Filename": "big.mp4" })).status).toBe(200);
+  expect((await upload(Buffer.concat([png, Buffer.alloc(11 * 1024 * 1024)]), { "Content-Type": "image/png", "X-Rigel-Filename": "big.png" })).status).toBe(413);
+});

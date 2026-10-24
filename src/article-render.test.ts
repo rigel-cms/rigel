@@ -147,3 +147,36 @@ test("Typography check demonstrates every editor block and inline format", async
   expect(nodes.some(node => node.type === "image" && node.alt && node.credit && node.creditURL)).toBe(true);
   expect(nodes.some(node => node.type === "image" && node.alt && node.url)).toBe(true);
 });
+
+test("video and embed blocks survive Lexical, public HTML and Markdown", () => {
+  const editor = createEditor({ nodes: blockNodes, onError: error => { throw error; } });
+  const video = { type: "video", version: 1, src: "/rigel-media/abc.mp4", poster: "/rigel-media/abc.jpg", caption: "Site walkthrough" };
+  const embed = { type: "embed", version: 1, provider: "youtube", id: "dQw4w9WgXcQ", title: "Launch tour", privacy: true };
+  const state = body([video, embed]);
+  const loaded = editor.parseEditorState(JSON.stringify(state)).toJSON();
+  expect(loaded.root.children[0]).toMatchObject(video);
+  expect(loaded.root.children[1]).toMatchObject(embed);
+  const html = renderArticle(state);
+  expect(html).toContain('<figure class="media-video"><video controls preload="metadata" playsinline src="/rigel-media/abc.mp4" poster="/rigel-media/abc.jpg">');
+  expect(html).toContain("<figcaption>Site walkthrough</figcaption>");
+  expect(html).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0"');
+  expect(html).toContain('title="Launch tour"');
+  expect(html).toContain("loading=\"lazy\"");
+  expect(html).not.toContain("youtube.com/embed/");
+  expect(articleMarkdown(state)).toContain("[Video: Site walkthrough](</rigel-media/abc.mp4>)");
+  expect(articleMarkdown(state)).toContain("[Launch tour](<https://www.youtube.com/watch?v=dQw4w9WgXcQ>)");
+});
+
+test("embed privacy can be switched off and invalid embeds are rejected at validation", () => {
+  const embed = { type: "embed", version: 1, provider: "vimeo", id: "76979871", privacy: false };
+  expect(renderArticle(body([embed]))).toContain('src="https://player.vimeo.com/video/76979871"');
+  expect(renderArticle(body([{ ...embed, privacy: true }]))).toContain('src="https://player.vimeo.com/video/76979871?dnt=1"');
+  for (const bad of [
+    { ...embed, id: "abc" },
+    { ...embed, provider: "example" },
+    { ...embed, privacy: "yes" },
+    { ...embed, title: 42 },
+    { type: "embed", version: 1, provider: "youtube", id: "dQw4w9WgXcQ" },
+  ]) expect(() => validateBody(body([bad]))).toThrow();
+  for (const src of ["javascript:alert(1)", "https://example.com/a.mp4\n", 42]) expect(() => validateBody(body([{ type: "video", version: 1, src }]))).toThrow();
+});

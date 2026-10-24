@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mediaDirectory, listMedia, loadMediaSidecar, writeMediaSidecar, validateMetaUpdate } from "./media-files";
-import { mediaMetadata, safeMediaName } from "../media-types";
+import { mediaLimit, mediaMetadata, safeMediaName } from "../media-types";
 import { validMediaBytes } from "./media-validation";
 import config from "virtual:rigel-config";
 
@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ params }) => {
     const metadata = mediaMetadata(filename)!;
     return new Response(new Uint8Array(bytes), { headers: {
       "Content-Type": metadata.type,
-      "Content-Disposition": `${metadata.category === "Images" ? "inline" : "attachment"}; filename="${filename}"`,
+      "Content-Disposition": `${["Images", "Video"].includes(metadata.category) ? "inline" : "attachment"}; filename="${filename}"`,
       "X-Content-Type-Options": "nosniff",
     } });
   } catch {
@@ -41,15 +41,15 @@ export const POST: APIRoute = async ({ request }) => {
   const fallback = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[mime ?? ""];
   const metadata = supplied ? (safeMediaName(supplied) ? mediaMetadata(supplied) : undefined) : fallback ? mediaMetadata(`image.${fallback}`) : undefined;
   if (!metadata || metadata.type !== mime) return new Response("Unsupported or mismatched media type/filename", { status: 415 });
-  const limit = 10 * 1024 * 1024;
+  const limit = mediaLimit(metadata.category);
   const length = request.headers.get("Content-Length");
   if (length !== null && !/^\d+$/.test(length)) {
     return new Response("Invalid Content-Length", { status: 400 });
   }
   if (length !== null && Number(length) > limit) {
-    return new Response("Image exceeds 10 MiB", { status: 413 });
+    return new Response(`Media exceeds ${Math.round(limit / 1024 / 1024)} MiB`, { status: 413 });
   }
-  if (!request.body) return new Response("Empty image body", { status: 400 });
+  if (!request.body) return new Response("Empty media body", { status: 400 });
   const chunks: Uint8Array[] = [];
   let size = 0;
   const reader = request.body.getReader();
@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ request }) => {
       size += value.byteLength;
       if (size > limit) {
         void reader.cancel().catch(() => {});
-        return new Response("Image exceeds 10 MiB", { status: 413 });
+        return new Response(`Media exceeds ${Math.round(limit / 1024 / 1024)} MiB`, { status: 413 });
       }
       chunks.push(value);
     }

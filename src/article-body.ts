@@ -1,5 +1,6 @@
 import type { SerializedEditorState } from "lexical";
 import { safePreviewUrl } from "./preview-urls";
+import { safeEmbed } from "./editor/lib/embeds";
 
 export type ArticleBody = SerializedEditorState;
 export type ArticleNode = { type: string; version: number; children?: ArticleNode[]; text?: string; format?: number | string; tag?: string; listType?: string; start?: number; url?: string; src?: string; alt?: string; credit?: string; creditURL?: string; [key: string]: unknown };
@@ -12,7 +13,7 @@ export function emptyBody(): ArticleBody {
 }
 
 export function validateBody(value: unknown): asserts value is ArticleBody {
-  const types = new Set(["root", "paragraph", "heading", "quote", "list", "listitem", "code", "text", "linebreak", "link", "image", "divider", "table", "tablerow", "tablecell"]);
+  const types = new Set(["root", "paragraph", "heading", "quote", "list", "listitem", "code", "text", "linebreak", "link", "image", "video", "embed", "divider", "table", "tablerow", "tablecell"]);
   let count = 0;
   let textSize = 0;
   function check(raw: unknown, parent = "", depth = 0) {
@@ -43,9 +44,14 @@ export function validateBody(value: unknown): asserts value is ArticleBody {
     if (node.type === "image" && !safePreviewUrl(node.src!, true)) throw new Error("Unsafe image URL");
     if (node.type === "image" && node.url !== undefined && (typeof node.url !== "string" || node.url && !safePreviewUrl(node.url))) throw new Error("Unsafe image link URL");
     if (node.type === "link" && !safePreviewUrl(node.url!)) throw new Error("Unsafe link URL");
+    if (node.type === "video" && (typeof node.src !== "string" || !safePreviewUrl(node.src, true))) throw new Error("Unsafe video URL");
+    if (node.type === "video" && node.poster !== undefined && (typeof node.poster !== "string" || !safePreviewUrl(node.poster, true))) throw new Error("Unsafe video poster URL");
+    if (node.type === "video" && node.caption !== undefined && typeof node.caption !== "string") throw new Error("Invalid video caption");
+    if (node.type === "embed" && (!safeEmbed(node) || typeof node.privacy !== "boolean")) throw new Error("Invalid video embed");
+    if (node.type === "embed" && node.title !== undefined && typeof node.title !== "string") throw new Error("Invalid embed title");
     for (const key of ["credit", "creditURL"]) if (node[key] !== undefined && typeof node[key] !== "string") throw new Error("Invalid image credit");
     if (node.creditURL && !safePreviewUrl(node.creditURL)) throw new Error("Unsafe image credit URL");
-    if (!["text", "linebreak", "image", "divider"].includes(node.type)) {
+    if (!["text", "linebreak", "image", "video", "embed", "divider"].includes(node.type)) {
       if (!Array.isArray(node.children)) throw new Error("Article block requires children");
       for (const child of node.children) check(child, node.type, depth + 1);
       if (["table", "tablerow", "tablecell"].includes(node.type) && !node.children.length) throw new Error("Table elements cannot be empty");

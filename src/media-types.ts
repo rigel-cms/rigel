@@ -8,6 +8,10 @@ for (const [category, entries] of Object.entries({
   Archives: { zip: 'application/zip', gz: 'application/gzip', tar: 'application/x-tar', '7z': 'application/x-7z-compressed', rar: 'application/vnd.rar' },
 })) for (const [extension, type] of Object.entries(entries)) MEDIA_TYPES[extension] = { type, category };
 
+export const MEDIA_LIMITS = { image: 10 * 1024 * 1024, video: 64 * 1024 * 1024, other: 10 * 1024 * 1024 } as const;
+export function mediaLimit(category?: string) {
+  return category === "Video" ? MEDIA_LIMITS.video : category === "Images" ? MEDIA_LIMITS.image : MEDIA_LIMITS.other;
+}
 export const MEDIA_CATEGORIES = ['Images', 'Audio', 'Video', 'Documents', 'Spreadsheets', 'Archives', 'Other'];
 export function mediaMetadata(name: string) {
   const extension = name.split('.').pop()?.toLowerCase() ?? '';

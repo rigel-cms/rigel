@@ -1,5 +1,6 @@
 import { validateBody, type ArticleBody, type ArticleNode } from "./article-body";
 import { safePreviewUrl } from "./preview-urls";
+import { embedSrc, embedWatchUrl, safeEmbed, embedProviderLabel } from "./editor/lib/embeds";
 
 const escape = (text: unknown) => String(text ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 
@@ -32,6 +33,19 @@ export function renderArticle(body: ArticleBody): string {
     if (node.type === "tablecell") return Number(node.headerState) ? `<th scope="${Number(node.headerState) & 1 ? "col" : "row"}">${content()}</th>` : `<td>${content()}</td>`;
     if (node.type === "link") return safePreviewUrl(node.url!) ? `<a href="${escape(node.url)}">${content()}</a>` : content();
     if (node.type === "divider") return "<hr>";
+    if (node.type === "video") {
+      if (!safePreviewUrl(node.src!, true)) return "";
+      const poster = typeof node.poster === "string" && safePreviewUrl(node.poster, true) ? ` poster="${escape(node.poster)}"` : "";
+      const caption = node.caption ? `<figcaption>${escape(node.caption)}</figcaption>` : "";
+      return `<figure class="media-video"><video controls preload="metadata" playsinline src="${escape(node.src)}"${poster}></video>${caption}</figure>`;
+    }
+    if (node.type === "embed") {
+      const ref = safeEmbed(node);
+      if (!ref) return "";
+      const title = escape(typeof node.title === "string" && node.title ? node.title : `${embedProviderLabel(ref)} video`);
+      const src = escape(embedSrc(ref, node.privacy !== false));
+      return `<figure class="media-embed"><iframe src="${src}" title="${title}" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></figure>`;
+    }
     if (node.type === "image") {
       if (!safePreviewUrl(node.src!, true)) return "";
       const credit = node.credit ? (node.creditURL && safePreviewUrl(node.creditURL) ? `<a href="${escape(node.creditURL)}">${escape(node.credit)}</a>` : escape(node.credit)) : "";
@@ -81,6 +95,17 @@ export function articleMarkdown(body: ArticleBody): string {
       return (node.url ? `[${image}](<${node.url.replace(/[<>]/g, character => encodeURIComponent(character))}>)` : image) + "\n\n";
     }
     if (node.type === "divider") return "---\n\n";
+    if (node.type === "video") {
+      if (!safePreviewUrl(node.src!, true)) return "";
+      const label = node.caption ? `Video: ${node.caption}` : "Video";
+      return `[${label}](<${node.src!.replace(/[<>]/g, character => encodeURIComponent(character))}>)\n\n`;
+    }
+    if (node.type === "embed") {
+      const ref = safeEmbed(node);
+      if (!ref) return "";
+      const label = typeof node.title === "string" && node.title ? node.title : `${embedProviderLabel(ref)} video`;
+      return `[${escaped(label)}](<${embedWatchUrl(ref)}>)\n\n`;
+    }
     return content();
   }
   return walk(body.root as unknown as ArticleNode).trimEnd() + "\n";

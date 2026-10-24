@@ -7,10 +7,10 @@
   import { filterMedia, modifiedMonth, mediaSize, assetFile, type MediaAsset } from "./media-library";
   import { searchImages, importStockImage, importImageUrl, uploadMedia, safeImageUrl, STOCK_PROVIDERS, type StockResult, type StockSource } from "./images";
 
-  let { value = "", altText = "", triggerLabel = "Insert image", onpick, inline = false, toolbar = false, onopen, onclose }: {
+  let { value = "", altText = "", triggerLabel = "Insert image", onpick, inline = false, toolbar = false, hiddenTrigger = false, onopen, onclose }: {
     value?: string; onpick?: (url: string, alt: string, credit?: StockResult) => void;
     altText?: string; triggerLabel?: string;
-    inline?: boolean; toolbar?: boolean; onopen?: () => void; onclose?: () => void;
+    inline?: boolean; toolbar?: boolean; hiddenTrigger?: boolean; onopen?: () => void; onclose?: () => void;
   } = $props();
   let open = $state(false);
   let tab = $state<"library" | "upload" | "url" | StockSource>("library");
@@ -153,7 +153,7 @@
     {#if error && !open}<p class="error" role="alert">{error}</p>{/if}
   </div>
 {:else if toolbar}
-  <button bind:this={trigger} data-image-trigger type="button" aria-label={triggerLabel} data-tooltip={triggerLabel} onmousedown={event => event.preventDefault()} onclick={launch}><Icon name="image" size={18} /></button>
+  <button bind:this={trigger} data-image-trigger type="button" aria-label={triggerLabel} data-tooltip={triggerLabel} hidden={hiddenTrigger} onmousedown={event => event.preventDefault()} onclick={launch}><Icon name="image" size={18} /></button>
 {:else}
   <div class="image-field">
     {#if value}<img src={value} alt="" class="preview" />{:else}<div class="preview empty">No image</div>{/if}

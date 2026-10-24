@@ -51,7 +51,7 @@ export function rigel(options: Partial<RigelConfig> = {}): AstroIntegration {
                     const metadata = mediaMetadata(filename)!;
                     response.setHeader("Content-Type", metadata.type);
                     response.setHeader("X-Content-Type-Options", "nosniff");
-                    response.setHeader("Content-Disposition", `${metadata.category === "Images" ? "inline" : "attachment"}; filename="${filename}"`);
+                    response.setHeader("Content-Disposition", `${["Images", "Video"].includes(metadata.category) ? "inline" : "attachment"}; filename="${filename}"`);
                     response.end(request.method === "HEAD" ? undefined : await readFile(file));
                   } catch { response.statusCode = 404; response.end("Not found"); }
                 });

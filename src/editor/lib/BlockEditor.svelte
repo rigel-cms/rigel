@@ -7,7 +7,10 @@
   import * as Links from "@lexical/link";
   import * as Tables from "@lexical/table";
   import { ImageNode, type ImageData } from "../blocks/image";
+  import { VideoNode } from "../blocks/video";
+  import { EmbedNode, type EmbedData } from "../blocks/embed";
   import ImagePicker from "./ImagePicker.svelte";
+  import MediaPicker from "./MediaPicker.svelte";
   import type { StockResult } from "./images";
   import { safePreviewUrl } from "../../preview-urls";
   import { blockTypes, blockNodes } from "../blocks";
@@ -59,6 +62,7 @@
   let editorHost: HTMLDivElement;
   let imageJob: { key: string; replace: boolean } | null = null;
   let imageData = $state<ImageData | null>(null);
+  let embedData = $state<EmbedData | null>(null);
   let altOpen = $state(false);
   let altText = $state("");
   let altKey = "";
@@ -106,6 +110,7 @@
       }
       if (node) {
         imageData = node instanceof ImageNode ? { ...node.__image } : null;
+        embedData = node instanceof EmbedNode ? { ...node.__embed } : null;
         activeKey = node.getKey();
         blockType = Rich.$isHeadingNode(node) ? node.getTag() : Lists.$isListNode(node) ? node.getListType() : node.getType();
         activeMarks = L.$isRangeSelection(selection) ? marks.filter(mark => selection.hasFormat(mark.type)).map(mark => mark.type) : [];
@@ -390,6 +395,24 @@
     });
     imageJob = null; editor.focus();
   }
+  function insertMedia(create: () => L.LexicalNode) {
+    editor.update(() => {
+      const node = create(), previous = L.$getNodeByKey(activeKey), paragraph = L.$createParagraphNode();
+      if (previous && L.$isRootNode(previous.getParent())) previous.insertAfter(node);
+      else L.$getRoot().append(node);
+      node.insertAfter(paragraph);
+      paragraph.select();
+      hoverKey = "";
+    });
+    refocus();
+  }
+  function pickVideo(video: { src: string; caption?: string }) {
+    if (!safePreviewUrl(video.src, true)) return;
+    insertMedia(() => new VideoNode(video));
+  }
+  function pickEmbed(embed: EmbedData) {
+    insertMedia(() => new EmbedNode({ ...embed, privacy: embed.privacy !== false }));
+  }
   function closeMenu() { for (const popup of [menu, tableMenu, formatMenu]) if (popup?.matches(":popover-open")) popup.hidePopover(); }
   function openMenu(event?: MouseEvent, popup = menu) {
     if (suppressClick) { suppressClick = false; return; }
@@ -529,14 +552,19 @@
       <button type="button" aria-label="Edit alt text" data-tooltip="Edit alt text" onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
       <button type="button" aria-label={imageData?.url ? "Edit image link" : "Add image link"} data-tooltip={imageData?.url ? "Edit image link" : "Add image link"} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
     {:else}
-    <Select ariaLabel="Block type" data-tooltip={activeBlock?.label ?? "Block type"} icon={activeBlock?.icon ?? "paragraph"} value={imageData ? "" : blockType} options={textBlocks} disabled={!!imageData} onchange={next => { hoverKey = ""; changeBlock(String(next)); }} />
-    {#if !inline || !["image", "divider"].includes(blockType)}<span class="toolbar-separator" aria-hidden="true"></span>{@render formatButtons()}<span class="toolbar-separator" aria-hidden="true"></span>{/if}
+    <Select ariaLabel="Block type" data-tooltip={activeBlock?.label ?? "Block type"} icon={activeBlock?.icon ?? "paragraph"} value={imageData || embedData ? "" : blockType} options={textBlocks} disabled={!!imageData} onchange={next => { hoverKey = ""; changeBlock(String(next)); }} />
+    {#if !inline || !["image", "video", "embed", "divider"].includes(blockType)}<span class="toolbar-separator" aria-hidden="true"></span>{@render formatButtons()}<span class="toolbar-separator" aria-hidden="true"></span>{/if}
     {/if}
-    <ImagePicker toolbar value={image ? imageData?.src ?? "" : ""} altText={image ? imageData?.alt ?? "" : ""} triggerLabel={image ? "Replace image" : "Insert image"} onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: image }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
+    {#if image}
+      <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel="Replace image" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
+    {:else}
+      <MediaPicker triggerLabel={embedData ? "Replace media" : "Insert media"} onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} />
+      <ImagePicker toolbar hiddenTrigger value="" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
+    {/if}
     {#if !image}
     <button type="button" aria-label="Table" data-tooltip="Table" aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>
-    <button type="button" aria-label="Bulleted list" data-tooltip="Bulleted list" aria-pressed={listType === "bullet"} disabled={["image", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
-    <button type="button" aria-label="Numbered list" data-tooltip="Numbered list" aria-pressed={listType === "number"} disabled={["image", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
+    <button type="button" aria-label="Bulleted list" data-tooltip="Bulleted list" aria-pressed={listType === "bullet"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
+    <button type="button" aria-label="Numbered list" data-tooltip="Numbered list" aria-pressed={listType === "number"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
     {#if !inline}
       <button type="button" class="block-history" disabled={!canUndo} onclick={() => editor.dispatchCommand(L.UNDO_COMMAND, undefined)}>Undo</button>
       <button type="button" class="block-history" disabled={!canRedo} onclick={() => editor.dispatchCommand(L.REDO_COMMAND, undefined)}>Redo</button>

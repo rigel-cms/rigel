@@ -7,6 +7,8 @@ import { LinkNode } from "@lexical/link";
 import { CodeNode } from "@lexical/code";
 import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
 import { ImageNode, create as image } from "./image";
+import { VideoNode } from "./video";
+import { EmbedNode } from "./embed";
 import { DividerNode, create as divider } from "./divider";
 import { create as quote } from "./quote";
 import { create as bullet } from "./bulleted-list";
@@ -37,4 +39,4 @@ export const blockTypes: { value: string; label: string; icon: keyof typeof ICON
   { value: "divider", label: "Divider", icon: "minus", create: divider },
   { value: "table", label: "Table", icon: "table", create: table },
 ];
-export const blockNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, CodeNode, ImageNode, DividerNode, TableNode, TableRowNode, TableCellNode];
+export const blockNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, CodeNode, ImageNode, VideoNode, EmbedNode, DividerNode, TableNode, TableRowNode, TableCellNode];

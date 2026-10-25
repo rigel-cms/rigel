@@ -1,7 +1,23 @@
-export function tooltipPosition(rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">, width: number, height: number, viewportWidth: number, viewportHeight: number) {
+export type TooltipSide = "top" | "bottom" | "left" | "right";
+export type TooltipAlign = "start" | "center" | "end";
+
+export function tooltipPosition(rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">, width: number, height: number, viewportWidth: number, viewportHeight: number, position: TooltipSide = "top", align: TooltipAlign = "center") {
+  const sides: TooltipSide[] = ["top", "bottom", "left", "right"];
+  const preferred = sides.includes(position) ? position : "top";
+  const opposite: Record<TooltipSide, TooltipSide> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+  const candidates = [preferred, opposite[preferred], ...sides.filter(side => side !== preferred && side !== opposite[preferred])];
+  const space = { top: rect.top - 8, bottom: viewportHeight - rect.bottom - 8, left: rect.left - 8, right: viewportWidth - rect.right - 8 };
+  const needed = { top: height + 8, bottom: height + 8, left: width + 8, right: width + 8 };
+  const side = candidates.find(side => space[side] >= needed[side]) ?? candidates.reduce((best, side) => space[side] / needed[side] > space[best] / needed[best] ? side : best);
+  const vertical = side === "top" || side === "bottom";
+  const start = vertical ? rect.left : rect.top, end = vertical ? rect.right : rect.bottom, size = vertical ? width : height;
+  const cross = align === "start" ? start : align === "end" ? end - size : (start + end - size) / 2;
+  const left = vertical ? cross : side === "left" ? rect.left - width - 8 : rect.right + 8;
+  const top = !vertical ? cross : side === "top" ? rect.top - height - 8 : rect.bottom + 8;
   return {
-    left: Math.max(8, Math.min((rect.left + rect.right - width) / 2, viewportWidth - width - 8)),
-    top: Math.max(8, Math.min(rect.top >= height + 14 ? rect.top - height - 6 : rect.bottom + 6, viewportHeight - height - 8)),
+    left: Math.max(8, Math.min(left, viewportWidth - width - 8)),
+    top: Math.max(8, Math.min(top, viewportHeight - height - 8)),
+    side,
   };
 }
 
@@ -41,7 +57,10 @@ function createTooltips() {
     if (!anchor || !tip || !view) return;
     if (!anchor.isConnected || !anchor.checkVisibility() || !anchor.dataset.tooltip) { hide(); return; }
     if (tip.textContent !== anchor.dataset.tooltip) tip.textContent = anchor.dataset.tooltip;
-    const position = tooltipPosition(anchor.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, view.innerWidth, view.innerHeight);
+    const preferred = anchor.closest<HTMLElement>("[data-tooltip-position]")?.dataset.tooltipPosition as TooltipSide | undefined;
+    const align = anchor.closest<HTMLElement>("[data-tooltip-align]")?.dataset.tooltipAlign as TooltipAlign | undefined;
+    const position = tooltipPosition(anchor.getBoundingClientRect(), tip.offsetWidth, tip.offsetHeight, view.innerWidth, view.innerHeight, preferred ?? (anchor.closest(".body-toolbar, .visual-toolbar") ? "bottom" : "top"), align);
+    tip.dataset.side = position.side;
     tip.style.left = `${position.left}px`;
     tip.style.top = `${position.top}px`;
     frame = view.requestAnimationFrame(update);

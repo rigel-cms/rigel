@@ -1,7 +1,7 @@
 .rigel, .rigel *, .rigel *::before, .rigel *::after { box-sizing: border-box; }
-.rigel .rigel-tooltip { position: fixed; pointer-events: auto; inset: auto; margin: 0; padding: 0.375rem 0.625rem; max-width: min(20rem, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; border: 1px solid var(--border-control); border-radius: var(--radius); background: var(--text); color: var(--panel); box-shadow: var(--shadow-md); font: 500 0.75rem/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; overflow-wrap: anywhere; text-align: start; white-space: normal; }
+.rigel .rigel-tooltip { position: fixed; pointer-events: auto; inset: auto; margin: 0; padding: 4px 10px; max-width: min(17.5rem, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; border: 0; border-radius: 0; background: var(--text); color: var(--panel); box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); font: 500 11px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; overflow-wrap: anywhere; text-align: start; white-space: normal; }
 .rigel .rigel-tooltip::backdrop { background: transparent; pointer-events: none; }
-@media (forced-colors: active) { .rigel .rigel-tooltip { background: Canvas; color: CanvasText; border-color: CanvasText; } }
+@media (forced-colors: active) { .rigel .rigel-tooltip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; } }
 .rigel {
   --rigel-50: #EFFBFF;
   --rigel-100: #D9F4FF;

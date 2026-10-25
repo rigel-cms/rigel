@@ -597,7 +597,7 @@
     {#if image}
       <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel="Replace image" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {:else}
-      <button type="button" data-media-trigger aria-label="Insert media" data-tooltip="Insert media" aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={() => mediaPicker.toggleMenu()}><Icon name="image" size={18} /></button>
+      <button type="button" data-media-trigger aria-label="Insert media" data-tooltip="Insert media" aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={event => mediaPicker.toggleMenu(event.currentTarget)}><Icon name="image" size={18} /></button>
       <ImagePicker toolbar hiddenTrigger value="" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {/if}
     {#if !image}

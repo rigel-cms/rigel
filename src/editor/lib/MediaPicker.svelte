@@ -23,10 +23,17 @@
   let video = $state<VideoData | undefined>();
   let embed = $state<EmbedData | undefined>();
 
-  export function toggleMenu() {
-    if (!menu) return;
+  export function toggleMenu(anchor = trigger) {
+    if (!menu || !anchor) return;
     if (menu.matches(":popover-open")) menu.hidePopover();
-    else menu.showPopover();
+    else {
+      trigger = anchor;
+      menu.showPopover();
+      const rect = anchor.getBoundingClientRect(), bounds = menu.getBoundingClientRect();
+      const view = anchor.ownerDocument.defaultView!;
+      menu.style.left = `${Math.max(8, Math.min(rect.left, view.innerWidth - bounds.width - 8))}px`;
+      menu.style.top = `${rect.bottom + 4 + bounds.height <= view.innerHeight - 8 ? rect.bottom + 4 : Math.max(8, rect.top - bounds.height - 4)}px`;
+    }
   }
   export async function pick(choice: "image" | "video" | "youtube" | "vimeo") {
     if (menu?.matches(":popover-open")) menu.hidePopover();

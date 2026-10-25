@@ -440,7 +440,7 @@
     mediaJob = null;
     refocus();
   }
-  function pickVideo(video: { src: string; caption?: string }) {
+  function pickVideo(video: VideoData) {
     if (!safePreviewUrl(video.src, true)) return;
     insertMedia(() => new VideoNode(video));
   }
@@ -614,7 +614,7 @@
   </div>
 {/snippet}
 <div class="block-editor" bind:this={editorHost}>
-  <MediaPicker bind:this={mediaPicker} hiddenTrigger onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} onclose={() => { mediaJob = null; refocus(); }} />
+  <MediaPicker bind:this={mediaPicker} hiddenTrigger onopen={() => editor.blur()} onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} onclose={() => { mediaJob = null; refocus(); }} />
   {#if !inline}<div class="markdown-heading"><div class="field-label">Body</div><div class="markdown-modes"><button type="button" aria-pressed={markdownView} onclick={() => { markdownView = !markdownView; linkOpen = false; closeMenu(); dismissSlash(); }}>View as Markdown</button></div></div>{/if}
   {@render toolbar(inline && !!imageData)}
   {#if !inline}{@render toolbar(true)}{/if}

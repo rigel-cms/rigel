@@ -37,7 +37,7 @@ export function renderArticle(body: ArticleBody, options: { preview?: boolean } 
       if (!safePreviewUrl(node.src!, true)) return "";
       const poster = typeof node.poster === "string" && safePreviewUrl(node.poster, true) ? ` poster="${escape(node.poster)}"` : "";
       const caption = node.caption ? `<figcaption>${escape(node.caption)}</figcaption>` : "";
-      return `<figure class="media-video"><video controls preload="metadata" playsinline src="${escape(node.src)}"${poster}></video>${caption}</figure>`;
+      return `<figure class="media-video"><video${node.controls !== false ? " controls" : ""}${node.muted === true ? " muted" : ""} preload="metadata" playsinline src="${escape(node.src)}"${poster}></video>${caption}</figure>`;
     }
     if (node.type === "embed") {
       const ref = safeEmbed(node);

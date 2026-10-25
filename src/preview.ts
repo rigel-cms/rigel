@@ -162,7 +162,7 @@ export function patchPreview(doc: Document, values: Record<string, unknown>, bod
     const fragment = DOMPurify.sanitize(blocks ? (result.value ? renderArticle(result.value as import("./article-body").ArticleBody, { preview: true }) : "") : markdown.render(source), {
       RETURN_DOM_FRAGMENT: true,
       ALLOWED_TAGS: ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "aside", "figure", "figcaption", "pre", "code", "strong", "em", "s", "u", "mark", "sub", "sup", "a", "img", "br", "hr", "table", "thead", "tbody", "tr", "th", "td", ...(blocks ? ["video"] : [])],
-      ALLOWED_ATTR: ["href", "src", "alt", "title", "start", "scope", ...(blocks ? ["controls", "preload", "playsinline", "poster", "class"] : [])],
+      ALLOWED_ATTR: ["href", "src", "alt", "title", "start", "scope", ...(blocks ? ["controls", "muted", "preload", "playsinline", "poster", "class"] : [])],
     });
     if (blocks) for (const marker of fragment.querySelectorAll<HTMLElement>("[data-rigel-embed]")) {
       marker.replaceWith(createEmbedPreview({ provider: marker.dataset.rigelEmbed, id: marker.dataset.rigelVideoId, title: marker.dataset.rigelVideoTitle }, doc));

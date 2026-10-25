@@ -167,6 +167,21 @@ test("video and embed blocks survive Lexical, public HTML and Markdown", () => {
   expect(articleMarkdown(state)).toContain("[Launch tour](<https://www.youtube.com/watch?v=dQw4w9WgXcQ>)");
 });
 
+test("video playback settings survive Lexical and render as boolean attributes", () => {
+  const editor = createEditor({ nodes: blockNodes, onError: error => { throw error; } });
+  for (const muted of [false, true]) for (const controls of [false, true]) {
+    const video = { type: "video", version: 1, src: "/rigel-media/abc.mp4", muted, controls };
+    const state = body([video]);
+    expect(editor.parseEditorState(JSON.stringify(state)).toJSON().root.children[0]).toMatchObject(video);
+    const html = renderArticle(state);
+    expect(html.includes(" muted")).toBe(muted);
+    expect(html.includes(" controls")).toBe(controls);
+  }
+  for (const key of ["muted", "controls"]) for (const value of ["true", 0, null]) {
+    expect(() => validateBody(body([{ type: "video", version: 1, src: "/video.mp4", [key]: value }]))).toThrow("Invalid video playback setting");
+  }
+});
+
 test("preview embeds retain validated metadata without executable players", () => {
   const state = body([{ type: "embed", version: 1, provider: "youtube", id: "dQw4w9WgXcQ", title: '<img onerror="alert(1)">', privacy: true }]);
   const html = renderArticle(state, { preview: true });

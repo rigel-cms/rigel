@@ -47,6 +47,7 @@ export function validateBody(value: unknown): asserts value is ArticleBody {
     if (node.type === "video" && (typeof node.src !== "string" || !safePreviewUrl(node.src, true))) throw new Error("Unsafe video URL");
     if (node.type === "video" && node.poster !== undefined && (typeof node.poster !== "string" || !safePreviewUrl(node.poster, true))) throw new Error("Unsafe video poster URL");
     if (node.type === "video" && node.caption !== undefined && typeof node.caption !== "string") throw new Error("Invalid video caption");
+    if (node.type === "video") for (const key of ["muted", "controls"]) if (node[key] !== undefined && typeof node[key] !== "boolean") throw new Error("Invalid video playback setting");
     if (node.type === "embed" && (!safeEmbed(node) || typeof node.privacy !== "boolean")) throw new Error("Invalid video embed");
     if (node.type === "embed" && node.title !== undefined && typeof node.title !== "string") throw new Error("Invalid embed title");
     for (const key of ["credit", "creditURL"]) if (node[key] !== undefined && typeof node[key] !== "string") throw new Error("Invalid image credit");

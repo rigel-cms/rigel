@@ -30,8 +30,8 @@ export function validMediaBytes(bytes: Buffer, extension: string): boolean {
   if (extension === '7z') return starts('377abcaf271c');
   if (extension === 'rar') return starts('526172211a07');
   if (extension === 'tar') return bytes.length >= 512 && text(257, 262) === 'ustar';
-  if (extension === 'csv') {
-    try { const value = new TextDecoder('utf-8', {fatal: true}).decode(bytes); return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f<>]/.test(value) && /[,;\t]/.test(value); } catch { return false; }
+  if (extension === 'csv' || extension === 'txt') {
+    try { const value = new TextDecoder('utf-8', {fatal: true}).decode(bytes); return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value) && (extension === 'txt' || (!/[<>]/.test(value) && /[,;\t]/.test(value))); } catch { return false; }
   }
   return false;
 }

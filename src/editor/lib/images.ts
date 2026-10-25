@@ -1,5 +1,5 @@
 import { getSettings, setSettings } from "./settings";
-import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName } from "../../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, storedMediaFile } from "../../media-types";
 import config from "virtual:rigel-config";
 export function getKeys(): StockKeys { return getSettings().apiKeys; }
 export function setKeys(keys: StockKeys) { setSettings({ apiKeys: keys }); }
@@ -20,6 +20,9 @@ export interface StockResult {
   thumb: string;
   credit: string;
   creditURL?: string;
+  title?: string;
+  description?: string;
+  alt?: string;
 }
 
 export function picsum(query: string): StockResult[] {
@@ -65,6 +68,9 @@ export async function pexels(query: string, key: string): Promise<StockResult[]>
     thumb: p.src?.medium,
     credit: `${p.photographer ?? "?"} / Pexels`,
     creditURL: p.url,
+    title: typeof p.alt === "string" ? p.alt : "",
+    description: typeof p.alt === "string" ? p.alt : "",
+    alt: typeof p.alt === "string" ? p.alt : "",
   }));
 }
 
@@ -81,6 +87,9 @@ export async function pixabay(query: string, key: string): Promise<StockResult[]
     thumb: p.webformatURL,
     credit: `${p.user ?? "?"} / Pixabay`,
     creditURL: p.pageURL,
+    title: typeof p.tags === "string" ? p.tags : "",
+    description: typeof p.tags === "string" ? p.tags : "",
+    alt: typeof p.tags === "string" ? p.tags : "",
   }));
 }
 
@@ -180,7 +189,7 @@ export async function uploadMedia(file: File): Promise<string> {
   const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
   if (!response.ok) throw new Error(`Upload failed (${response.status}): ${await response.text()}`);
   const result = await response.json();
-  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !/\/[a-f0-9]{64}\.[a-z0-9]+$/.test(result.url) || !mediaMetadata(result.url)) throw new Error("Invalid uploaded asset URL");
+  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !mediaMetadata(result.url)) throw new Error("Invalid uploaded asset URL");
   return result.url;
 }
 
@@ -191,7 +200,7 @@ export async function uploadImage(blob: Blob): Promise<string> {
   if (saved.status === 404) throw new Error("Photo import requires the local dev server");
   if (!saved.ok) throw new Error(`Photo import failed (${saved.status})`);
   const result = await saved.json();
-  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !/\/[a-f0-9]{64}\.(jpg|png|webp)$/.test(result.url)) {
+  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !/\.(jpg|png|webp)$/.test(result.url)) {
     throw new Error("Invalid imported photo URL");
   }
   return result.url;

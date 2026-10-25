@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { listMedia, loadMediaSidecar, safeDisplayName, validateMetaUpdate, writeMediaSidecar } from "./media-files";
+import { listMedia, loadMediaSidecar, safeDisplayName, validateMetaUpdate, writeMediaSidecar, updateMediaSidecar } from "./media-files";
 
 let dir: string;
 beforeEach(async () => { dir = await mkdtemp(path.resolve("_temp", "media-sidecar-")); });
@@ -78,6 +78,15 @@ test("writeMediaSidecar writes atomically with no temp residue", async () => {
   expect(JSON.parse(await readFile(path.join(dir, ".rigel-media.json"), "utf8"))).toEqual({ "/rigel-media/a.png": { name: "A", author: "Ada" } });
   const files = await readdir(dir);
   expect(files.filter(f => f.includes(".tmp"))).toEqual([]);
+});
+
+test("queued metadata updates recover from failed writes and merge concurrent edits", async () => {
+  await expect(updateMediaSidecar(path.join(dir, "missing"), "/file.pdf", {})).rejects.toThrow();
+  await Promise.all([
+    updateMediaSidecar(dir, "/file.pdf", { title: "Document title" }, { name: "Document.pdf" }),
+    updateMediaSidecar(dir, "/file.pdf", { description: "Document description" }, { name: "Do not replace the name.pdf" }),
+  ]);
+  expect(await loadMediaSidecar(dir)).toEqual({ "/file.pdf": { name: "Document.pdf", title: "Document title", description: "Document description" } });
 });
 
 test("listMedia merges sidecar display name/fields, skips the dotfile and preserves real file", async () => {

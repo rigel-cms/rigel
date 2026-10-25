@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mediaMetadata, safeMediaName } from "../media-types";
 import { fileURLToPath } from "node:url";
@@ -66,6 +66,41 @@ export async function writeMediaSidecar(directory: string, record: Record<string
   const tmp = path.join(directory, `.${SIDECAR}.${process.pid}.${Date.now()}.tmp`);
   await writeFile(tmp, JSON.stringify(record, null, 2), { flag: "wx" });
   await rename(tmp, target);
+}
+
+let pendingSidecarWrite: Promise<unknown> = Promise.resolve();
+function queueMediaWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const update = pendingSidecarWrite.catch(() => {}).then(operation);
+  pendingSidecarWrite = update;
+  return update;
+}
+export function updateMediaSidecar(directory: string, url: string, patch: MediaMeta, defaults: MediaMeta = {}, file?: string): Promise<void> {
+  return queueMediaWrite(async () => {
+    if (file) {
+      const info = await lstat(file);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error("Unsafe media file");
+    }
+    const record = await loadMediaSidecar(directory);
+    record[url] = { ...defaults, ...(record[url] ?? {}), ...patch };
+    await writeMediaSidecar(directory, record);
+  });
+}
+export function deleteMediaFile(publicDir: string, folder: string | undefined, url: string): Promise<boolean> {
+  return queueMediaWrite(async () => {
+    if (!(await listMedia(publicDir, folder)).some(asset => asset.url === url)) return false;
+    const relative = decodeURIComponent(url.slice(1));
+    const parent = await mediaDirectory(publicDir, path.posix.dirname(relative));
+    const file = path.join(parent, path.posix.basename(relative));
+    const info = await lstat(file);
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error("Unsafe media file");
+    const directory = await mediaDirectory(publicDir, folder);
+    const record = await loadMediaSidecar(directory), next = { ...record };
+    delete next[url];
+    await writeMediaSidecar(directory, next);
+    try { await unlink(file); }
+    catch (error) { await writeMediaSidecar(directory, record); throw error; }
+    return true;
+  });
 }
 
 export function validateMetaUpdate(

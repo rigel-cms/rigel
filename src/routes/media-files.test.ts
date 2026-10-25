@@ -6,14 +6,14 @@ import { listMedia, mediaDirectory, mediaFolder } from "./media-files";
 import { safeImageUrl } from "../editor/lib/images";
 vi.mock("virtual:rigel-config", () => ({ default: {} }));
 
-test("lists existing nested images, omits symlinks and non-images, validates folder boundaries", async () => {
+test("lists supported nested media, omits symlinks and unsupported files, validates folder boundaries", async () => {
   await mkdir("_temp", {recursive: true});
   const root = await mkdtemp(path.resolve("_temp/media-test-"));
   const publicDir = pathToFileURL(root + "/").href;
   try {
     await mkdir(path.join(root, "assets/nested"), {recursive: true});
     await writeFile(path.join(root, "assets/nested/existing image.png"), "fixture");
-    await writeFile(path.join(root, "assets/private.txt"), "private");
+    await writeFile(path.join(root, "assets/private.bin"), "private");
     await writeFile(path.join(root, "assets/script.svg"), "<svg/>");
     await symlink(path.join(root, "assets/nested/existing image.png"), path.join(root, "assets/link.png"));
     await symlink(path.join(root, "assets"), path.join(root, "escape"));

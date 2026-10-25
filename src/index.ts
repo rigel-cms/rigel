@@ -2,7 +2,7 @@ import type { AstroIntegration } from "astro";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { lstat, readFile } from "node:fs/promises";
-import { mediaMetadata, safeMediaName } from "./media-types";
+import { mediaHeaders, safeMediaName, storedMediaFile } from "./media-types";
 import { mediaDirectory } from "./routes/media-files";
 import { parseConfig, type RigelConfig } from "./config";
 import { rigelManifestPlugin } from "./vite/manifest-plugin";
@@ -48,10 +48,7 @@ export function rigel(options: Partial<RigelConfig> = {}): AstroIntegration {
                     }
                     const file = path.join(directory, filename), info = await lstat(file);
                     if (!info.isFile() || info.isSymbolicLink()) throw new Error();
-                    const metadata = mediaMetadata(filename)!;
-                    response.setHeader("Content-Type", metadata.type);
-                    response.setHeader("X-Content-Type-Options", "nosniff");
-                    response.setHeader("Content-Disposition", `${["Images", "Video"].includes(metadata.category) ? "inline" : "attachment"}; filename="${filename}"`);
+                    for (const [name, value] of Object.entries(mediaHeaders(filename, new URL(request.url ?? "/", "http://localhost").searchParams.get("preview") === "1"))) response.setHeader(name, value);
                     response.end(request.method === "HEAD" ? undefined : await readFile(file));
                   } catch { response.statusCode = 404; response.end("Not found"); }
                 });
@@ -60,7 +57,7 @@ export function rigel(options: Partial<RigelConfig> = {}): AstroIntegration {
             ...(cfg.backend === "local" && command === "dev" ? {
               server: { watch: { ignored: [(file: string) =>
                 path.dirname(file) === path.resolve(fileURLToPath(config.publicDir), cfg.mediaDir ?? "rigel-media")
-                && /^[a-f0-9]{64}\.[a-z0-9]+$/.test(path.basename(file))
+                && storedMediaFile.test(path.basename(file))
               ] } },
             } : {}),
           },

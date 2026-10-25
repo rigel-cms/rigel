@@ -20,6 +20,15 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+test.each(["a".repeat(64), "b7d9894c-2c3d-4d82-a6aa-52f75ee551ea"])("upload and imports accept stored filename format %s", async id => {
+  const url = `/rigel-media/${id}.png`;
+  fetchMock.mockResolvedValueOnce(Response.json({ url }));
+  await expect(uploadMedia(new File(["image"], "Portrait.png", { type: "image/png" }))).resolves.toBe(url);
+  fetchMock.mockResolvedValueOnce(new Response("image", { headers: { "Content-Type": "image/png" } }));
+  fetchMock.mockResolvedValueOnce(Response.json({ url }));
+  await expect(importImageUrl("https://example.com/photo.png")).resolves.toBe(url);
+});
+
 test("upload and image imports use the configured byte limit", async () => {
   config.maxFileSize = 1024;
   await expect(uploadMedia(new File([new Uint8Array(1025)], "clip.mp4", { type: "video/mp4" }))).rejects.toThrow(/up to/);
@@ -46,6 +55,16 @@ test("Pixabay keys persist and authenticate photo searches", async () => {
   expect(url.searchParams.get("q")).toBe("stars & sky");
   expect(url.searchParams.get("safesearch")).toBe("true");
   expect(results[0]).toMatchObject({ source: "pixabay", url: "https://pixabay.com/get/photo.jpg", credit: "Test photographer / Pixabay" });
+});
+
+test.each([
+  ["pexels", { photos: [{ src: { large: "https://images.pexels.com/photo.jpg" }, alt: "Mountain reflected in a lake" }] }, "Mountain reflected in a lake"],
+  ["pixabay", { hits: [{ largeImageURL: "https://cdn.pixabay.com/photo.jpg", tags: "mountain, lake, reflection" }] }, "mountain, lake, reflection"],
+] as const)("%s exposes API image metadata for editable import defaults", async (source, body, text) => {
+  setKeys({ [source]: "test-key" });
+  fetchMock.mockResolvedValueOnce(Response.json(body));
+  const [image] = await searchImages(source, "lake");
+  expect(image).toMatchObject({ title: text, description: text, alt: text });
 });
 
 test.each([

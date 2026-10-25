@@ -1,5 +1,15 @@
 import { expect, test } from "vitest";
-import { filterMedia, modifiedMonth, mediaSize } from "./media-library";
+import { filterMedia, modifiedMonth, mediaSize, mediaIcon } from "./media-library";
+import { ICONS } from "./icons";
+
+test("file icons follow the stored extension and supported category", () => {
+  const expected = { pdf: "filePdf", doc: "fileDoc", docx: "fileDoc", txt: "fileTxt", rtf: "fileText", odt: "fileText", ppt: "filePpt", pptx: "filePpt", csv: "fileXls", xls: "fileXls", xlsx: "fileXls", ods: "fileXls", zip: "fileZip", gz: "fileZip", tar: "fileZip", rar: "fileZip", "7z": "fileZip", mp3: "fileAudio", wav: "fileAudio", ogg: "fileAudio", m4a: "fileAudio", mp4: "fileVideo", webm: "fileVideo", mov: "fileVideo" } as const;
+  for (const [extension, icon] of Object.entries(expected)) {
+    expect(mediaIcon(`stored.${extension.toUpperCase()}`)).toBe(icon);
+    expect(ICONS[mediaIcon(`stored.${extension}`)].d.length).toBeGreaterThan(100);
+  }
+  expect(mediaIcon("unknown.bin")).toBe("file");
+});
 
 test("categories combine with search and modified dates", () => {
   const assets = ["photo.jpg", "song.mp3", "movie.mp4", "paper.pdf", "sheet.xlsx", "backup.zip"].map(name => ({name, url: "/"+name, modified: "2026-01-01T00:00:00Z"}));

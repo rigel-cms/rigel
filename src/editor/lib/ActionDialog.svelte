@@ -25,7 +25,7 @@
   }
 </script>
 
-<dialog bind:this={dialog} class="rigel rigel-modal-backdrop action-dialog" aria-labelledby="action-title" aria-describedby="action-description" oncancel={(event) => { event.preventDefault(); if (!busy) onclose(); }}>
+<dialog bind:this={dialog} class="rigel rigel-modal-backdrop action-dialog" aria-labelledby="action-title" aria-describedby="action-description" oncancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!busy) onclose(); }} onkeydown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onclose(); } }}>
   <form class="rigel-modal" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
     <div class="action-head"><h2 id="action-title">{title}</h2><button type="button" class="icon-btn" aria-label="Cancel" disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
     <p id="action-description">{description}</p>
@@ -45,6 +45,7 @@
   .action-dialog::backdrop { background: transparent; }
   .action-head, .action-actions { display: flex; align-items: center; gap: 0.75rem; }
   .action-head { justify-content: space-between; }
+  .action-head h2 { min-width: 0; overflow-wrap: anywhere; }
   .action-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 1.5rem; }
   .action-actions button[type=button] { padding: 0.4375rem 0.75rem; border: 1px solid var(--border-control); border-radius: 0; background: var(--panel); color: var(--text); font: inherit; font-size: 0.8125rem; cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: wait; }

@@ -1,15 +1,16 @@
 import type { APIRoute } from "astro";
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { mediaDirectory, listMedia, loadMediaSidecar, writeMediaSidecar, validateMetaUpdate } from "./media-files";
-import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName } from "../media-types";
+import { fileURLToPath } from "node:url";
+import { mediaDirectory, listMedia, updateMediaSidecar, deleteMediaFile, validateMetaUpdate } from "./media-files";
+import { DEFAULT_MAX_FILE_SIZE, mediaHeaders, mediaMetadata, safeMediaName } from "../media-types";
 import { validMediaBytes } from "./media-validation";
 import config from "virtual:rigel-config";
 
 export const prerender = false;
 
-export const GET: APIRoute = async ({ params }) => {
+export const GET: APIRoute = async ({ params, request }) => {
   const filename = params.filename ?? "";
   if (import.meta.env.PROD || !safeMediaName(filename) || filename.startsWith(".") || /[/\\\u0000]/.test(filename)) {
     return new Response("Not found", { status: 404 });
@@ -18,12 +19,7 @@ export const GET: APIRoute = async ({ params }) => {
     const file = path.join(await mediaDirectory(config.publicDir!, config.mediaDir), filename);
     if (!(await lstat(file)).isFile() || (await lstat(file)).isSymbolicLink()) throw new Error();
     const bytes = await readFile(file);
-    const metadata = mediaMetadata(filename)!;
-    return new Response(new Uint8Array(bytes), { headers: {
-      "Content-Type": metadata.type,
-      "Content-Disposition": `${["Images", "Video"].includes(metadata.category) ? "inline" : "attachment"}; filename="${filename}"`,
-      "X-Content-Type-Options": "nosniff",
-    } });
+    return new Response(new Uint8Array(bytes), { headers: mediaHeaders(filename, new URL(request.url).searchParams.get("preview") === "1") });
   } catch {
     return new Response("Not found", { status: 404 });
   }
@@ -73,24 +69,16 @@ export const POST: APIRoute = async ({ request }) => {
   if (!bytes.length) return new Response("Empty image body", { status: 400 });
   const extension = metadata.extension === "jpeg" ? "jpg" : metadata.extension;
   if (!validMediaBytes(bytes, extension)) return new Response("Media type does not match its bytes", { status: 415 });
-  const filename = `${createHash("sha256").update(bytes).digest("hex")}.${extension}`;
+  const filename = `${randomUUID()}.${extension}`;
   let url = "";
   try {
     const directory = await mediaDirectory(config.publicDir!, config.mediaDir, true);
     const existing = await lstat(path.join(directory, filename)).catch(error => { if (error.code !== "ENOENT") throw error; });
     if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw new Error();
-    try {
-      await writeFile(path.join(directory, filename), bytes, { flag: "wx" });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
+    await writeFile(path.join(directory, filename), bytes, { flag: "wx" });
     url = `/${(config.mediaDir ?? "rigel-media").split("/").map(encodeURIComponent).join("/")}/${filename}`;
     const author = (request.headers.get("X-Rigel-Author") ?? "").trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80);
-    if (author) {
-      const record = await loadMediaSidecar(directory);
-      record[url] = { ...(record[url] ?? {}), author };
-      await writeMediaSidecar(directory, record);
-    }
+    await updateMediaSidecar(directory, url, author ? { author } : {}, { name: (supplied ?? filename).slice(0, 120) });
   } catch {
     return new Response("Could not save image", { status: 500 });
   }
@@ -112,13 +100,30 @@ export const POST: APIRoute = async ({ request }) => {
     const assets = await listMedia(config.publicDir!, config.mediaDir);
     const valid = validateMetaUpdate(body, new Set(assets.map(asset => asset.url)));
     if (!valid.ok) return new Response(valid.error, { status: 400 });
-    const record = await loadMediaSidecar(directory);
     const patch: { name?: string; title?: string; description?: string; alt?: string } = {};
     if (valid.value.name !== undefined) patch.name = valid.value.name;
     if (valid.value.title !== undefined) patch.title = valid.value.title;
     if (valid.value.description !== undefined) patch.description = valid.value.description;
     if (valid.value.alt !== undefined) patch.alt = valid.value.alt;
-    record[valid.value.url] = { ...(record[valid.value.url] ?? {}), ...patch };
-    await writeMediaSidecar(directory, record);
+    try {
+      const file = path.join(fileURLToPath(config.publicDir!), ...valid.value.url.slice(1).split("/").map(decodeURIComponent));
+      await updateMediaSidecar(directory, valid.value.url, patch, {}, file);
+    } catch (error) {
+      return new Response("Could not save metadata", { status: (error as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500 });
+    }
     return Response.json((await listMedia(config.publicDir!, config.mediaDir)).find(asset => asset.url === valid.value.url) ?? { url: valid.value.url });
   };
+
+export const DELETE: APIRoute = async ({ request }) => {
+  if (import.meta.env.PROD) return new Response("Local backend is dev-only", { status: 404 });
+  if (request.headers.get("Origin") !== new URL(request.url).origin) return new Response("Same-origin request required", { status: 403 });
+  let body: unknown;
+  try { body = await request.json(); } catch { return new Response("Invalid JSON body", { status: 400 }); }
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1 || !("url" in body) || typeof body.url !== "string") return new Response("A media URL is required", { status: 400 });
+  try {
+    if (!await deleteMediaFile(config.publicDir!, config.mediaDir, body.url)) return new Response("File not found", { status: 404 });
+    return new Response(null, { status: 204 });
+  } catch {
+    return new Response("Could not delete file. Try again.", { status: 500 });
+  }
+};

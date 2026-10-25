@@ -1,4 +1,14 @@
 import { mediaMetadata } from "../../media-types";
+import type { ICONS } from "./icons";
+
+const FILE_ICONS: Record<string, keyof typeof ICONS> = {
+  pdf: "filePdf", txt: "fileTxt", doc: "fileDoc", docx: "fileDoc", ppt: "filePpt", pptx: "filePpt",
+  Documents: "fileText", Spreadsheets: "fileXls", Archives: "fileZip", Audio: "fileAudio", Video: "fileVideo",
+};
+export function mediaIcon(file: string): keyof typeof ICONS {
+  const extension = file.split(".").pop()?.toLowerCase() ?? "";
+  return FILE_ICONS[extension] ?? FILE_ICONS[mediaMetadata(file)?.category ?? ""] ?? "file";
+}
 
 export interface MediaAsset {
   url: string;

@@ -860,8 +860,10 @@
 .rigel .media-table :is(th, td) { padding: 0.625rem; overflow-wrap: anywhere; }
 .rigel .media-table th:first-child { width: 48%; }
 .rigel .media-file { display: flex; align-items: center; gap: 0.625rem; text-align: left; width: 100%; }
-.rigel .media-file img { width: 48px; height: 40px; object-fit: cover; flex-shrink: 0; }
+.rigel .media-file .media-thumbnail { display: flex; align-items: center; justify-content: center; width: 48px; height: 40px; flex: 0 0 auto; overflow: hidden; background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border-subtle); }
+.rigel .media-thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .rigel .media-file-icon { display: flex; min-height: 120px; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.rigel .thumb .media-file-icon { height: 100%; min-height: 0; background: var(--surface-raised); }
 .rigel .media-file span { min-width: 0; overflow-wrap: anywhere; }
 .rigel .media-file[aria-pressed=true] { color: var(--on-accent-soft); background: var(--accent-soft); }
 .rigel :is(.image-picker, .media-library) .thumb[aria-pressed=true] { border-color: var(--accent); }
@@ -871,13 +873,16 @@
   .rigel .media-table th:first-child { width: 40%; }
   .rigel .media-file { flex-direction: column; align-items: flex-start; }
 }
+.rigel .media-feedback { position: absolute; right: 0; bottom: calc(100% + 0.25rem); max-width: 100%; margin: 0; color: var(--success); font-size: 0.8125rem; text-align: right; }
 .rigel .media-actions {
+  position: relative;
   justify-content: flex-end; gap: 0.75rem;
   margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border);
 }
 .rigel .media-selection { margin-top: 1rem; }
 .rigel .media-preview > :is(img, video) { display: block; max-width: 100%; max-height: 300px; margin: 0 auto 1rem; }
 .rigel .media-preview > video { width: 100%; object-fit: contain; background: #000; }
+.rigel .media-preview > iframe { display: block; width: 100%; height: min(60dvh, 36rem); border: 1px solid var(--border-subtle); }
 .rigel .media-button-actions { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; flex-shrink: 0; }
 .rigel .media-actions.with-media-path { flex-wrap: wrap; }
 .rigel .media-download { flex-shrink: 0; white-space: nowrap; text-decoration: none; }
@@ -887,6 +892,7 @@
 .rigel .media-meta { border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; }
 .rigel .media-meta label { margin-top: 0.75rem; }
 .rigel .media-details { min-width: 0; }
+.rigel .media-details .hint { overflow-wrap: anywhere; }
 .rigel .image-picker:has(.media-editing) { width: min(1040px, 100%); }
 .rigel .media-selection.media-editing { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.5rem; }
 .rigel .media-editing .media-preview { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -897,6 +903,8 @@
 @media (max-width: 700px) {
   .rigel .media-selection.media-editing { grid-template-columns: minmax(0, 1fr); }
   .rigel .media-editing .media-preview > :is(img, video) { max-height: 35dvh; }
+  .rigel .media-editing .media-preview > iframe { height: 35dvh; }
+  .rigel .with-media-path .media-path { flex-basis: 100%; }
   .rigel .with-media-path .media-button-actions { flex-basis: 100%; justify-content: flex-end; }
 }
 .rigel .image-picker input[type=file] { width: 100%; color: var(--text); }

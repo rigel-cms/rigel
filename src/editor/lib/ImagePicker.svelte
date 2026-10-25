@@ -215,7 +215,7 @@
   </div>
   {#if view === "grid"}<div class="grid">
     {#each filtered as asset}
-      <figure><button type="button" class="thumb" aria-label={asset.name} data-tooltip={asset.name} aria-pressed={librarySelection === asset.url} onclick={() => selectAsset(asset)}>{#if asset.type?.startsWith("image/")}<img src={asset.url} alt={asset.name} loading="lazy" />{:else}<span class="media-file-icon"><Icon name="listBullets" size={40} /><span>{mediaMetadata(asset.name)?.category} · {mediaMetadata(asset.name)?.extension.toUpperCase()}</span></span>{/if}</button><figcaption>{asset.name}</figcaption></figure>
+      <figure><button type="button" class="thumb" aria-label={asset.name} data-tooltip={asset.name} aria-pressed={librarySelection === asset.url} onclick={() => selectAsset(asset)}>{#if asset.type?.startsWith("image/")}<img src={asset.url} alt={asset.name} loading="lazy" />{:else if asset.type?.startsWith("video/")}<video src={`${asset.url}#t=0.001`} muted preload="metadata" playsinline aria-hidden="true"></video>{:else}<span class="media-file-icon"><Icon name="listBullets" size={40} /><span>{mediaMetadata(assetFile(asset.url))?.category} · {mediaMetadata(assetFile(asset.url))?.extension.toUpperCase()}</span></span>{/if}</button><figcaption>{asset.name}</figcaption></figure>
     {/each}
   </div>
   {:else}<div class="table-card media-table"><table aria-label="Media library"><thead><tr><th scope="col">File</th><th scope="col">Type</th><th scope="col">Size</th><th scope="col">Modified (UTC)</th></tr></thead><tbody>
@@ -231,7 +231,7 @@
       {#if selected}
         <div class="media-selection" class:media-editing={inline && !!selected.asset}>
           <div class="media-preview">
-          {#if kind === "video"}<video src={selected.url} {controls} {muted} preload="metadata" playsinline style="max-width:100%;max-height:320px"></video>{:else if (!selected.file && !selected.asset) || mediaMetadata(selected.file?.name ?? (selected.asset ? assetFile(selected.asset.url) : ""))?.category === "Images"}<img src={selected.url} alt="Selected image preview" />{:else}<div class="media-file-icon"><Icon name="listBullets" size={64} /><p>{mediaMetadata(selected.file?.name ?? (selected.asset ? assetFile(selected.asset.url) : ""))?.category} · {mediaSize(selected.file?.size ?? selected.asset?.size)}</p><p>{selected.asset?.type ?? mediaMetadata(selected.file?.name ?? "")?.type}</p></div>{/if}
+          {#if kind === "video" || selected.asset?.type?.startsWith("video/") || (selected.file && mediaMetadata(selected.file.name)?.category === "Video")}<video src={selected.url} controls={kind === "video" ? controls : true} muted={kind === "video" ? muted : false} preload="metadata" playsinline></video>{:else if (!selected.file && !selected.asset) || mediaMetadata(selected.file?.name ?? (selected.asset ? assetFile(selected.asset.url) : ""))?.category === "Images"}<img src={selected.url} alt="Selected image preview" />{:else}<div class="media-file-icon"><Icon name="listBullets" size={64} /><p>{mediaMetadata(selected.file?.name ?? (selected.asset ? assetFile(selected.asset.url) : ""))?.category} · {mediaSize(selected.file?.size ?? selected.asset?.size)}</p><p>{selected.asset?.type ?? mediaMetadata(selected.file?.name ?? "")?.type}</p></div>{/if}
           </div>
           <div class="media-details">
           {#if inline && selected.asset}

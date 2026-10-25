@@ -27,7 +27,7 @@ export function filterMedia(assets: MediaAsset[], search: string, type: string, 
     && (!type || asset.type === type || assetCategory(asset) === type) && (!month || modifiedMonth(asset.modified) === month));
 }
 function assetCategory(asset: MediaAsset): string {
-  const category = mediaMetadata(asset.name)?.category ?? '';
+  const category = mediaMetadata(assetFile(asset.url))?.category ?? '';
   if (!category) return 'Other';
   return CURATED.has(category) ? category : 'Other';
 }

@@ -10,6 +10,17 @@ test("categories combine with search and modified dates", () => {
   expect(filterMedia(assets, "", "", "")).toEqual(assets);
 });
 
+test("display names never determine the media category", () => {
+  const categories = ["Images", "Audio", "Video", "Documents", "Spreadsheets", "Archives"];
+  const files = ["image.png", "audio.mp3", "video.mp4", "document.pdf", "sheet.csv", "archive.zip"];
+  for (const [index, category] of categories.entries()) for (const name of ["My renamed asset", "Misleading name.jpg"]) {
+    const asset = { url: `/rigel-media/${files[index]}`, name };
+    expect(filterMedia([asset], name, category, "")).toEqual([asset]);
+    expect(filterMedia([asset], "", "Other", "")).toEqual([]);
+    if (category !== "Images") expect(filterMedia([asset], "", "Images", "")).toEqual([]);
+  }
+});
+
 test("combines filename, format and real modified month; missing metadata is safe", () => {
   const assets = [
     {url: "/a.png", name: "A.png", type: "image/png", modified: "2024-02-15T12:00:00Z", size: 7},

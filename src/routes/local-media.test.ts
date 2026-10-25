@@ -15,6 +15,7 @@ let directory: string;
 let publicDir: string;
 
 beforeEach(async () => {
+  config.maxFileSize = undefined;
   const temp = path.resolve("_temp");
   await mkdir(temp, { recursive: true });
   directory = await mkdtemp(path.join(temp, "local-media-"));
@@ -105,7 +106,7 @@ test("rejects WebP magic bytes with their high bits set", async () => {
   expect(await readdir(directory)).toEqual([]);
 });
 
-const limit = 10 * 1024 * 1024;
+const limit = 2 * 1024 * 1024;
 
 test("rejects oversized Content-Length without reading the body", async () => {
   const pull = vi.fn(() => { throw new Error("Body must not be read"); });
@@ -133,7 +134,7 @@ test.each([undefined, "1"])("caps streamed bodies with Content-Length %s", async
   expect(await readdir(directory)).toEqual([]);
 });
 
-test("accepts the exact 10 MiB boundary", async () => {
+test("accepts the exact default 2 MB boundary", async () => {
   const bytes = Buffer.alloc(limit);
   png.copy(bytes);
   const response = await upload(bytes);
@@ -236,9 +237,22 @@ test("video uploads are served inline so the player can stream them", async () =
   expect(Buffer.from(await result.arrayBuffer())).toEqual(mp4);
 });
 
-test("videos allow a larger body than images while oversized uploads are still rejected", async () => {
+test("one configurable upload limit applies to videos and images", async () => {
   const header = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isomiso2mp41")]);
   const elevenMegabytes = Buffer.concat([header, Buffer.alloc(11 * 1024 * 1024)]);
-  expect((await upload(elevenMegabytes, { "Content-Type": "video/mp4", "X-Rigel-Filename": "big.mp4" })).status).toBe(200);
+  expect((await upload(elevenMegabytes, { "Content-Type": "video/mp4", "X-Rigel-Filename": "big.mp4" })).status).toBe(413);
   expect((await upload(Buffer.concat([png, Buffer.alloc(11 * 1024 * 1024)]), { "Content-Type": "image/png", "X-Rigel-Filename": "big.png" })).status).toBe(413);
+  config.maxFileSize = 12 * 1024 * 1024;
+  expect((await upload(elevenMegabytes, { "Content-Type": "video/mp4", "X-Rigel-Filename": "big.mp4" })).status).toBe(200);
+  expect((await upload(Buffer.concat([png, Buffer.alloc(11 * 1024 * 1024)]), { "Content-Type": "image/png", "X-Rigel-Filename": "big.png" })).status).toBe(200);
+});
+
+test("custom byte boundaries are enforced on headers and streamed bodies", async () => {
+  config.maxFileSize = png.length - 1;
+  expect((await upload(png, { "Content-Length": String(png.length) })).status).toBe(413);
+  expect((await upload(png)).status).toBe(413);
+  config.maxFileSize = png.length;
+  expect((await upload(png)).status).toBe(200);
+  config.maxFileSize = 100 * 1024 * 1024;
+  expect((await upload(png, { "Content-Length": String(65 * 1024 * 1024) })).status).toBe(200);
 });

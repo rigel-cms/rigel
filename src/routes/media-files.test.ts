@@ -1,9 +1,10 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { mkdir, mkdtemp, rm, symlink, writeFile, utimes, stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { listMedia, mediaDirectory, mediaFolder } from "./media-files";
 import { safeImageUrl } from "../editor/lib/images";
+vi.mock("virtual:rigel-config", () => ({ default: {} }));
 
 test("lists existing nested images, omits symlinks and non-images, validates folder boundaries", async () => {
   await mkdir("_temp", {recursive: true});

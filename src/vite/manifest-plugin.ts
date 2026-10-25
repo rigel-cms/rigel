@@ -137,6 +137,7 @@ export const menus = {
           demo: cfg.demo,
           publicDir: publicDir?.href,
           mediaDir: cfg.mediaDir,
+          maxFileSize: cfg.maxFileSize,
           root: root?.href,
           menus: cfg.menus,
           collections: cfg.collections ?? [],

@@ -7,7 +7,13 @@ test("defaults to local backend + src/content/copy", () => {
     backend: "local",
     jsonOutput: "pretty",
     demo: true,
+    maxFileSize: 2 * 1024 * 1024,
   });
+});
+
+test("maxFileSize is a positive byte count with no per-type ceiling", () => {
+  for (const maxFileSize of [1, 2 * 1024 * 1024, 100 * 1024 * 1024]) expect(parseConfig({ maxFileSize }).maxFileSize).toBe(maxFileSize);
+  for (const maxFileSize of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, "2MB", null]) expect(() => parseConfig({ maxFileSize } as never)).toThrow(/maxFileSize/);
 });
 
 test("demo defaults on and false excludes demo documents without mutating the site schema", () => {

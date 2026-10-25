@@ -1,5 +1,6 @@
 import { getSettings, setSettings } from "./settings";
-import { mediaLimit, mediaMetadata, safeMediaName } from "../../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName } from "../../media-types";
+import config from "virtual:rigel-config";
 export function getKeys(): StockKeys { return getSettings().apiKeys; }
 export function setKeys(keys: StockKeys) { setSettings({ apiKeys: keys }); }
 
@@ -134,8 +135,8 @@ export async function importImageUrl(value: string): Promise<string> {
   try { response = await fetch(value, { credentials: "omit", referrerPolicy: "no-referrer" }); }
   catch { throw new Error("Image download failed. The source must allow browser downloads (CORS); alternatively upload the image file."); }
   if (!response.ok) throw new Error(`Photo download failed (${response.status})`);
-  const limit = 10 * 1024 * 1024;
-  if (Number(response.headers.get("Content-Length")) > limit) throw new Error("Photo exceeds the 10 MB import limit");
+  const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  if (Number(response.headers.get("Content-Length")) > limit) throw new Error(`Photo exceeds the ${limit / 1024 / 1024} MB import limit`);
   const type = response.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
   if (!["image/jpeg", "image/png", "image/webp"].includes(type ?? "")) throw new Error("Choose a JPEG, PNG or WebP image.");
   if (!response.body) throw new Error("Empty image download");
@@ -147,7 +148,7 @@ export async function importImageUrl(value: string): Promise<string> {
       const { done, value: chunk } = await reader.read();
       if (done) break;
       size += chunk.byteLength;
-      if (size > limit) { await reader.cancel(); throw new Error("Photo exceeds the 10 MB import limit"); }
+      if (size > limit) { await reader.cancel(); throw new Error(`Photo exceeds the ${limit / 1024 / 1024} MB import limit`); }
       chunks.push(new Uint8Array(chunk));
     }
   } finally { reader.releaseLock(); }
@@ -174,8 +175,8 @@ export function currentAuthor(): string {
 
 export async function uploadMedia(file: File): Promise<string> {
   const metadata = mediaMetadata(file.name);
-  const limit = mediaLimit(metadata?.category);
-  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(`Choose a supported file up to ${Math.round(limit / 1024 / 1024)} MB with a safe filename.`);
+  const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(`Choose a supported file up to ${limit / 1024 / 1024} MB with a safe filename.`);
   const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
   if (!response.ok) throw new Error(`Upload failed (${response.status}): ${await response.text()}`);
   const result = await response.json();
@@ -184,7 +185,8 @@ export async function uploadMedia(file: File): Promise<string> {
 }
 
 export async function uploadImage(blob: Blob): Promise<string> {
-  if (blob.size > 10 * 1024 * 1024) throw new Error("Photo exceeds the 10 MB import limit");
+  const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  if (blob.size > limit) throw new Error(`Photo exceeds the ${limit / 1024 / 1024} MB import limit`);
   const saved = await fetch("/rigel/api/local/media", { method: "POST", body: blob });
   if (saved.status === 404) throw new Error("Photo import requires the local dev server");
   if (!saved.ok) throw new Error(`Photo import failed (${saved.status})`);

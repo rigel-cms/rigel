@@ -5,10 +5,12 @@ import { validateSidebar, type SidebarEntry } from "./manifest/navigation";
 import { withSeoFields } from "./manifest/seo";
 import { previewBaseUrl } from "./preview-urls";
 import type { JsonOutput } from "./json-output";
+import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
 
 export interface RigelConfig {
   copyDir: string;
   mediaDir?: string;
+  maxFileSize?: number;
   preview?: import("./preview").PreviewConfig;
   backend: "local" | "github";
   jsonOutput?: JsonOutput;
@@ -42,6 +44,8 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  if (cfg.maxFileSize === undefined) cfg.maxFileSize = DEFAULT_MAX_FILE_SIZE;
+  if (!Number.isSafeInteger(cfg.maxFileSize) || cfg.maxFileSize <= 0) throw new Error("rigel: maxFileSize must be a positive integer in bytes");
   if (cfg.jsonOutput === undefined) cfg.jsonOutput = "pretty";
   if (cfg.jsonOutput !== "pretty" && cfg.jsonOutput !== "minified") throw new Error("rigel: jsonOutput must be pretty or minified");
   if (cfg.demo === undefined) cfg.demo = true;

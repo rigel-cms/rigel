@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getKeys, setKeys, searchImages, importStockImage, importImageUrl } from "./images";
+import { getKeys, setKeys, searchImages, importStockImage, importImageUrl, uploadMedia, uploadImage } from "./images";
+import config from "virtual:rigel-config";
+
+vi.mock("virtual:rigel-config", () => ({ default: { maxFileSize: undefined } }));
 
 const fetchMock = vi.fn();
 
 beforeEach(() => {
+  config.maxFileSize = undefined;
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -15,6 +19,17 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+test("upload and image imports use the configured byte limit", async () => {
+  config.maxFileSize = 1024;
+  await expect(uploadMedia(new File([new Uint8Array(1025)], "clip.mp4", { type: "video/mp4" }))).rejects.toThrow(/up to/);
+  await expect(uploadImage(new Blob([new Uint8Array(1025)], { type: "image/png" }))).rejects.toThrow(/limit/);
+  expect(fetchMock).not.toHaveBeenCalled();
+  fetchMock.mockResolvedValueOnce(Response.json({ url: `/rigel-media/${"a".repeat(64)}.mp4` }));
+  await expect(uploadMedia(new File([new Uint8Array(1024)], "clip.mp4", { type: "video/mp4" }))).resolves.toContain(".mp4");
+  fetchMock.mockResolvedValueOnce(new Response(new Uint8Array(1025), { headers: { "Content-Type": "image/png" } }));
+  await expect(importImageUrl("https://example.com/large.png")).rejects.toThrow(/limit/);
+});
 
 test("Pixabay keys persist and authenticate photo searches", async () => {
   setKeys({ pixabay: "test-pixabay-key" });
@@ -82,7 +97,7 @@ test("URL imports download bytes, reject unsafe URLs and bound streamed input", 
   expect(await importImageUrl("https://example.com/image.png")).toBe(`/images/${"b".repeat(64)}.png`);
   expect(fetchMock.mock.calls[0][1]).toMatchObject({credentials: "omit"});
   fetchMock.mockResolvedValueOnce(new Response(new Uint8Array(10 * 1024 * 1024 + 1), {headers: {"Content-Type": "image/png"}}));
-  await expect(importImageUrl("https://example.com/large.png")).rejects.toThrow(/10 MB/);
+  await expect(importImageUrl("https://example.com/large.png")).rejects.toThrow(/2 MB/);
   expect(fetchMock).toHaveBeenCalledTimes(3);
   fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
   await expect(importImageUrl("https://example.com/blocked.png")).rejects.toThrow(/CORS/);

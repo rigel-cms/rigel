@@ -3,7 +3,8 @@
   import Icon from "./Icon.svelte";
   import Select from "./Select.svelte";
   import { getSettings, setSettings } from "./settings";
-  import { MEDIA_CATEGORIES, mediaMetadata, mediaAccept, mediaLimit, safeMediaName } from "../../media-types";
+  import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName } from "../../media-types";
+  import config from "virtual:rigel-config";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
   import type { EmbedData } from "../blocks/embed";
   import type { VideoData } from "../blocks/video";
@@ -20,6 +21,8 @@
     altText?: string; triggerLabel?: string;
     inline?: boolean; toolbar?: boolean; hiddenTrigger?: boolean; onopen?: () => void; onclose?: () => void;
   } = $props();
+  const id = $props.id();
+  const maxFileSize = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   let open = $state(false);
   let tab = $state<"library" | "upload" | "url" | EmbedProvider | StockSource>("library");
   const providerTab = $derived(tab === "youtube" || tab === "vimeo");
@@ -152,7 +155,7 @@
   function upload(file?: File) {
     if (!file || picking) return;
     error = "";
-    const limit = kind === "video" ? mediaLimit("Video") : 10 * 1024 * 1024;
+    const limit = maxFileSize;
     if (!safeMediaName(file.name) || (!inline && mediaMetadata(file.name)?.category !== (kind === "video" ? "Video" : "Images")) || file.size > limit) {
       error = `Choose a supported ${inline ? "file" : kind} up to ${limit / 1024 / 1024} MB with a safe filename.`; return;
     }
@@ -214,8 +217,9 @@
     <input class="media-search" aria-label="Search media" type="search" bind:value={filter} placeholder="Search media…" />
   </div>
   {#if view === "grid"}<div class="grid">
-    {#each filtered as asset}
-      <figure><button type="button" class="thumb" aria-label={asset.name} data-tooltip={asset.name} aria-pressed={librarySelection === asset.url} onclick={() => selectAsset(asset)}>{#if asset.type?.startsWith("image/")}<img src={asset.url} alt={asset.name} loading="lazy" />{:else if asset.type?.startsWith("video/")}<video src={`${asset.url}#t=0.001`} muted preload="metadata" playsinline aria-hidden="true"></video>{:else}<span class="media-file-icon"><Icon name="listBullets" size={40} /><span>{mediaMetadata(assetFile(asset.url))?.category} · {mediaMetadata(assetFile(asset.url))?.extension.toUpperCase()}</span></span>{/if}</button><figcaption>{asset.name}</figcaption></figure>
+    {#each filtered as asset, index}
+      {@const extension = mediaMetadata(assetFile(asset.url))?.extension.toUpperCase() ?? "FILE"}
+      <figure><button type="button" class="thumb" aria-label={asset.name} aria-describedby={`${id}-extension-${index}`} data-tooltip={asset.name} aria-pressed={librarySelection === asset.url} onclick={() => selectAsset(asset)}>{#if asset.type?.startsWith("image/")}<img src={asset.url} alt={asset.name} loading="lazy" />{:else if asset.type?.startsWith("video/")}<video src={`${asset.url}#t=0.001`} muted preload="metadata" playsinline aria-hidden="true"></video>{:else}<span class="media-file-icon"><Icon name="listBullets" size={40} /><span>{mediaMetadata(assetFile(asset.url))?.category}</span></span>{/if}<span id={`${id}-extension-${index}`} class="media-extension">{extension}</span></button><figcaption>{asset.name}</figcaption></figure>
     {/each}
   </div>
   {:else}<div class="table-card media-table"><table aria-label="Media library"><thead><tr><th scope="col">File</th><th scope="col">Type</th><th scope="col">Size</th><th scope="col">Modified (UTC)</th></tr></thead><tbody>
@@ -290,7 +294,7 @@
           {@render libraryBrowser()}
         {:else if tab === "upload"}
           <p class="hint">Choose a local file, then preview and confirm. Nothing is uploaded until confirmation.</p>
-          {#if writable}<label>{kind === "video" ? "Upload video (MP4, WebM, MOV; 64 MB)" : inline ? "Upload media (images, audio, video, documents, spreadsheets, archives; 10 MB)" : "Upload image (JPEG, PNG, WebP, GIF, AVIF; 10 MB)"}<input type="file" accept={kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">Local uploads require the local dev server. This library is read-only.</p>{/if}
+          {#if writable}<label>{kind === "video" ? "Upload video (MP4, WebM, MOV)" : inline ? "Upload media (images, audio, video, documents, spreadsheets, archives)" : "Upload image (JPEG, PNG, WebP, GIF, AVIF)"} · {maxFileSize / 1024 / 1024} MB maximum<input type="file" accept={kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">Local uploads require the local dev server. This library is read-only.</p>{/if}
         {:else if tab === "url"}
           <label>{kind === "video" ? "Video URL" : "Image URL"}<input type="url" bind:value={urlInput} placeholder={kind === "video" ? "https://… or /media/video.mp4" : "https://… or /images/photo.jpg"} /></label>
           <button type="button" class="primary" onclick={run}>Use this URL</button>

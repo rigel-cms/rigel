@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getSettings, setSettings } from "./settings";
 import { getKeys, setKeys } from "./images";
 import { eraseData, readSession, writeSession, clearSession } from "./storage";
+vi.mock("virtual:rigel-config", () => ({ default: {} }));
 
 const config = { authOrigin: "https://auth.example", repo: "owner/site", branch: "drafts", appSlug: "rigel" };
 

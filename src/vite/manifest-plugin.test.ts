@@ -14,6 +14,11 @@ function raw(cfg: RigelConfig): RawPlugin {
 }
 
 const cfg: RigelConfig = { copyDir: "src/content/copy", backend: "local" };
+test.each([undefined, 100 * 1024 * 1024])("maxFileSize %s reaches shared browser/server config", maxFileSize => {
+  const plugin = raw({ ...cfg, maxFileSize });
+  const config = JSON.parse(plugin.load("\0virtual:rigel-config")!.slice("export default ".length, -1));
+  expect(config.maxFileSize).toBe(maxFileSize ?? 2 * 1024 * 1024);
+});
 
 test.each([undefined, "pretty", "minified"] as const)("jsonOutput %s reaches local routes and GitHub browser configuration", (jsonOutput) => {
   const plugin = raw({ ...cfg, backend: "github", repo: "owner/repo", jsonOutput });

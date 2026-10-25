@@ -4,19 +4,20 @@ import { pageRoute } from "./schema/paths";
 import { slugify } from "./slugs";
 import { renderArticle } from "./article-render";
 import { createEmbedPreview } from "./editor/lib/embed-preview";
-import { safePreviewUrl, previewBaseUrl } from "./preview-urls";
+import { safePreviewUrl, previewBaseUrl, previewRoute } from "./preview-urls";
 export { safePreviewUrl } from "./preview-urls";
 
 export interface PreviewDocumentMapping {
   url: string;
   index?: string;
+  template?: string;
 }
 
 export interface PreviewConfig {
   liveUrl?: string;
   draftUrl?: string;
-  pages?: Record<string, string>;
-  collections?: Record<string, { url: string; new: string }>;
+  pages?: Record<string, string | PreviewDocumentMapping>;
+  collections?: Record<string, { url: string; new?: string; template?: string }>;
   documents?: Record<string, PreviewDocumentMapping>;
 }
 export interface PreviewTarget {
@@ -27,13 +28,23 @@ export interface PreviewTarget {
   type?: string;
 }
 
+function templatePath(config: PreviewConfig, target: PreviewTarget): string | null | undefined {
+  const mapping = target.kind === "post" ? config.collections?.[target.collection ?? ""] : target.kind === "document" ? config.documents?.[target.type ?? ""] : target.kind === "page" ? config.pages?.[target.slug] : undefined;
+  return mapping && typeof mapping === "object" && mapping.template !== undefined ? previewRoute(mapping.template, true) : undefined;
+}
+
 export function previewPath(config: PreviewConfig, target: PreviewTarget, isNew = false): string | null {
+  const template = isNew ? templatePath(config, target) : undefined;
+  if (template !== undefined) return template;
   const mapping = target.kind === "post" ? config.collections?.[target.collection ?? ""] : undefined;
-  const path = target.kind === "document" ? pageRoute(target.slug, config.documents?.[target.type ?? ""]) : target.kind === "page" ? config.pages?.[target.slug] : mapping ? (isNew ? mapping.new : mapping.url.replaceAll("{slug}", encodeURIComponent(target.slug))) : undefined;
-  return typeof path === "string" && /^\/(?!\/)/.test(path) && !/[\\\s?#]/.test(path) && !/%(?:2e|2f|5c)/i.test(path) && !path.split("/").some(part => part === "." || part === "..") && !/^\/rigel(?:\/|$)/.test(path) ? path : null;
+  const page = config.pages?.[target.slug];
+  const path = target.kind === "document" ? pageRoute(target.slug, config.documents?.[target.type ?? ""]) : target.kind === "page" ? (typeof page === "string" ? page : page?.url) : mapping ? (isNew ? mapping.new : mapping.url.replaceAll("{slug}", encodeURIComponent(target.slug))) : undefined;
+  return previewRoute(path);
 }
 
 export function previewUrl(config: PreviewConfig, target: PreviewTarget, mode: "live" | "draft" | "website" = "draft", isNew = false): string | null {
+  const template = mode === "draft" ? templatePath(config, target) : undefined;
+  if (template !== undefined) return template;
   if (mode !== "draft" && target.kind !== "page" && target.urlSlug !== undefined) {
     const slug = slugify(target.urlSlug);
     if (!slug) return null;

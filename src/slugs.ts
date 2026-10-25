@@ -33,7 +33,7 @@ export function assertUniqueUrlSlugs(entries: { slug: string; values: Record<str
 export function validateDocumentSlugs(schema: Schema, documents: ContentDocument[], preview?: PreviewConfig): void {
   const seen = new Set<string>();
   const pages = documents.filter(doc => schema.documents.some(type => type.name === doc.type && !type.shared));
-  const fixedRoutes = Object.entries(preview?.pages ?? {}).filter(([key]) => !pages.some(doc => doc.slug === key)).map(([, route]) => route);
+  const fixedRoutes = Object.entries(preview?.pages ?? {}).filter(([key]) => !pages.some(doc => doc.slug === key)).map(([, route]) => typeof route === "string" ? route : route.url);
   for (const doc of documents) {
     const type = schema.documents.find(type => type.name === doc.type);
     if (!type || type.shared) continue;

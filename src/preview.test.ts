@@ -16,6 +16,48 @@ test("live and draft bases resolve independently without changing route mappings
   expect(previewUrl({ pages: { about: "/about/" } }, { kind: "page", slug: "about" }, "live")).toBe("/about/");
 });
 
+test("explicit collection templates are independent of draft and live website bases", () => {
+  const config = { liveUrl: "https://live.test/", draftUrl: "https://draft.test/site/", collections: { blog: { url: "/blog/{slug}/", template: "/rigel/preview/blog/" } } };
+  const target = { kind: "post" as const, collection: "blog", slug: "saved-post", urlSlug: "Changed slug" };
+  expect(previewPath(config, target, true)).toBe("/rigel/preview/blog/");
+  for (const isNew of [true, false]) {
+    expect(previewUrl(config, target, "draft", isNew)).toBe("/rigel/preview/blog/");
+    expect(previewUrl(config, target, "website", isNew)).toBe("https://draft.test/site/blog/changed-slug/");
+    expect(previewUrl(config, target, "live", isNew)).toBe("https://live.test/blog/changed-slug/");
+  }
+});
+
+test("pages and schema documents can choose editor templates without changing website routes", () => {
+  const config = parseConfig({ preview: {
+    draftUrl: "https://draft.test/site/", liveUrl: "https://live.test/",
+    pages: { about: { url: "/about/", template: "/templates/about/" }, contact: "/contact/" },
+    documents: { page: { url: "/{slug}/", index: "/", template: "/rigel/preview/page/" } },
+  } }).preview!;
+  expect(previewUrl(config, { kind: "page", slug: "about" })).toBe("/templates/about/");
+  expect(previewUrl(config, { kind: "page", slug: "about" }, "website")).toBe("https://draft.test/site/about/");
+  expect(previewUrl(config, { kind: "page", slug: "contact" })).toBe("https://draft.test/site/contact/");
+  const home = { kind: "document" as const, type: "page", slug: "home" };
+  expect(previewUrl(config, home)).toBe("/rigel/preview/page/");
+  expect(previewUrl(config, home, "website")).toBe("https://draft.test/site/");
+  expect(previewUrl(config, { ...home, slug: "storage-id", urlSlug: "Custom page" })).toBe("/rigel/preview/page/");
+  expect(previewUrl(config, { ...home, slug: "storage-id", urlSlug: "Custom page" }, "live")).toBe("https://live.test/custom-page/");
+});
+
+test("explicit templates reject unsafe routes at configuration time and do not fall back silently", () => {
+  for (const template of ["", null, 123, "relative/", "//evil.test/", "https://evil.test/", "javascript:alert(1)", "/../template/", "/%2e%2e/template/", "/templates/%2f/", "/templates/\\\\evil/", "/templates/\u0000", "/templates/\u007f", "/template/?token=x", "/template/#x", "/templates/{slug}/", "/rigel/", "/rigel/api/local/save", "/rigel/preview/../api/", "/rigel/previewish/blog/"]) {
+    for (const key of ["pages", "documents", "collections"] as const) {
+      const preview = { [key]: { page: { url: "/{slug}/", new: "/old-template/", template } } };
+      expect(() => parseConfig({ preview: preview as never }), `${key}: ${JSON.stringify(template)}`).toThrow(/template/);
+      const target = key === "pages" ? { kind: "page" as const, slug: "page" } : key === "documents" ? { kind: "document" as const, type: "page", slug: "page" } : { kind: "post" as const, collection: "page", slug: "page" };
+      expect(previewUrl(preview as never, target)).toBeNull();
+    }
+  }
+  for (const template of ["/preview/blog/", "/rigel/preview/", "/rigel/preview/blog/", "/templates/about.html"]) {
+    const config = parseConfig({ preview: { collections: { blog: { url: "/blog/{slug}/", new: "/legacy/", template } } } }).preview!;
+    expect(previewUrl(config, { kind: "post", collection: "blog", slug: "hello" })).toBe(template);
+  }
+});
+
 test("collection draft previews keep the prepared template after Save and reopening", () => {
   const config = {
     liveUrl: "https://live.test/",
@@ -114,7 +156,7 @@ test("unsafe URLs are rejected", () => {
 });
 test.each(["dev", "build"])("no preview API in %s", async command => {
   const routes: { pattern: string }[] = [];
-  const preview = { ...config, liveUrl: "https://sunnypixels.io/", draftUrl: "https://drafts.example.test/" };
+  const preview = { ...config, liveUrl: "https://sunnypixels.io/", draftUrl: "https://drafts.example.test/", pages: { about: { url: "/about/", template: "/templates/about/" } }, collections: { blog: { url: "/blog/{slug}/", template: "/rigel/preview/blog/" } }, documents: { page: { url: "/{slug}/", template: "/templates/page/" } } };
   const integration = rigel({ preview });
   let code = "";
   await (integration.hooks["astro:config:setup"] as Function)({ command, config: {}, injectScript() {}, injectRoute(route: { pattern: string }) { routes.push(route); }, updateConfig(config: { vite: { plugins: { load: (id: string) => string }[] } }) { code = config.vite.plugins[0].load("\0virtual:rigel-manifest"); }, logger: { warn() {} } });

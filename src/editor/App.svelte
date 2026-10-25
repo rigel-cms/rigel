@@ -33,7 +33,7 @@
   import PublishDialog from "./lib/PublishDialog.svelte";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
-  import { previewUrl } from "../preview";
+  import { previewUrl, previewPath } from "../preview";
   import type { ContentDocument, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
@@ -1035,7 +1035,7 @@
 
       {:else if sel?.kind === "page" && page}
         {#if !page.shared}
-          <section><label><span>Website route</span><input type="text" value={manifest.preview?.pages?.[page.slug] ?? "Not configured"} readonly /></label><p class="hint">This copy page uses a fixed Astro route. Its URL can only be changed in the website code; slug metadata cannot move it.</p></section>
+          <section><label><span>Website route</span><input type="text" value={previewPath(manifest.preview ?? {}, { kind: "page", slug: page.slug }) ?? "Not configured"} readonly /></label><p class="hint">This copy page uses a fixed Astro route. Its URL can only be changed in the website code; slug metadata cannot move it.</p></section>
         {/if}
         {#each page.groups as group (group.id)}
           <section>

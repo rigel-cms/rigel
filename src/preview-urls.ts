@@ -2,6 +2,12 @@ export function safePreviewUrl(value: string, image = false): boolean {
   return !!value && !/[ \t\r\n\f\v\u0000-\u001f\u007f\\]/.test(value) && !value.startsWith("//") && (!/^[a-z][a-z\d+.-]*:/i.test(value) || (image ? /^https?:/i : /^(https?:|mailto:)/i).test(value));
 }
 
+export function previewRoute(value: unknown, template = false): string | null {
+  if (typeof value !== "string" || !/^\/(?!\/)/.test(value) || /[\\\s?#\u0000-\u001f\u007f]/.test(value) || /%(?:2e|2f|5c)/i.test(value) || value.split("/").some(part => part === "." || part === "..")) return null;
+  if (template && /[{}]/.test(value)) return null;
+  return !/^\/rigel(?:\/|$)/.test(value) || (template && /^\/rigel\/preview(?:\/|$)/.test(value)) ? value : null;
+}
+
 export function previewBaseUrl(value: unknown): string {
   try {
     if (typeof value !== "string" || !/^https?:\/\/[^/@]+(?:\/|$)/.test(value) || /[\s\u0000-\u001f\u007f\\%?#]/.test(value) || value.split("/").some(part => part === "." || part === "..")) throw new Error();

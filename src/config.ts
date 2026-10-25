@@ -3,7 +3,7 @@ import { validateSchema } from "./schema/validate";
 import type { Schema } from "./schema/types";
 import { validateSidebar, type SidebarEntry } from "./manifest/navigation";
 import { withSeoFields } from "./manifest/seo";
-import { previewBaseUrl } from "./preview-urls";
+import { previewBaseUrl, previewRoute } from "./preview-urls";
 import type { JsonOutput } from "./json-output";
 import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
 
@@ -53,6 +53,11 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   if (cfg.preview) {
     cfg.preview = { ...cfg.preview };
     for (const key of ["liveUrl", "draftUrl"] as const) if (cfg.preview[key] !== undefined) cfg.preview[key] = previewBaseUrl(cfg.preview[key]);
+    for (const mappings of [cfg.preview.pages, cfg.preview.documents, cfg.preview.collections]) {
+      for (const mapping of Object.values(mappings ?? {})) {
+        if (mapping && typeof mapping === "object" && mapping.template !== undefined && !previewRoute(mapping.template, true)) throw new Error("rigel: preview template must be a static root-relative path; only /rigel/preview/ is allowed inside the CMS");
+      }
+    }
   }
   if (cfg.mediaDir !== undefined && (typeof cfg.mediaDir !== "string" || !cfg.mediaDir.split("/").every(part => /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/.test(part)))) throw new Error("rigel: mediaDir must be a relative folder inside publicDir");
   if (cfg.backend === "github") {

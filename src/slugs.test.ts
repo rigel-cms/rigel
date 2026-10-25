@@ -26,4 +26,6 @@ test("document URL collisions respect mapped route namespaces and fixed copy rou
   expect(() => validateDocumentSlugs(schema, documents)).toThrow(/already used/);
   expect(() => validateDocumentSlugs(schema, documents, { documents: { page: { url: "/pages/{slug}/" }, service: { url: "/services/{slug}/" } } })).not.toThrow();
   expect(() => validateDocumentSlugs(schema, [documents[0]], { pages: { copy: "/same/" } })).toThrow(/already used/);
+  expect(() => validateDocumentSlugs(schema, [documents[0]], { pages: { copy: { url: "/same/", template: "/templates/copy/" } } })).toThrow(/already used/);
+  expect(() => validateDocumentSlugs(schema, [documents[0]], { pages: { copy: { url: "/other/", template: "/same/" } } })).not.toThrow();
 });

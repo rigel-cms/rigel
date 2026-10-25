@@ -50,7 +50,11 @@ function manifest() {
 await writeFile(path.join(scratch, 'index.html'), '<html><body><div id="app"></div><script type="module" src="/main.js"></script></body></html>');
 await writeFile(path.join(scratch, 'main.js'), `import { mount } from 'svelte'; import App from '/src/editor/App.svelte'; import '/src/editor/styles.css'; mount(App, { target: document.getElementById('app') });`);
 const options = {
-  configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte()],
+  configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte(), {
+    name: 'rigel-config-fixture',
+    resolveId(id) { if (id === 'virtual:rigel-config') return '\0virtual:rigel-config'; },
+    load(id) { if (id === '\0virtual:rigel-config') return 'export default { maxFileSize: 2097152 };'; },
+  }],
   resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] },
   build: { outDir: path.join(scratch, 'dist'), emptyOutDir: true },
   server: { host: '127.0.0.1', port: 0, fs: { allow: [root] }, watch: { ignored: ['**/_temp/**'] } },

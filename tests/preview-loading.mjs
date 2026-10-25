@@ -34,7 +34,8 @@ function fixture(req, res) {
     res.end(`<!doctype html><html><head>${url.searchParams.has('assets') ? '<link rel="stylesheet" href="/style.css">' : ''}</head><body><h1 ${url.searchParams.has('unprepared') || url.pathname.includes('unprepared') ? '' : 'data-rigel-text="title"'}>Deployed ${url.pathname}</h1>${url.searchParams.has('body') ? '<div data-rigel-richtext="$body"><p>Article body</p></div>' : ''}<button>Hidden control</button>${url.searchParams.has('assets') ? '<img src="/asset.svg">' : ''}</body></html>`);
   }, Number(url.searchParams.get('delay') ?? 0));
 }
-const remote = httpServer(fixture);
+const remoteRequests = [];
+const remote = httpServer((req, res) => { remoteRequests.push(req.url); fixture(req, res); });
 await new Promise(resolve => remote.listen(0, '127.0.0.1', resolve));
 const remoteOrigin = `http://127.0.0.1:${remote.address().port}`;
 await writeFile(path.join(scratch, 'index.html'), '<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="app"></div><script type="module" src="/main.js"></script></body></html>');
@@ -46,6 +47,7 @@ import VisualEditor from '/src/editor/lib/VisualEditor.svelte';
 import CollectionPanel from '/src/editor/lib/CollectionPanel.svelte';
 import { emptyBody } from '/src/article-body';
 let consumer = $state('shared');
+let siteTarget = $state({kind:'page', slug:'about'}), siteConfig = $state({}), siteNew = $state(false);
 let bodyInline = $state(true), body = $state(emptyBody());
 let url = $state('/fast'), reloadToken = $state(0), mounted = $state(true), layout = $state('visual');
 let frame = $state(), value = $state('Unsaved title'), error = $state(''), events = $state([]);
@@ -53,6 +55,8 @@ window.previewTest = {
   navigate(next) { url = next; }, reload() { reloadToken++; }, unmount() { mounted = false; },
   layout(next) { layout = next; }, edit(next) { value = next; if(frame?.contentDocument?.querySelector('h1')) frame.contentDocument.querySelector('h1').textContent = next; },
   consumer() { consumer = 'legacy'; },
+  site(target, config, isNew = false) { siteTarget = target; siteConfig = config; siteNew = isNew; mounted = true; consumer = 'configured'; },
+  siteEdit(next) { value = next; }, siteSaved() { siteNew = false; }, reopen() { mounted = true; },
   article(next) { url = next; consumer = 'article'; }, preference(next) { bodyInline = next; },
   events() { return events; }
 };
@@ -67,6 +71,8 @@ function loaded() { frame.contentDocument.querySelector('h1').textContent = valu
 <CollectionPanel fields={[]} values={{}} storageSlug="first" {body} {selected} {focusToken} {bodyInline} {bodyLoading} {oneditbody} devMode={false} onchange={() => {}} onbody={next => body = next} />
 {/snippet}
 </VisualEditor>
+{:else if consumer === 'configured'}
+{#if mounted}<SitePreview target={siteTarget} config={siteConfig} values={{title:value}} body="" isNew={siteNew} />{/if}
 {:else}
 <div class={layout === 'visual' ? 'canvas-stage' : 'site-preview'} style="height:550px;position:relative;padding:0">
 {#if consumer === 'legacy'}
@@ -74,7 +80,11 @@ function loaded() { frame.contentDocument.querySelector('h1').textContent = valu
 {:else if mounted}<PreviewFrame bind:frame {url} {reloadToken} title="Loading regression" onloading={() => { error = ''; events.push({type:'loading', time:performance.now(), url}); }} onload={loaded} onerror={message => {error = message; events.push({type:'error', time:performance.now(), url});}} />{/if}
 </div>{/if}</div>`);
 const options = {
-  configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte()],
+  configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte(), {
+    name: 'rigel-config-fixture',
+    resolveId(id) { if (id === 'virtual:rigel-config') return '\0virtual:rigel-config'; },
+    load(id) { if (id === '\0virtual:rigel-config') return 'export default { maxFileSize: 2097152 };'; },
+  }],
   resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] },
   build: { outDir: path.join(scratch, 'dist'), emptyOutDir: true },
   server: { host: '127.0.0.1', port: 0, fs: { allow: [root] }, watch: { ignored: ['**/_temp/**'] } },
@@ -85,7 +95,7 @@ const exceptions = [];
 try {
   await build(options);
   vite = await createServer({ ...options, root: path.join(scratch, 'dist'), plugins: [{ name:'fixture', configureServer(server) {
-    server.middlewares.use((req, res, next) => /^\/(?:fast|slow|latest|missing|style\.css|asset\.svg)/.test(req.url ?? '') ? fixture(req, res) : next());
+    server.middlewares.use((req, res, next) => /^\/(?:fast|slow|latest|missing|style\.css|asset\.svg|rigel\/preview\/|templates\/)/.test(req.url ?? '') ? fixture(req, res) : next());
   } }] });
   await vite.listen();
   const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
@@ -226,6 +236,71 @@ try {
   await navigate('/fast?body'); await wait(idle, 'article recovery'); await wait(inlineReady, 'inline recovery');
   await screenshot('article-ready.png');
   await navigate(null); await wait(panelReady, 'no URL clears old ready state'); checks++;
+  const explicitConfig = {
+    draftUrl: remoteOrigin, liveUrl: 'https://production.example',
+    collections: {blog: {url:'/blog/{slug}/', template:'/rigel/preview/blog/'}},
+    pages: {about: {url:'/about/', template:'/templates/about/'}},
+    documents: {page: {url:'/{slug}/', index:'/', template:'/templates/page/'}},
+  };
+  const websiteLink = `document.querySelector('a[aria-label="Preview on website"]')?.href`;
+  async function site(target, config = explicitConfig, isNew = false) {
+    await evaluate(`previewTest.unmount()`);
+    await wait(`!document.querySelector('iframe')`, 'reset configured preview');
+    await evaluate(`previewTest.site(${JSON.stringify(target)}, ${JSON.stringify(config)}, ${isNew})`);
+  }
+  async function templateReady(template, publicPath) {
+    await wait(`${idle} && document.querySelector('iframe')?.contentDocument?.URL === ${JSON.stringify(origin + template)}`, `editor-origin template ${template}`);
+    assert.equal(await evaluate(websiteLink), remoteOrigin + publicPath);
+    assert.equal(await evaluate(`document.querySelector('iframe').hasAttribute('srcdoc')`), false);
+    assert.equal(await evaluate(`!!document.querySelector('.preview-error')`), false);
+    checks++;
+  }
+  const beforeExplicitRemote = remoteRequests.length;
+  await site({kind:'post', collection:'blog', slug:'new-entry', urlSlug:'public-entry'}, explicitConfig, true);
+  await templateReady('/rigel/preview/blog/', '/blog/public-entry/');
+  assert(requests.includes('/rigel/preview/blog/'), 'the editor must actually request the explicit template'); checks++;
+  const beforeEditRequests = requests.length;
+  await evaluate(`window.templateFrame=document.querySelector('iframe'); window.templateDoc=templateFrame.contentDocument; previewTest.siteEdit('Unsaved explicit template title')`);
+  await wait(`document.querySelector('iframe').contentDocument.querySelector('h1').textContent === 'Unsaved explicit template title'`, 'SitePreview patches unsaved values');
+  await delay(600);
+  assert.equal(await evaluate(`document.querySelector('iframe') === templateFrame && templateFrame.contentDocument === templateDoc && !templateFrame.inert`), true);
+  assert.equal(requests.length, beforeEditRequests, 'editing must not reload the template or save content'); checks++;
+  await evaluate(`previewTest.siteSaved()`);
+  await templateReady('/rigel/preview/blog/', '/blog/public-entry/');
+  assert.equal(await evaluate(`document.querySelector('iframe').contentDocument === templateDoc`), true, 'saving state must not replace the template'); checks++;
+  await site({kind:'post', collection:'blog', slug:'saved-entry', urlSlug:'public-entry'});
+  await templateReady('/rigel/preview/blog/', '/blog/public-entry/');
+  await evaluate(`previewTest.unmount()`); await wait(`!document.querySelector('iframe')`, 'close saved collection preview');
+  const beforeReopen = requests.length;
+  await evaluate(`previewTest.reopen()`);
+  await templateReady('/rigel/preview/blog/', '/blog/public-entry/');
+  assert(requests.slice(beforeReopen).includes('/rigel/preview/blog/'), 'reopening a saved collection reloads its template, not its public route'); checks++;
+  assert.equal(await evaluate(`document.querySelector('iframe').contentDocument.querySelector('h1').textContent`), 'Unsaved explicit template title'); checks++;
+  await screenshot('explicit-template.png');
+  await site({kind:'page', slug:'about'});
+  await templateReady('/templates/about/', '/about/');
+  await site({kind:'document', type:'page', slug:'contact'});
+  await templateReady('/templates/page/', '/contact/');
+  await site({kind:'document', type:'page', slug:'home'});
+  await templateReady('/templates/page/', '/');
+  assert.deepEqual(remoteRequests.slice(beforeExplicitRemote), [], 'explicit editor templates never request the remote draft or live host'); checks++;
+  for (const template of ['/rigel/', '/rigel/api/content/']) {
+    await site({kind:'page', slug:'about'}, {...explicitConfig, pages:{about:{url:'/about/', template}}});
+    await wait(`!document.querySelector('iframe') && document.querySelector('.site-preview')?.textContent.includes('No prepared preview URL')`, `forbidden editor template ${template}`);
+    assert.equal(await evaluate(websiteLink), remoteOrigin + '/about/'); checks++;
+  }
+  const legacyConfig = {...explicitConfig, pages:{about:'/about/'}, collections:{blog:{url:'/blog/{slug}/', new:'/templates/legacy-blog/'}}};
+  for (const [target, isNew, template, publicPath] of [
+    [{kind:'page', slug:'about'}, false, '/about/', '/about/'],
+    [{kind:'post', collection:'blog', slug:'legacy-new'}, true, '/templates/legacy-blog/', '/blog/legacy-new/'],
+    [{kind:'post', collection:'blog', slug:'legacy-saved'}, false, '/templates/legacy-blog/', '/blog/legacy-saved/'],
+  ]) {
+    const beforeLegacy = remoteRequests.length;
+    await site(target, legacyConfig, isNew);
+    await wait(`${idle} && document.querySelector('iframe').hasAttribute('srcdoc') && ${websiteLink} === ${JSON.stringify(remoteOrigin + publicPath)}`, 'legacy remote draft preview');
+    assert(remoteRequests.slice(beforeLegacy).includes(template), `legacy preview still fetches draftUrl${template}`);
+    checks++;
+  }
   assert.equal(exceptions.length,0,JSON.stringify(exceptions));
   await writeFile(path.join(scratch,'results.json'), JSON.stringify({checks,elapsed,reduced,opacity,requests,exceptions},null,2));
   console.log(`PASS ${checks} loading regression groups; fast ${elapsed.toFixed(1)}ms; reduced ${reduced.toFixed(1)}ms; intermediate opacity ${opacity}. Screenshots and results: ${scratch}`);

@@ -816,10 +816,9 @@
 {:else}
 <div class="rigel" class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
   <aside id="rigel-sidebar" data-tooltip-position="right">
-    <a class="brand" href="/rigel/" role="button" aria-label="Welcome" aria-describedby="rigel-beta" onclick={(event) => { event.preventDefault(); goWelcome(); }}>
+    <a class="brand" href="/rigel/" role="button" aria-label="Welcome" onclick={(event) => { event.preventDefault(); goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
-      <span id="rigel-beta" class="badge">Beta</span>
     </a>
     <TopBar {manifest} {sel} onselect={select} />
 

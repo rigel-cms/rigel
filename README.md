@@ -2,8 +2,6 @@
 
 A CMS for Astro sites. You edit the text, git keeps the history.
 
-`@rigel-cms/rigel` is a beta package and a work in progress. Expect bugs and breaking changes.
-
 ## Collection validation
 
 New collection drafts initialize every configured field, including Rigel's automatic `description`, `metaTitle`, and `ogImage` strings. Existing content is never filled in automatically; unknown properties are preserved and missing optional fields remain allowed.

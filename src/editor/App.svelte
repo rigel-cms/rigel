@@ -851,7 +851,7 @@
 
     {#if githubMode && manifest.github?.publishBranch}
       <button id="publish-button" class="sidebar-publish" aria-label="Publish" data-tooltip={dirty ? "Save your edits before publishing" : "Publish saved branch changes"} disabled={publishBusy || publishLoading || saveState === "saving" || connectionBusy || tokenExpired || githubAccess?.status !== "ready"} onclick={reviewPublish}>
-        <Icon name="external" size={18} /><span class="sidebar-label">Publish</span>
+        <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">Publish</span>
       </button>
     {/if}
     <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} data-tooltip={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>

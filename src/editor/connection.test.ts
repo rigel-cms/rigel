@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { compile } from "svelte/compiler";
+import { ICONS } from "./lib/icons";
+
+test("sidebar Publish uses the Phosphor rocket-launch icon", () => {
+  const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");
+  expect(source).toContain('<Icon name="rocketLaunch" size={18} /><span class="sidebar-label">Publish</span>');
+  expect(ICONS).toHaveProperty("rocketLaunch");
+});
 
 test("visible branding consistently uses Rigel CMS and includes the login wordmark", () => {
   const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");

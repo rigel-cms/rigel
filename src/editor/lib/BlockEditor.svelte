@@ -43,6 +43,7 @@
   let hoverKey = $state("");
   let insertion = $state<{ after: string; top: number; left: number } | null>(null);
   let blockType = $state("paragraph");
+  let canInsertBlock = $state(false);
   let listType = $state("");
   let handleTop = $state(0);
   let handleLeft = $state(0);
@@ -112,6 +113,7 @@
       const anchor = L.$isRangeSelection(selection) || Tables.$isTableSelection(selection) ? selection.anchor.getNode() : null;
       listType = anchor ? [anchor, ...anchor.getParents()].find(Lists.$isListNode)?.getListType() ?? "" : "";
       const node = anchor ? topBlock(anchor) : L.$isNodeSelection(selection) ? topBlock(selection.getNodes()[0]) : null;
+      canInsertBlock = L.$isRangeSelection(selection) && selection.isCollapsed() && L.$isElementNode(node) && !Tables.$isTableNode(node) && node.getTextContentSize() === 0;
       tableCell = anchor ? Tables.$getTableCellNodeFromLexicalNode(anchor)?.getKey() ?? "" : "";
       if (Tables.$isTableNode(node)) {
         tableRows = node.getChildrenSize(); tableColumns = node.getColumnCount();
@@ -603,11 +605,11 @@
     {#if image}
       <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel={$t("richtext.replaceImage")} onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {:else}
-      <button type="button" data-media-trigger aria-label={$t("richtext.insertMedia")} data-tooltip={$t("richtext.insertMedia")} aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={event => mediaPicker.toggleMenu(event.currentTarget)}><Icon name="image" size={18} /></button>
+      {#if !inline || canInsertBlock}<button type="button" data-media-trigger aria-label={$t("richtext.insertMedia")} data-tooltip={$t("richtext.insertMedia")} aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={event => mediaPicker.toggleMenu(event.currentTarget)}><Icon name="image" size={18} /></button>{/if}
       <ImagePicker toolbar hiddenTrigger value="" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {/if}
     {#if !image}
-    <button type="button" aria-label={$t("richtext.table")} data-tooltip={$t("richtext.table")} aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>
+    {#if !inline || canInsertBlock || blockType === "table"}<button type="button" aria-label={$t("richtext.table")} data-tooltip={$t("richtext.table")} aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>{/if}
     <button type="button" aria-label={$t("richtext.bulletedList")} data-tooltip={$t("richtext.bulletedList")} aria-pressed={listType === "bullet"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
     <button type="button" aria-label={$t("richtext.numberedList")} data-tooltip={$t("richtext.numberedList")} aria-pressed={listType === "number"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
     {#if !inline}

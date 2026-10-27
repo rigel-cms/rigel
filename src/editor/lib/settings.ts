@@ -1,5 +1,6 @@
 import { readStorage, writeStorage } from "./storage";
 import type { StockKeys } from "./images";
+import { availableLocales, setLocale, type Locale } from "../i18n";
 
 export interface RigelUserPref {
   sidebarCollapsed?: boolean;
@@ -10,7 +11,7 @@ export interface RigelUserPref {
 
 export interface RigelSettings {
   theme: "system" | "light" | "dark";
-  language: "en" | "es" | "ru";
+  language: Locale;
 
   devMode: boolean;
   highContrast: boolean;
@@ -19,7 +20,7 @@ export interface RigelSettings {
   userPref: RigelUserPref;
 }
 
-const prefs = (theme: "system" | "light" | "dark" = "system", language: "en" | "es" | "ru" = "en"): Pick<RigelSettings, "theme" | "language" | "devMode" | "highContrast"> => ({
+const prefs = (theme: "system" | "light" | "dark" = "system", language: Locale = "en"): Pick<RigelSettings, "theme" | "language" | "devMode" | "highContrast"> => ({
   theme, language, devMode: false, highContrast: false,
 });
 
@@ -40,7 +41,7 @@ export function getSettings(): RigelSettings {
     const legacyPref = readLegacyPref();
     return {
       theme: ["system", "light", "dark"].includes(saved?.theme) ? saved.theme : DEFAULTS.theme,
-      language: ["en", "es", "ru"].includes(saved?.language) ? saved.language : DEFAULTS.language,
+      language: availableLocales.includes(saved?.language) ? saved.language : DEFAULTS.language,
       devMode: typeof saved?.devMode === "boolean" ? saved.devMode : DEFAULTS.devMode,
       highContrast: typeof saved?.highContrast === "boolean" ? saved.highContrast : DEFAULTS.highContrast,
       apiKeys: mergedKeys,
@@ -83,6 +84,7 @@ function readLegacyPref(): Partial<RigelUserPref> {
 export function setSettings(s: Partial<RigelSettings>) {
   const next = { ...getSettings(), ...s, userPref: { ...getSettings().userPref, ...s.userPref } };
   writeStorage("settings", next);
+  setLocale(next.language);
   clearLegacy();
   localStorage.removeItem("rigel.user");
 }

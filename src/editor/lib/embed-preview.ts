@@ -1,13 +1,31 @@
 import { embedProviderLabel, embedWatchUrl, safeEmbed } from "./embeds";
+import { t, translate } from "../i18n";
 
-export function createVideoOverlay(doc: Document, label: string, url: string, editable = false): HTMLElement {
+const labels = new WeakMap<HTMLElement, () => string>();
+
+function mediaLabel(element: HTMLElement, text: () => string) {
+  element.dataset.rigelMediaLabel = "";
+  labels.set(element, text);
+  element.textContent = text();
+}
+
+export function subscribeMediaLabels(root: HTMLElement) {
+  return t.subscribe(() => {
+    for (const element of root.querySelectorAll<HTMLElement>("[data-rigel-media-label]")) {
+      const text = labels.get(element)?.();
+      if (text !== undefined && element.textContent !== text) element.textContent = text;
+    }
+  });
+}
+
+export function createVideoOverlay(doc: Document, label: () => string, url: string, editable = false): HTMLElement {
   const overlay = doc.createElement("div");
   overlay.contentEditable = "false";
   overlay.style.cssText = "position:absolute;inset:0;display:grid;place-items:center;padding:1rem;background:#0006";
   const card = doc.createElement("div");
   card.style.cssText = "box-sizing:border-box;width:100%;max-width:360px;padding:1rem;background:#18181b;color:white;border:1px solid #52525b;font:14px/1.5 system-ui;text-align:left";
   const heading = doc.createElement("strong");
-  heading.textContent = label;
+  mediaLabel(heading, label);
   const link = doc.createElement("div");
   link.textContent = url;
   link.style.cssText = "margin:0.5rem 0 1rem;overflow-wrap:anywhere;color:#e4e4e7";
@@ -19,7 +37,7 @@ export function createVideoOverlay(doc: Document, label: string, url: string, ed
     event.stopPropagation();
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); edit.click(); }
   });
-  edit.textContent = "Edit video";
+  mediaLabel(edit, () => translate("media.editVideo"));
   edit.hidden = !editable;
   edit.style.cssText = "min-height:44px;padding:0.5rem 0.75rem;border:1px solid #d4d4d8;background:white;color:#18181b;font:inherit;cursor:pointer";
   card.append(heading, link, edit);
@@ -49,9 +67,9 @@ export function createEmbedPreview(value: unknown, doc: Document, editable = fal
     poster.append(image);
   }
   const caption = doc.createElement("figcaption");
-  caption.textContent = `${embedProviderLabel(ref)} · ${title || "Video"}`;
+  mediaLabel(caption, () => translate("media.embedCaption", { provider: embedProviderLabel(ref), title: title || translate("media.video") }));
   caption.style.cssText = "margin-top:0.5rem;font-size:0.875rem;line-height:1.5";
-  poster.append(createVideoOverlay(doc, `${embedProviderLabel(ref)} Video`, embedWatchUrl(ref), editable));
+  poster.append(createVideoOverlay(doc, () => translate("media.providerVideo", { provider: embedProviderLabel(ref) }), embedWatchUrl(ref), editable));
   figure.append(poster, caption);
   return figure;
 }

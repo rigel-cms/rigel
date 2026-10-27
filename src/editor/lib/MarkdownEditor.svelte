@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import { onDestroy, tick } from "svelte";
   import { EditorState, TextSelection } from "prosemirror-state";
   import { EditorView } from "prosemirror-view";
@@ -39,14 +40,14 @@
     view.focus();
   }
   const marks = [
-    { name: "Bold", icon: "textB", type: "strong" },
-    { name: "Italic", icon: "textItalic", type: "em" },
-    { name: "Code", icon: "code", type: "code" },
+    { name: "richtext.bold", icon: "textB", type: "strong" },
+    { name: "richtext.italic", icon: "textItalic", type: "em" },
+    { name: "richtext.code", icon: "code", type: "code" },
   ] as const;
   const blocks = [
-    { name: "Bullet list", icon: "listBullets", type: "bullet_list" },
-    { name: "Numbered list", icon: "listNumbers", type: "ordered_list" },
-    { name: "Quote", icon: "quotes", type: "blockquote" },
+    { name: "richtext.bulletList", icon: "listBullets", type: "bullet_list" },
+    { name: "richtext.numberedList", icon: "listNumbers", type: "ordered_list" },
+    { name: "richtext.quote", icon: "quotes", type: "blockquote" },
   ] as const;
   const format = $derived(state?.selection.$from.parent.type.name === "heading" ? `h${state.selection.$from.parent.attrs.level}` : state?.selection.$from.parent.type.name ?? "paragraph");
 
@@ -57,7 +58,7 @@
 
   function load(source: string) {
     const doc = parseVisualMarkdown(source);
-    warning = doc ? "" : "This Markdown contains formatting the visual editor cannot safely preserve. Edit the original source below; nothing has been converted.";
+    warning = doc ? "" : $t("richtext.unsupportedMarkdown");
     if (!doc) { mode = "source"; return false; }
     state = EditorState.create({ doc, plugins: exampleSetup({ schema, menuBar: false }) });
     view?.updateState(state);
@@ -148,7 +149,7 @@
 
   function link(remove = false) {
     if (!view) return;
-    if (!remove && (!safeMarkdownUrl(linkUrl) || !linkUrl)) { linkError = "Enter a safe http, https, mailto or relative URL."; return; }
+    if (!remove && (!safeMarkdownUrl(linkUrl) || !linkUrl)) { linkError = $t("richtext.safeUrlError"); return; }
     const { from, to, empty } = view.state.selection;
     let tr = view.state.tr;
     if (empty) tr = remove ? tr.removeStoredMark(schema.marks.link) : tr.addStoredMark(schema.marks.link.create({ href: linkUrl }));
@@ -164,36 +165,36 @@
 <div class="markdown-editor body-editor">
   <div class="markdown-heading">
     <div class="field-label" id={`${id}-label`}>{label}</div>
-    <div class="markdown-modes" role="group" aria-label={`${label} editing mode`}>
-      <button type="button" aria-pressed={mode === "visual"} onclick={visual}>Visual</button>
-      <button type="button" aria-pressed={mode === "source"} onclick={() => { mode = "source"; linkOpen = false; }}>Markdown</button>
+    <div class="markdown-modes" role="group" aria-label={$t("richtext.editingMode", { label })}>
+      <button type="button" aria-pressed={mode === "visual"} onclick={visual}>{$t("richtext.visual")}</button>
+      <button type="button" aria-pressed={mode === "source"} onclick={() => { mode = "source"; linkOpen = false; }}>{$t("richtext.markdown")}</button>
     </div>
   </div>
   {#if warning}<p class="markdown-warning" role="status">{warning}</p>{/if}
   <div class="markdown-visual" hidden={mode !== "visual"}>
-    <div class="body-toolbar formatting-toolbar" role="group" aria-label={`${label} formatting`}>
-      <Select ariaLabel="Text style" data-tooltip="Text style" value={format} options={[{ value: "paragraph", label: "Paragraph" }, ...[1, 2, 3, 4, 5, 6].map(level => ({ value: `h${level}`, label: `Heading ${level}` })), { value: "code_block", label: "Code block" }].map(option => ({ ...option, disabled: !!state && format !== option.value && !formatCommand(option.value)(state) }))} onchange={next => command(formatCommand(String(next)))} />
-      <div class="format-group" role="group" aria-label="Text formatting">
+    <div class="body-toolbar formatting-toolbar" role="group" aria-label={$t("richtext.formatting", { label })}>
+      <Select ariaLabel={$t("richtext.textStyle")} data-tooltip={$t("richtext.textStyle")} value={format} options={[{ value: "paragraph", label: $t("richtext.paragraph") }, ...[1, 2, 3, 4, 5, 6].map(level => ({ value: `h${level}`, label: $t("richtext.heading", { level }) })), { value: "code_block", label: $t("richtext.codeBlock") }].map(option => ({ ...option, disabled: !!state && format !== option.value && !formatCommand(option.value)(state) }))} onchange={next => command(formatCommand(String(next)))} />
+      <div class="format-group" role="group" aria-label={$t("richtext.textFormatting")}>
         {#each marks as item}
-          <button type="button" aria-label={item.name} data-tooltip={item.name} aria-pressed={activeMark(item.type)} disabled={!state || !toggleMark(schema.marks[item.type])(state)} onmousedown={event => event.preventDefault()} onclick={() => command(toggleMark(schema.marks[item.type]))}><Icon name={item.icon} size={18} /></button>
+          <button type="button" aria-label={$t(item.name)} data-tooltip={$t(item.name)} aria-pressed={activeMark(item.type)} disabled={!state || !toggleMark(schema.marks[item.type])(state)} onmousedown={event => event.preventDefault()} onclick={() => command(toggleMark(schema.marks[item.type]))}><Icon name={item.icon} size={18} /></button>
         {/each}
       </div>
-      <div class="format-group" role="group" aria-label="Lists and quote">
+      <div class="format-group" role="group" aria-label={$t("richtext.listsAndQuote")}>
         {#each blocks as item}
-          <button type="button" aria-label={item.name} data-tooltip={item.name} aria-pressed={activeBlock(item.type)} disabled={!state || !blockCommand(item.type)(state)} onmousedown={event => event.preventDefault()} onclick={() => command(blockCommand(item.type))}><Icon name={item.icon} size={18} /></button>
+          <button type="button" aria-label={$t(item.name)} data-tooltip={$t(item.name)} aria-pressed={activeBlock(item.type)} disabled={!state || !blockCommand(item.type)(state)} onmousedown={event => event.preventDefault()} onclick={() => command(blockCommand(item.type))}><Icon name={item.icon} size={18} /></button>
         {/each}
       </div>
-      <button bind:this={linkButton} type="button" aria-label="Link" data-tooltip="Link" aria-pressed={activeMark("link")} aria-expanded={linkOpen} aria-controls={`${id}-link`} disabled={!state || !toggleMark(schema.marks.link)(state)} onmousedown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
+      <button bind:this={linkButton} type="button" aria-label={$t("richtext.link")} data-tooltip={$t("richtext.link")} aria-pressed={activeMark("link")} aria-expanded={linkOpen} aria-controls={`${id}-link`} disabled={!state || !toggleMark(schema.marks.link)(state)} onmousedown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
       <ImagePicker toolbar onopen={() => { imageSelection = view?.state.selection.getBookmark(); linkOpen = false; }} onpick={insertImage} onclose={() => { imageSelection = undefined; }} />
     </div>
     {#if linkOpen}
-      <div class="markdown-link" id={`${id}-link`} role="group" aria-label="Edit link" onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; linkButton.focus(); } if (event.key === "Enter") { event.preventDefault(); link(); } }}>
-        <label for={`${id}-url`}>Link URL</label>
+      <div class="markdown-link" id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; linkButton.focus(); } if (event.key === "Enter") { event.preventDefault(); link(); } }}>
+        <label for={`${id}-url`}>{$t("richtext.linkUrl")}</label>
         <div class="markdown-link-controls">
           <input id={`${id}-url`} type="text" placeholder="https://…" bind:this={linkInput} bind:value={linkUrl} aria-invalid={!!linkError} aria-describedby={linkError ? `${id}-error` : undefined} />
-          <button type="button" aria-label="Apply link" data-tooltip="Apply link" onclick={() => link()}><Icon name="check" size={16} /></button>
-          <button type="button" aria-label="Remove link" data-tooltip="Remove link" disabled={!activeMark("link")} onclick={() => link(true)}><Icon name="linkBreak" size={16} /></button>
-          <button type="button" aria-label="Close link" data-tooltip="Close link" onclick={() => { linkOpen = false; linkButton.focus(); }}><Icon name="x" size={16} /></button>
+          <button type="button" aria-label={$t("richtext.applyLink")} data-tooltip={$t("richtext.applyLink")} onclick={() => link()}><Icon name="check" size={16} /></button>
+          <button type="button" aria-label={$t("richtext.removeLink")} data-tooltip={$t("richtext.removeLink")} disabled={!activeMark("link")} onclick={() => link(true)}><Icon name="linkBreak" size={16} /></button>
+          <button type="button" aria-label={$t("richtext.closeLink")} data-tooltip={$t("richtext.closeLink")} onclick={() => { linkOpen = false; linkButton.focus(); }}><Icon name="x" size={16} /></button>
         </div>
         {#if linkError}<p id={`${id}-error`} role="alert">{linkError}</p>{/if}
       </div>
@@ -201,6 +202,6 @@
     <div class="md-preview rich-text" bind:this={host}></div>
   </div>
   {#if mode === "source"}
-    <textarea class="mono" rows="14" aria-label={`${label} Markdown source`} value={value} oninput={(event) => { warning = ""; emit(event.currentTarget.value); }}></textarea>
+    <textarea class="mono" rows="14" aria-label={$t("richtext.markdownSource", { label })} value={value} oninput={(event) => { warning = ""; emit(event.currentTarget.value); }}></textarea>
   {/if}
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import Icon from "./Icon.svelte";
   import type { PublishReview } from "./github-backend";
   let { review, loading, busy, error, message, onrefresh, onconfirm, onclose }: {
@@ -16,31 +17,31 @@
 
 <dialog bind:this={dialog} class="rigel rigel-modal-backdrop publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description" oncancel={(event) => { event.preventDefault(); if (!busy) onclose(); }}>
   <form class="rigel-modal" onsubmit={(event) => { event.preventDefault(); onconfirm(); }} aria-busy={loading || busy}>
-    <div class="publish-head"><h2 id="publish-title">Publish saved changes</h2><button type="button" class="icon-btn" aria-label="Close publish review" disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
-    <p id="publish-description">Publish includes <strong>all saved changes on the drafts branch</strong>, including files outside CMS content folders. Unsaved edits are never included or saved automatically.</p>
-    {#if loading}<p role="status">Loading the complete file review…</p>{/if}
+    <div class="publish-head"><h2 id="publish-title">{$t("connection.publishTitle")}</h2><button type="button" class="icon-btn" aria-label={$t("connection.closePublishReview")} disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
+    <p id="publish-description">{#each $t("connection.publishDescription", { scope: "{scope}" }).split("{scope}") as part, index}{#if index}<strong>{$t("connection.publishScope")}</strong>{/if}{part}{/each}</p>
+    {#if loading}<p role="status">{$t("connection.loadingReview")}</p>{/if}
     {#if review}
-      <p><strong>{review.repo}</strong><br /><span class="publish-branch">{review.branch}</span> to <span class="publish-branch">{review.publishBranch}</span>, as one squash commit.</p>
+      <p><strong>{review.repo}</strong><br />{#each $t("connection.publishBranches", { branch: "{branch}", publishBranch: "{publishBranch}" }).split(/(\{branch\}|\{publishBranch\})/) as part}{#if part === "{branch}"}<span class="publish-branch">{review.branch}</span>{:else if part === "{publishBranch}"}<span class="publish-branch">{review.publishBranch}</span>{:else}{part}{/if}{/each}</p>
       {#if review.needsSync}
-        <p>The publishing branch has changes not in drafts, including earlier squash publishes. First, explicitly sync it into drafts using GitHub’s normal merge. This does not publish. Conflicts stop the sync. Then review the updated files again before publishing.</p>
-        <p>These are the current tree differences, not the final publish list:</p>
+        <p>{$t("connection.syncDescription")}</p>
+        <p>{$t("connection.treeDifferences")}</p>
       {/if}
-      <p id="publish-file-count"><strong>{review.files.length} {review.files.length === 1 ? "file" : "files"}</strong></p>
+      <p id="publish-file-count"><strong>{$t("connection.fileCount", { count: review.files.length })}</strong></p>
       {#if review.files.length}
-        <ul class="publish-files" tabindex="0" aria-label="All changed files" aria-describedby="publish-file-count">
+        <ul class="publish-files" tabindex="0" aria-label={$t("connection.allChangedFiles")} aria-describedby="publish-file-count">
           {#each review.files as file (file.filename)}
-            <li><span class="publish-file-status">{file.status}</span><span>{file.filename}{#if file.previous_filename}<small>Previously: {file.previous_filename}</small>{/if}</span></li>
+            <li><span class="publish-file-status">{$t(`connection.fileStatus.${file.status}`)}</span><span>{file.filename}{#if file.previous_filename}<small>{$t("connection.previousFilename", { filename: file.previous_filename })}</small>{/if}</span></li>
           {/each}
         </ul>
-      {:else}<p>No saved changes to publish. The branch trees are identical.</p>{/if}
-      <p class="hint">Both branch revisions are checked again before publishing. GitHub pins the draft revision, but cannot atomically lock the target revision; a target update in the final instant can still race. Required checks, reviews and branch protections apply.</p>
+      {:else}<p>{$t("connection.noSavedChanges")}</p>{/if}
+      <p class="hint">{$t("connection.publishSafety")}</p>
     {/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     {#if message}<p role="status">{message}</p>{/if}
     <div class="publish-actions">
-      <button type="button" bind:this={cancel} class="outlined" disabled={busy} onclick={onclose}>{message ? "Close" : "Cancel"}</button>
-      {#if !message}<button type="button" class="outlined" disabled={loading || busy} onclick={onrefresh}>Review again</button>{/if}
-      {#if review && !message}<button id="confirm-publish" type="submit" class="primary" disabled={loading || busy || !review.files.length}>{busy ? "Working…" : review.needsSync ? "Sync drafts first" : "Confirm publish"}</button>{/if}
+      <button type="button" bind:this={cancel} class="outlined" disabled={busy} onclick={onclose}>{message ? $t("connection.close") : $t("connection.cancel")}</button>
+      {#if !message}<button type="button" class="outlined" disabled={loading || busy} onclick={onrefresh}>{$t("connection.reviewAgain")}</button>{/if}
+      {#if review && !message}<button id="confirm-publish" type="submit" class="primary" disabled={loading || busy || !review.files.length}>{busy ? $t("connection.working") : review.needsSync ? $t("connection.syncDraftsFirst") : $t("connection.confirmPublish")}</button>{/if}
     </div>
   </form>
 </dialog>

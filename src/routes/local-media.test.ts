@@ -208,7 +208,7 @@ test("new uploads can be read immediately without waiting for the public-file wa
 });
 
 test.each(["../private", "file.svg", "a.png", undefined])("media reads reject filename %s", async (filename) => {
-  const response = await GET({ params: { filename } } as unknown as APIContext);
+  const response = await GET({ params: { filename }, request: new Request(origin) } as unknown as APIContext);
   expect(response.status).toBe(404);
 });
 

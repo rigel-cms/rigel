@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel — Content Editor",
+  "system.sidebar.website": "Website",
+  "system.sidebar.pages": "Pages",
+  "system.sidebar.shared": "Shared content",
+  "system.sidebar.menus": "Menus",
+  "system.sidebar.assets": "Assets",
+  "system.sidebar.media": "Media",
+  "system.sidebar.more": "More content",
+  "system.reference.unavailable": "Unavailable ({id})",
+  "system.reference.expectedMany": "{label}: expected an array of references",
+  "system.reference.expectedOne": "{label}: expected one reference",
+  "system.reference.existingOnly": "{label}: select existing entries only"
+}

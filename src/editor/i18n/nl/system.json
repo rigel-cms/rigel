@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel — Inhoudseditor",
+  "system.sidebar.website": "Website",
+  "system.sidebar.pages": "Pagina’s",
+  "system.sidebar.shared": "Gedeelde inhoud",
+  "system.sidebar.menus": "Menu’s",
+  "system.sidebar.assets": "Bestanden",
+  "system.sidebar.media": "Media",
+  "system.sidebar.more": "Meer inhoud",
+  "system.reference.unavailable": "Niet beschikbaar ({id})",
+  "system.reference.expectedMany": "{label}: een array met verwijzingen verwacht",
+  "system.reference.expectedOne": "{label}: één verwijzing verwacht",
+  "system.reference.existingOnly": "{label}: selecteer alleen bestaande items"
+}

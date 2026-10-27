@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { Manifest } from "../../manifest/types";
-import { reviewRemotePublish, confirmRemotePublish, loadManifestRemote, saveRemoteSelection, deleteRemotePost } from "./github-backend";
+import { reviewRemotePublish, confirmRemotePublish, loadManifestRemote, saveRemoteSelection, deleteRemotePost, PublishReviewChangedError } from "./github-backend";
 
 const A = "a".repeat(40), B = "b".repeat(40), C = "c".repeat(40);
 const ctx = { token: "test-token", repo: "owner/site", branch: "drafts" };
@@ -60,6 +60,7 @@ test.each(["head", "base"] as const)("moved %s invalidates review without any wr
   const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m);
   s[field] = C;
   await expect(confirmRemotePublish(ctx, m, review)).rejects.toThrow(/Branches changed/);
+  await expect(confirmRemotePublish(ctx, m, review)).rejects.toBeInstanceOf(PublishReviewChangedError);
   expect(s.calls.every(c => c.method === "GET")).toBe(true);
 });
 

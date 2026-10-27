@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import { tick } from "svelte";
   import type { MenuItem } from "../../manifest/menu";
   import { editMenuItem, menuRows, moveMenuItem } from "./menu-tree";
@@ -68,8 +69,8 @@
   function move(id: string, targetId: string | null, position: "before" | "after" | "inside") {
     try {
       oninput(moveMenuItem(items, id, targetId, position, maxDepth));
-      message = "Menu item moved";
-    } catch (error) { message = error instanceof Error ? error.message : "Cannot move item"; }
+      message = $t("fields.menuItemMoved");
+    } catch (error) { message = error instanceof Error ? error.message : $t("fields.menuCannotMoveItem"); }
     dragging = null;
     target = "";
   }
@@ -82,10 +83,10 @@
   }
   function add(parentId: string | null = null) {
     const parent = rows.find((row) => row.item.id === parentId);
-    if (parent && parent.depth >= maxDepth) { message = `Maximum ${maxDepth} levels`; return; }
-    const item: MenuItem = { id: crypto.randomUUID(), label: "New item", url: "/", children: [] };
+    if (parent && parent.depth >= maxDepth) { message = $t("fields.menuMaximumLevels", { maxDepth }); return; }
+    const item: MenuItem = { id: crypto.randomUUID(), label: $t("fields.menuNewItem"), url: "/", children: [] };
     oninput(parentId ? editMenuItem(items, parentId, (p) => ({ ...p, children: [...p.children, item] })) : [...items, item]);
-    message = "Menu item added";
+    message = $t("fields.menuItemAdded");
     void open(item.id);
   }
   function remove(item: MenuItem) {
@@ -96,70 +97,70 @@
   }
 </script>
 
-<svelte:window onpointermove={dragPointer} onpointerup={finishDrag} onpointercancel={cancelDrag} onkeydown={(event) => { if (event.key === 'Escape' && pointer) { cancelDrag(); message = 'Move cancelled'; } }} />
-<section class="menu-editor" aria-label="Menu items" bind:this={host}>
-  <nav class="menu-path" aria-label="Menu path">
-    <button type="button" data-menu-path="" onclick={() => open(null)}>Menu items</button>
+<svelte:window onpointermove={dragPointer} onpointerup={finishDrag} onpointercancel={cancelDrag} onkeydown={(event) => { if (event.key === 'Escape' && pointer) { cancelDrag(); message = $t('fields.menuMoveCancelled'); } }} />
+<section class="menu-editor" aria-label={$t("fields.menuItems")} bind:this={host}>
+  <nav class="menu-path" aria-label={$t("fields.menuPath")}>
+    <button type="button" data-menu-path="" onclick={() => open(null)}>{$t("fields.menuItems")}</button>
     {#each chain as row}
       <Icon name="caretRight" size={12} />
-      <button type="button" data-menu-path={row.item.id} aria-current={row.item.id === selectedId ? 'step' : undefined} onclick={() => open(row.item.id)}>{row.item.label || "Untitled item"}</button>
+      <button type="button" data-menu-path={row.item.id} aria-current={row.item.id === selectedId ? 'step' : undefined} onclick={() => open(row.item.id)}>{row.item.label || $t("fields.menuUntitledItem")}</button>
     {/each}
   </nav>
   <p class="menu-message" role="status" aria-live="polite">{message}</p>
   <div class="menu-panes">
     {#each panes as parent, index (parent?.item.id ?? '')}
-      <section class="menu-pane" class:active={index === panes.length - 1} data-menu-parent={parent?.item.id ?? ''} aria-label={parent ? `${parent.item.label || 'Untitled item'} details` : 'Menu items'}>
+      <section class="menu-pane" class:active={index === panes.length - 1} data-menu-parent={parent?.item.id ?? ''} aria-label={parent ? $t("fields.menuItemDetails", { label: parent.item.label || $t("fields.menuUntitledItem") }) : $t("fields.menuItems")}>
         <div class="menu-pane-head">
-          <h3>{parent?.item.label || (parent ? "Untitled item" : "Menu items")}</h3>
+          <h3>{parent?.item.label || $t(parent ? "fields.menuUntitledItem" : "fields.menuItems")}</h3>
           {#if parent}
             <details class="menu-actions">
-              <summary aria-label={`Actions for ${parent.item.label}`}><Icon name="dotsThreeOutlineVertical" /></summary>
+              <summary aria-label={$t("fields.menuItemActions", { label: parent.item.label })}><Icon name="dotsThreeOutlineVertical" /></summary>
               <div>
-                <button type="button" disabled={!parent.previous} onclick={() => parent.previous && move(parent.item.id, parent.previous, 'before')}>Up</button>
-                <button type="button" disabled={!parent.next} onclick={() => parent.next && move(parent.item.id, parent.next, 'after')}>Down</button>
-                <button type="button" disabled={!parent.previous || parent.depth + Math.max(...menuRows([parent.item]).map(row => row.depth)) > maxDepth} onclick={() => parent.previous && move(parent.item.id, parent.previous, 'inside')}>Indent</button>
-                <button type="button" disabled={!parent.parentId} onclick={() => parent.parentId && move(parent.item.id, parent.parentId, 'after')}>Outdent</button>
-                <button type="button" class="menu-remove" onclick={() => remove(parent.item)}>Remove</button>
+                <button type="button" disabled={!parent.previous} onclick={() => parent.previous && move(parent.item.id, parent.previous, 'before')}>{$t("fields.menuUp")}</button>
+                <button type="button" disabled={!parent.next} onclick={() => parent.next && move(parent.item.id, parent.next, 'after')}>{$t("fields.menuDown")}</button>
+                <button type="button" disabled={!parent.previous || parent.depth + Math.max(...menuRows([parent.item]).map(row => row.depth)) > maxDepth} onclick={() => parent.previous && move(parent.item.id, parent.previous, 'inside')}>{$t("fields.menuIndent")}</button>
+                <button type="button" disabled={!parent.parentId} onclick={() => parent.parentId && move(parent.item.id, parent.parentId, 'after')}>{$t("fields.menuOutdent")}</button>
+                <button type="button" class="menu-remove" onclick={() => remove(parent.item)}>{$t("fields.remove")}</button>
               </div>
             </details>
           {/if}
         </div>
         {#if parent}
           <div class="menu-fields">
-            <label><span>Label</span><input type="text" aria-label={`Label for ${parent.item.id}`} value={parent.item.label} oninput={event => change(parent.item.id, 'label', event.currentTarget.value)} /></label>
-            <label><span>URL</span><input type="text" aria-label={`URL for ${parent.item.id}`} value={parent.item.url} placeholder="/about or https://example.com" oninput={event => change(parent.item.id, 'url', event.currentTarget.value)} /></label>
-            <label class="inline"><input type="checkbox" role="switch" class="switch" checked={parent.item.newTab ?? false} onchange={event => oninput(editMenuItem(items, parent.item.id, item => ({ ...item, newTab: event.currentTarget.checked })))} /><span>Open in new tab</span></label>
+            <label><span>{$t("fields.menuLabel")}</span><input type="text" aria-label={$t("fields.menuLabelFor", { id: parent.item.id })} value={parent.item.label} oninput={event => change(parent.item.id, 'label', event.currentTarget.value)} /></label>
+            <label><span>{$t("fields.menuUrl")}</span><input type="text" aria-label={$t("fields.menuUrlFor", { id: parent.item.id })} value={parent.item.url} placeholder={$t("fields.menuUrlPlaceholder")} oninput={event => change(parent.item.id, 'url', event.currentTarget.value)} /></label>
+            <label class="inline"><input type="checkbox" role="switch" class="switch" checked={parent.item.newTab ?? false} onchange={event => oninput(editMenuItem(items, parent.item.id, item => ({ ...item, newTab: event.currentTarget.checked })))} /><span>{$t("fields.menuOpenInNewTab")}</span></label>
           </div>
-          <h4>Items</h4>
+          <h4>{$t("fields.menuGroupItems")}</h4>
         {/if}
         <div class="menu-list">
           {#each (parent ? parent.item.children : items) as item (item.id)}
             <div class="menu-item" class:is-dragging={dragging === item.id} class:drop-before={target === item.id + 'before'} class:drop-after={target === item.id + 'after'} class:selected={chain[index]?.item.id === item.id} data-menu-id={item.id} data-parent-id={parent?.item.id ?? ''} data-depth={index + 1}>
-              <button type="button" class="menu-drag" aria-label={`Drag ${item.label}`} onpointerdown={event => startDrag(event, item.id)} onlostpointercapture={cancelDrag}><Icon name="listBullets" /></button>
-              <button type="button" class="menu-open" aria-label={`Open ${item.label || 'Untitled item'}`} aria-expanded={chain[index]?.item.id === item.id} onclick={() => open(item.id)}>
-                <span><span class="menu-label">{item.label || "Untitled item"}</span><span class="menu-url">{item.url}</span></span>
+              <button type="button" class="menu-drag" aria-label={$t("fields.menuDragItem", { label: item.label })} onpointerdown={event => startDrag(event, item.id)} onlostpointercapture={cancelDrag}><Icon name="listBullets" /></button>
+              <button type="button" class="menu-open" aria-label={$t("fields.menuOpenItem", { label: item.label || $t("fields.menuUntitledItem") })} aria-expanded={chain[index]?.item.id === item.id} onclick={() => open(item.id)}>
+                <span><span class="menu-label">{item.label || $t("fields.menuUntitledItem")}</span><span class="menu-url">{item.url}</span></span>
                 {#if item.children.length}<span class="menu-count">{item.children.length}</span>{/if}
                 <Icon name="caretRight" size={12} />
               </button>
             </div>
           {:else}
-            <p class="menu-empty">{parent ? "No items in this group." : "No menu items yet."}</p>
+            <p class="menu-empty">{$t(parent ? "fields.menuEmptyGroup" : "fields.menuEmpty")}</p>
           {/each}
         </div>
-        <button type="button" class="menu-add" disabled={!!parent && parent.depth >= maxDepth} onclick={() => add(parent?.item.id ?? null)}><Icon name="plus" />{parent ? "Add child" : "Add item"}</button>
-        {#if parent && parent.depth >= maxDepth}<p class="hint">Maximum {maxDepth} levels.</p>{/if}
+        <button type="button" class="menu-add" disabled={!!parent && parent.depth >= maxDepth} onclick={() => add(parent?.item.id ?? null)}><Icon name="plus" />{$t(parent ? "fields.menuAddChild" : "fields.addItem")}</button>
+        {#if parent && parent.depth >= maxDepth}<p class="hint">{$t("fields.menuMaximumLevelsHint", { maxDepth })}</p>{/if}
       </section>
     {/each}
   </div>
 </section>
 {#if removing}
-  <ActionDialog title={`Remove “${removing.label}”?`} description="This removes the item and all its children from the draft. Press Save to persist the change." confirmLabel="Remove" danger onconfirm={() => {
+  <ActionDialog title={$t("fields.menuRemoveTitle", { label: removing.label })} description={$t("fields.menuRemoveDescription")} confirmLabel={$t("fields.remove")} danger onconfirm={() => {
     if (removing) {
       const parentId = rows.find(row => row.item.id === removing?.id)?.parentId ?? null;
       oninput(editMenuItem(items, removing.id, () => null));
       void open(parentId);
     }
-    message = "Menu item removed";
+    message = $t("fields.menuItemRemoved");
   }} onclose={() => { removing = null; }} />
 {/if}
 

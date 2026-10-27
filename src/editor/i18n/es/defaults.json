@@ -1,0 +1,6 @@
+{
+  "defaults.draft": "Borrador",
+  "defaults.seoTitle": "Título SEO",
+  "defaults.seoDescription": "Descripción SEO",
+  "defaults.socialImage": "Imagen para redes sociales"
+}

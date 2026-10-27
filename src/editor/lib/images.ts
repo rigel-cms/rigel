@@ -1,13 +1,15 @@
 import { getSettings, setSettings } from "./settings";
+import { translate, locale } from "../i18n";
+import { get } from "svelte/store";
 import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, storedMediaFile } from "../../media-types";
 import config from "virtual:rigel-config";
 export function getKeys(): StockKeys { return getSettings().apiKeys; }
 export function setKeys(keys: StockKeys) { setSettings({ apiKeys: keys }); }
 
 export const STOCK_PROVIDERS = {
-  pexels: { label: "Pexels", keyURL: "https://www.pexels.com/api/new/", pattern: "[a-zA-Z0-9]{56}", placeholder: "e.g. Ab3dE6fG9hJ2…" },
-  pixabay: { label: "Pixabay", keyURL: "https://pixabay.com/api/docs/#api_key", pattern: "[0-9]+-[a-f0-9]{25}", placeholder: "e.g. 12345678-abcdef012345…" },
-  unsplash: { label: "Unsplash", keyURL: "https://unsplash.com/oauth/applications", pattern: "[a-zA-Z0-9_-]{40,}", placeholder: "e.g. AbCdEf12_GhIjKl34…" },
+  pexels: { label: "Pexels", keyURL: "https://www.pexels.com/api/new/", pattern: "[a-zA-Z0-9]{56}", get placeholder() { return translate("media.pexelsKeyPlaceholder"); } },
+  pixabay: { label: "Pixabay", keyURL: "https://pixabay.com/api/docs/#api_key", pattern: "[0-9]+-[a-f0-9]{25}", get placeholder() { return translate("media.pixabayKeyPlaceholder"); } },
+  unsplash: { label: "Unsplash", keyURL: "https://unsplash.com/oauth/applications", pattern: "[a-zA-Z0-9_-]{40,}", get placeholder() { return translate("media.unsplashKeyPlaceholder"); } },
 } as const;
 
 export type StockSource = "picsum" | keyof typeof STOCK_PROVIDERS;
@@ -43,7 +45,7 @@ export async function unsplash(query: string, key: string): Promise<StockResult[
     query ? `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=24` : "https://api.unsplash.com/photos?per_page=24",
     { headers: { Authorization: `Client-ID ${key}` } },
   );
-  if (!r.ok) throw new Error(`Unsplash ${r.status}`);
+  if (!r.ok) throw new Error(translate("media.providerStatus", { provider: "Unsplash", status: r.status }));
   const data = await r.json();
   return (query ? data.results ?? [] : data).map((p: Record<string, any>) => ({
     source: "unsplash",
@@ -60,7 +62,7 @@ export async function pexels(query: string, key: string): Promise<StockResult[]>
     query ? `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=24` : "https://api.pexels.com/v1/curated?per_page=24",
     { headers: { Authorization: key } },
   );
-  if (!r.ok) throw new Error(`Pexels ${r.status}`);
+  if (!r.ok) throw new Error(translate("media.providerStatus", { provider: "Pexels", status: r.status }));
   const data = await r.json();
   return (data.photos ?? []).map((p: Record<string, any>) => ({
     source: "pexels",
@@ -79,7 +81,7 @@ export async function pixabay(query: string, key: string): Promise<StockResult[]
   if (query) params.set("q", query);
   else params.set("editors_choice", "true");
   const r = await fetch(`https://pixabay.com/api/?${params}`);
-  if (!r.ok) throw new Error(`Pixabay ${r.status}`);
+  if (!r.ok) throw new Error(translate("media.providerStatus", { provider: "Pixabay", status: r.status }));
   const data = await r.json();
   return (data.hits ?? []).map((p: Record<string, any>) => ({
     source: "pixabay",
@@ -101,18 +103,18 @@ export async function searchImages(
   if (source === "picsum") return picsum(query);
   const keys = getKeys();
   if (source === "pixabay") {
-    if (!keys.pixabay) throw new Error("Add a Pixabay API key in Settings → Media");
+    if (!keys.pixabay) throw new Error(translate("media.pixabayKeyRequired"));
     return pixabay(query, keys.pixabay);
   }
   if (source === "unsplash") {
-    if (!keys.unsplash) throw new Error("Add an Unsplash API key in Settings");
+    if (!keys.unsplash) throw new Error(translate("media.unsplashKeyRequired"));
     return unsplash(query, keys.unsplash);
   }
   if (source === "pexels") {
-    if (!keys.pexels) throw new Error("Add a Pexels API key in Settings → Media");
+    if (!keys.pexels) throw new Error(translate("media.pexelsKeyRequired"));
     return pexels(query, keys.pexels);
   }
-  throw new Error("Unknown stock photo provider");
+  throw new Error(translate("media.unknownStockProvider"));
 }
 
 export async function importStockImage(image: StockResult): Promise<string> {
@@ -122,33 +124,33 @@ export async function importStockImage(image: StockResult): Promise<string> {
     pexels: ["images.pexels.com"], pixabay: ["pixabay.com", "cdn.pixabay.com"],
   };
   if (url.protocol !== "https:" || url.username || url.password || !hosts[image.source]?.includes(url.hostname)) {
-    throw new Error("Unexpected stock photo URL");
+    throw new Error(translate("media.unexpectedStockUrl"));
   }
   if (image.source === "unsplash") {
     const key = getKeys().unsplash;
-    if (!key || !image.id) throw new Error("Unsplash photo or API key is missing");
+    if (!key || !image.id) throw new Error(translate("media.unsplashPhotoMissing"));
     const tracked = await fetch(`https://api.unsplash.com/photos/${encodeURIComponent(image.id)}/download`, {
       headers: { Authorization: "Client-" + "ID " + key },
     });
-    if (!tracked.ok) throw new Error(`Unsplash download tracking failed (${tracked.status})`);
+    if (!tracked.ok) throw new Error(translate("media.unsplashTrackingFailed", { status: tracked.status }));
     return image.url;
   }
   return importImageUrl(image.url);
 }
 
 export async function importImageUrl(value: string): Promise<string> {
-  if (!safeImageUrl(value)) throw new Error("Unsafe image URL");
-  if (!value.startsWith("/") && new URL(value).protocol !== "https:") throw new Error("Remote imports require HTTPS");
-  if (!value.startsWith("/") && new URL(value).hostname === "images.unsplash.com") throw new Error("Unsplash API images must stay hotlinked. Use Unsplash in the content image picker.");
+  if (!safeImageUrl(value)) throw new Error(translate("media.unsafeImageUrl"));
+  if (!value.startsWith("/") && new URL(value).protocol !== "https:") throw new Error(translate("media.remoteRequiresHttps"));
+  if (!value.startsWith("/") && new URL(value).hostname === "images.unsplash.com") throw new Error(translate("media.unsplashHotlinkRequired"));
   let response: Response;
   try { response = await fetch(value, { credentials: "omit", referrerPolicy: "no-referrer" }); }
-  catch { throw new Error("Image download failed. The source must allow browser downloads (CORS); alternatively upload the image file."); }
-  if (!response.ok) throw new Error(`Photo download failed (${response.status})`);
+  catch { throw new Error(translate("media.imageDownloadFailed")); }
+  if (!response.ok) throw new Error(translate("media.photoDownloadFailed", { status: response.status }));
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (Number(response.headers.get("Content-Length")) > limit) throw new Error(`Photo exceeds the ${limit / 1024 / 1024} MB import limit`);
+  if (Number(response.headers.get("Content-Length")) > limit) throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 }));
   const type = response.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
-  if (!["image/jpeg", "image/png", "image/webp"].includes(type ?? "")) throw new Error("Choose a JPEG, PNG or WebP image.");
-  if (!response.body) throw new Error("Empty image download");
+  if (!["image/jpeg", "image/png", "image/webp"].includes(type ?? "")) throw new Error(translate("media.chooseImageFormat"));
+  if (!response.body) throw new Error(translate("media.emptyDownload"));
   const reader = response.body.getReader();
   const chunks: Uint8Array<ArrayBuffer>[] = [];
   let size = 0;
@@ -157,7 +159,7 @@ export async function importImageUrl(value: string): Promise<string> {
       const { done, value: chunk } = await reader.read();
       if (done) break;
       size += chunk.byteLength;
-      if (size > limit) { await reader.cancel(); throw new Error(`Photo exceeds the ${limit / 1024 / 1024} MB import limit`); }
+      if (size > limit) { await reader.cancel(); throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 })); }
       chunks.push(new Uint8Array(chunk));
     }
   } finally { reader.releaseLock(); }
@@ -185,23 +187,23 @@ export function currentAuthor(): string {
 export async function uploadMedia(file: File): Promise<string> {
   const metadata = mediaMetadata(file.name);
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(`Choose a supported file up to ${limit / 1024 / 1024} MB with a safe filename.`);
-  const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
-  if (!response.ok) throw new Error(`Upload failed (${response.status}): ${await response.text()}`);
+  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "Accept-Language": get(locale), "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
+  if (!response.ok) throw new Error(translate("media.uploadFailed", { status: response.status, body: await response.text() }));
   const result = await response.json();
-  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !mediaMetadata(result.url)) throw new Error("Invalid uploaded asset URL");
+  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !mediaMetadata(result.url)) throw new Error(translate("media.invalidUploadedUrl"));
   return result.url;
 }
 
 export async function uploadImage(blob: Blob): Promise<string> {
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (blob.size > limit) throw new Error(`Photo exceeds the ${limit / 1024 / 1024} MB import limit`);
-  const saved = await fetch("/rigel/api/local/media", { method: "POST", body: blob });
-  if (saved.status === 404) throw new Error("Photo import requires the local dev server");
-  if (!saved.ok) throw new Error(`Photo import failed (${saved.status})`);
+  if (blob.size > limit) throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 }));
+  const saved = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Accept-Language": get(locale) }, body: blob });
+  if (saved.status === 404) throw new Error(translate("media.localImportRequired"));
+  if (!saved.ok) throw new Error(translate("media.photoImportFailedStatus", { status: saved.status }));
   const result = await saved.json();
   if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !/\.(jpg|png|webp)$/.test(result.url)) {
-    throw new Error("Invalid imported photo URL");
+    throw new Error(translate("media.invalidImportedUrl"));
   }
   return result.url;
 }

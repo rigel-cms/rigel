@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import ImagePicker from "./ImagePicker.svelte";
   import MarkdownEditor from "./MarkdownEditor.svelte";
   import SchemaField from "./SchemaField.svelte";
@@ -35,7 +36,8 @@
   const itemSchema = $derived(field.type === "array" ? itemFields(schema, field) : []);
   const objectSchema = $derived(field.type === "object" ? objectFields(schema, field) : []);
   const options = $derived(field.type === "reference" ? referenceOptions(documents, field.to ?? []) : []);
-  const label = $derived(`${field.label}${field.required ? " *" : ""}${devMode ? ` (${field.key})` : ""}`);
+  const fieldLabel = $derived(field.labelKey ? $t(field.labelKey) : field.label);
+  const label = $derived(`${fieldLabel}${field.required ? " *" : ""}${devMode ? ` (${field.key})` : ""}`);
 
   function normalizeColor(input: string): string {
     const hex = input.trim().replace(/^#/, "");
@@ -60,8 +62,8 @@
   <div class="schema-field">
     <label for={id}><span>{label}</span></label>
     <div class="schema-color">
-      <input type="color" aria-label={`${field.label} picker`} value={/^#[0-9a-f]{6}$/.test(color) ? color : "#000000"} oninput={(event) => onvalue(event.currentTarget.value)} />
-      <input id={id} type="text" aria-label={`${field.label} hex value`} value={typeof value === "string" ? value : ""} placeholder="#000000" spellcheck={false} oninput={(event) => onvalue(event.currentTarget.value)} onblur={(event) => onvalue(normalizeColor(event.currentTarget.value))} />
+      <input type="color" aria-label={$t("fields.colorPicker", { label: fieldLabel })} value={/^#[0-9a-f]{6}$/.test(color) ? color : "#000000"} oninput={(event) => onvalue(event.currentTarget.value)} />
+      <input id={id} type="text" aria-label={$t("fields.colorHexValue", { label: fieldLabel })} value={typeof value === "string" ? value : ""} placeholder="#000000" spellcheck={false} oninput={(event) => onvalue(event.currentTarget.value)} onblur={(event) => onvalue(normalizeColor(event.currentTarget.value))} />
     </div>
   </div>
 {:else if field.type === "code"}
@@ -74,7 +76,7 @@
     <label for={id}><span>{label}</span></label>
     <div class="secret-input">
       <input id={id} type={revealed ? "text" : "password"} value={typeof value === "string" ? value : ""} placeholder={field.placeholder ?? ""} autocomplete="off" spellcheck={false} oninput={(event) => onvalue(event.currentTarget.value)} />
-      <button type="button" aria-label={`${revealed ? "Hide" : "Show"} ${field.label}`} aria-controls={id} aria-pressed={revealed} onclick={() => revealed = !revealed}><Icon name={revealed ? "eyeSlash" : "eye"} size={18} /></button>
+      <button type="button" aria-label={$t(revealed ? "fields.hideValue" : "fields.showValue", { label: fieldLabel })} aria-controls={id} aria-pressed={revealed} onclick={() => revealed = !revealed}><Icon name={revealed ? "eyeSlash" : "eye"} size={18} /></button>
     </div>
   </div>
 {:else if field.type === "text"}
@@ -83,7 +85,7 @@
     <textarea rows="3" value={typeof value === "string" ? value : ""} oninput={(event) => onvalue(event.currentTarget.value)}></textarea>
   </label>
 {:else if field.type === "markdown"}
-  <MarkdownEditor label={field.label} value={typeof value === "string" ? value : ""} oninput={(next) => onvalue(next)} />
+  <MarkdownEditor label={fieldLabel} value={typeof value === "string" ? value : ""} oninput={(next) => onvalue(next)} />
 {:else if field.type === "image"}
   <div class="schema-field">
     <span class="schema-label">{label}</span>
@@ -102,7 +104,7 @@
 {:else if field.type === "date"}
   <DatePicker {label} value={typeof value === "string" ? value : ""} required={field.required} onchange={next => onvalue(next || undefined)} />
 {:else if field.type === "reference"}
-  <Select {label} value={value && typeof value === "object" ? String((value as Record<string, unknown>)._ref ?? "") : ""} options={[{ value: "", label: "Choose…" }, ...options.map(option => ({ value: option.id, label: String(option.data.title ?? option.data.name ?? option.slug) }))]} onchange={next => onvalue(next ? { _ref: String(next) } : undefined)} />
+  <Select {label} value={value && typeof value === "object" ? String((value as Record<string, unknown>)._ref ?? "") : ""} options={[{ value: "", label: $t("fields.choose") }, ...options.map(option => ({ value: option.id, label: String(option.data.title ?? option.data.name ?? option.slug) }))]} onchange={next => onvalue(next ? { _ref: String(next) } : undefined)} />
 {:else if field.type === "object"}
   <fieldset class="schema-object">
     <legend>{label}</legend>
@@ -124,13 +126,13 @@
     {#each itemList as item, index (`${base}.${item && typeof item === "object" ? (item as Record<string, unknown>)._key ?? index : index}`)}
       <div class="schema-item" data-schema-path={`${base}.${item && typeof item === "object" ? (item as Record<string, unknown>)._key ?? index : index}`}>
         <div class="schema-item-head">
-          <span>Item {index + 1}</span>
+          <span>{$t("fields.itemNumber", { number: index + 1 })}</span>
           <span class="schema-key">{(item && typeof item === "object" ? (item as Record<string, unknown>)._key : "") ?? ""}</span>
           <div class="schema-item-actions">
-            <button type="button" aria-label={`Move ${field.label} item ${index + 1} up`} data-tooltip="Move up" disabled={index === 0} onclick={() => onvalue(moveItem(itemList, index, -1))}>↑</button>
-            <button type="button" aria-label={`Move ${field.label} item ${index + 1} down`} data-tooltip="Move down" disabled={index === itemList.length - 1} onclick={() => onvalue(moveItem(itemList, index, 1))}>↓</button>
-            <button type="button" aria-label={`Duplicate ${field.label} item ${index + 1}`} data-tooltip="Duplicate" onclick={() => onvalue(duplicateItem(itemList, index))}>⧉</button>
-            <button type="button" aria-label={`Remove ${field.label} item ${index + 1}`} data-tooltip="Remove" onclick={() => onvalue(itemList.filter((_, position) => position !== index))}>×</button>
+            <button type="button" aria-label={$t("fields.moveItemUp", { label: fieldLabel, number: index + 1 })} data-tooltip={$t("fields.moveUp")} disabled={index === 0} onclick={() => onvalue(moveItem(itemList, index, -1))}>↑</button>
+            <button type="button" aria-label={$t("fields.moveItemDown", { label: fieldLabel, number: index + 1 })} data-tooltip={$t("fields.moveDown")} disabled={index === itemList.length - 1} onclick={() => onvalue(moveItem(itemList, index, 1))}>↓</button>
+            <button type="button" aria-label={$t("fields.duplicateItem", { label: fieldLabel, number: index + 1 })} data-tooltip={$t("fields.duplicate")} onclick={() => onvalue(duplicateItem(itemList, index))}>⧉</button>
+            <button type="button" aria-label={$t("fields.removeItem", { label: fieldLabel, number: index + 1 })} data-tooltip={$t("fields.remove")} onclick={() => onvalue(itemList.filter((_, position) => position !== index))}>×</button>
           </div>
         </div>
         {#if itemSchema.length}
@@ -146,11 +148,11 @@
             />
           {/each}
         {:else}
-          <input type="text" aria-label={`${field.label} item ${index + 1}`} value={typeof item === "string" ? item : ""} oninput={(event) => setItem(index, event.currentTarget.value)} />
+          <input type="text" aria-label={$t("fields.itemLabel", { label: fieldLabel, number: index + 1 })} value={typeof item === "string" ? item : ""} oninput={(event) => setItem(index, event.currentTarget.value)} />
         {/if}
       </div>
     {/each}
-    <button type="button" class="outlined" onclick={() => onvalue([...itemList, itemSchema.length ? blankItem(itemSchema) : field.items?.some((item) => item.type === "reference") ? { _key: newKey(), _ref: "" } : ""])}>Add item</button>
+    <button type="button" class="outlined" onclick={() => onvalue([...itemList, itemSchema.length ? blankItem(itemSchema) : field.items?.some((item) => item.type === "reference") ? { _key: newKey(), _ref: "" } : ""])}>{$t("fields.addItem")}</button>
   </div>
 {/if}
 </div>

@@ -1,3 +1,8 @@
+declare module "virtual:rigel-i18n" {
+  const dictionaries: import("./editor/i18n/format").Dictionaries;
+  export default dictionaries;
+}
+
 declare module "virtual:rigel-manifest" {
   import type { CopyPage, ManifestCollection } from "@rigel-cms/rigel/content";
   export const pages: CopyPage[];
@@ -17,6 +22,6 @@ declare module "virtual:rigel-content" {
 
 declare module "virtual:rigel-config" {
   import type { RigelConfig } from "@rigel-cms/rigel";
-  const config: Pick<RigelConfig, "copyDir" | "backend" | "jsonOutput" | "demo" | "collections" | "menus" | "mediaDir" | "maxFileSize" | "schema" | "preview"> & { publicDir?: string; root?: string };
+  const config: Pick<RigelConfig, "copyDir" | "backend" | "jsonOutput" | "demo" | "languages" | "collections" | "menus" | "mediaDir" | "maxFileSize" | "schema" | "preview"> & { publicDir?: string; root?: string };
   export default config;
 }

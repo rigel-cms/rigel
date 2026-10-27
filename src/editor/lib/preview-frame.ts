@@ -1,3 +1,4 @@
+import { translate } from "../i18n";
 import DOMPurify from "dompurify";
 
 export async function fetchPreview(url: URL, signal: AbortSignal): Promise<string> {
@@ -5,10 +6,10 @@ export async function fetchPreview(url: URL, signal: AbortSignal): Promise<strin
   try {
     response = await fetch(url, { mode: "cors", credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]) });
   } catch {
-    throw new Error("Draft preview could not be fetched. Check the URL, HTTPS, CORS (Access-Control-Allow-Origin for this editor), redirects and the editor’s connect-src policy. Authentication cookies are not sent.");
+    throw new Error(translate("richtext.previewFetchError"));
   }
-  if (!response.ok) throw new Error(`Draft preview returned HTTP ${response.status}. Check the draft deployment and mapped route.`);
-  if (!response.headers.get("content-type")?.toLowerCase().includes("text/html")) throw new Error("Draft preview did not return HTML. Check the mapped route and Content-Type header.");
+  if (!response.ok) throw new Error(translate("richtext.previewHttpError", { status: response.status }));
+  if (!response.headers.get("content-type")?.toLowerCase().includes("text/html")) throw new Error(translate("richtext.previewHtmlError"));
   const root = DOMPurify.sanitize(await response.text(), {
     WHOLE_DOCUMENT: true,
     RETURN_DOM: true,

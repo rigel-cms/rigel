@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, locale } from "./i18n";
   import { onMount, tick } from "svelte";
   import { tooltipRoot } from "./lib/tooltip";
   onMount(() => tooltipRoot(document.body).destroy);
@@ -37,7 +38,7 @@
   import type { ContentDocument, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
-  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, reviewRemotePublish, confirmRemotePublish, type GitContext, type PublishReview } from "./lib/github-backend";
+  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
 
   type Sel = Selection;
 
@@ -79,9 +80,9 @@
   }
 
   function publishGuard(context: GitContext, revision: number, auth: number) {
-    if (!publishOpen || revision !== publishRevision || auth !== authRevision || gitContext !== context) throw new Error("Publish review is no longer active. Reconnect and review again.");
+    if (!publishOpen || revision !== publishRevision || auth !== authRevision || gitContext !== context) throw new Error($t("shell.publishReviewInactive"));
     requireGitContext();
-    if (dirty || saveTask || saveState === "saving") throw new Error("Save your unsaved edits first, then review publishing. Your edits are still here.");
+    if (dirty || saveTask || saveState === "saving") throw new Error($t("shell.saveBeforeReview"));
   }
 
   async function reviewPublish() {
@@ -101,7 +102,7 @@
       publishReview = review;
     } catch (error) {
       handleAuthError(error);
-      if (revision === publishRevision) publishError = error instanceof Error ? error.message : "Could not review saved changes.";
+      if (revision === publishRevision) publishError = error instanceof Error ? error.message : $t("shell.reviewError");
     } finally { publishLoading = false; }
   }
 
@@ -122,13 +123,13 @@
         guard();
         manifest = remote;
         openSelection(sel);
-        publishMessage = "Drafts synced. Nothing was published. Close this dialog and review again before publishing.";
-      } else publishMessage = `Published to ${review.publishBranch}. Your configured deployment can now start; the site is not instantly live. The drafts branch is preserved.`;
+        publishMessage = $t("shell.draftsSynced");
+      } else publishMessage = $t("shell.publishedToBranch", { name: review.publishBranch });
     } catch (error) {
       handleAuthError(error);
       if (revision === publishRevision) {
-        publishError = error instanceof Error ? error.message : "Could not verify publishing. Check GitHub before retrying.";
-        if (/changed|no longer matches/.test(publishError)) publishReview = null;
+        publishError = error instanceof Error ? error.message : $t("shell.publishVerificationError");
+        if (error instanceof PublishReviewChangedError) publishReview = null;
       }
     } finally { publishBusy = false; }
   }
@@ -145,9 +146,9 @@
     ready = false;
     try {
       const response = await fetch("/rigel/manifest.json", { cache: "no-store" });
-      if (!response.ok) throw new Error("Could not load the editor configuration. Rebuild the site and try again.");
+      if (!response.ok) throw new Error($t("shell.configurationLoadError"));
       const data: Manifest = await response.json();
-      if (!Array.isArray(data.pages) || (data.backend === "github" && !data.github)) throw new Error("The editor configuration is incomplete. Rebuild the site and try again.");
+      if (!Array.isArray(data.pages) || (data.backend === "github" && !data.github)) throw new Error($t("shell.configurationIncomplete"));
       blueprint = data;
       manifest = data;
       ready = true;
@@ -160,16 +161,16 @@
         }
       }
     } catch (error) {
-      loadError = error instanceof Error ? error.message : "Could not load the editor configuration.";
+      loadError = error instanceof Error ? error.message : $t("shell.configurationLoadFailed");
     }
   }
 
   function requireGitContext() {
-    if (connectionBusy) throw new Error("Wait for GitHub access verification before saving.");
-    if (!gitContext || !connected || githubAccess?.status !== "ready") throw new Error("Connect GitHub and verify repository access before saving.");
+    if (connectionBusy) throw new Error($t("shell.waitForGithubVerification"));
+    if (!gitContext || !connected || githubAccess?.status !== "ready") throw new Error($t("shell.connectBeforeSaving"));
     if (Date.now() >= sessionExpiresAt - 30_000) {
       invalidateSession();
-      throw new Error("Your GitHub session expired. Reconnect GitHub, then retry. Your unsaved edits are still here.");
+      throw new Error($t("shell.sessionExpiredRetry"));
     }
     return gitContext;
   }
@@ -181,7 +182,7 @@
     try {
       if (Date.now() >= sessionExpiresAt - 30_000) {
         invalidateSession();
-        throw new Error("Your GitHub session expired. Sign in again to check repository access.");
+        throw new Error($t("shell.sessionExpiredCheckAccess"));
       }
       const access = await checkGitHubAccess(context.token, config.repo, config.appSlug);
       if (gitContext !== context) return;
@@ -228,7 +229,7 @@
       writeSession(manifest.github, session);
       await verifyGitHub();
     } catch (error) {
-      connectionError = error instanceof Error ? error.message : "Could not connect GitHub. Try signing in again.";
+      connectionError = error instanceof Error ? error.message : $t("shell.githubConnectionError");
     } finally {
       connectionBusy = false;
     }
@@ -239,7 +240,7 @@
     connectionBusy = true;
     connectionError = "";
     try { await verifyGitHub(); }
-    catch (error) { connectionError = error instanceof Error ? error.message : "Could not check GitHub access. Try again."; }
+    catch (error) { connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
     finally { connectionBusy = false; }
   }
 
@@ -292,19 +293,19 @@
         const creatingDoc = docSel !== null && newDocument?.id === docSel.id;
         try {
           if ((selection?.kind === "post" || (docSel && !activeDocType?.shared)) && Object.hasOwn(values, "slug")) {
-            values.slug = normalizeUrlSlug(values.slug);
+            values.slug = normalizeUrlSlug(values.slug, $t);
             draft.slug = values.slug;
           }
           if (githubMode) {
-            if (!selection) throw new Error("Select content before saving.");
+            if (!selection) throw new Error($t("shell.selectBeforeSaving"));
             await saveRemoteSelection(requireGitContext(), manifest, selection, values, body, !!creating || creatingDoc);
           } else {
           const url = docSel
             ? `/rigel/api/local/documents/${encodeURIComponent(docSel.id)}`
             : m ? `/rigel/api/local/menus/${m.slug}` : po && c ? `/rigel/api/local/${c.name}/${encodeURIComponent(po.slug)}` : "/rigel/api/local/save";
           const payload = docSel ? { data: values } : m ? { slug: m.slug, title: values.title, items: values.items } : po ? { frontmatter: values, body } : { slug: p?.slug, values };
-          const res = await fetch(url, { method: docSel ? (creatingDoc ? "POST" : "PUT") : m ? "PUT" : "POST", headers: { "Content-Type": "application/json", ...(po && creating ? { "If-None-Match": "*" } : {}) }, body: JSON.stringify(payload) });
-          if (!res.ok) throw new Error((await res.text()) || `Save failed (${res.status})`);
+          const res = await fetch(url, { method: docSel ? (creatingDoc ? "POST" : "PUT") : m ? "PUT" : "POST", headers: { "Content-Type": "application/json", "Accept-Language": $locale, ...(po && creating ? { "If-None-Match": "*" } : {}) }, body: JSON.stringify(payload) });
+          if (!res.ok) throw new Error((await res.text()) || $t("shell.saveFailedStatus", { status: res.status }));
           }
           if (docSel) {
             const list = manifest.documents ?? (manifest.documents = []);
@@ -324,7 +325,7 @@
         } catch (error) {
           handleAuthError(error);
           saveState = "error";
-          saveError = error instanceof Error ? error.message : "Could not save changes";
+          saveError = error instanceof Error ? error.message : $t("shell.saveChangesError");
           return false;
         }
       }
@@ -338,10 +339,10 @@
 
   let settings = $state(getSettings());
   let settingsError = $state("");
-  const userName = $derived(githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? "GitHub user" : "Local user");
+  const userName = $derived(githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? $t("shell.githubUser") : $t("shell.localUser"));
   const userAvatar = $derived(githubMode && /^https:\/\/avatars\.githubusercontent\.com\//.test(githubAccess?.user.avatar_url ?? "") ? githubAccess!.user.avatar_url : "");
   let failedAvatar = $state("");
-  const userLogin = $derived(githubMode && githubAccess ? `@${githubAccess.user.login}` : "Local mode");
+  const userLogin = $derived(githubMode && githubAccess ? `@${githubAccess.user.login}` : $t("shell.localMode"));
   let content: HTMLDivElement;
   let contentWidth = $state(0);
   let resizing = $state(false);
@@ -390,10 +391,10 @@
 
   function eraseBrowserData() {
     actionDialog = {
-      title: "Erase browser data?", confirmLabel: "Erase data", danger: true,
-      description: "This removes Rigel settings, API keys, GitHub login and unsaved drafts from this browser. Saved repository files will not change. The editor will reload.",
+      title: $t("shell.eraseBrowserDataTitle"), confirmLabel: $t("shell.eraseData"), danger: true,
+      description: $t("shell.eraseBrowserDataDescription"),
       onconfirm: () => {
-        if (saveState === "saving") throw new Error("Wait for the current save to finish.");
+        if (saveState === "saving") throw new Error($t("shell.waitForSave"));
         eraseData();
         dirty = false;
         location.reload();
@@ -439,12 +440,12 @@
   });
 
   const columns = $derived.by((): { key: string; label: string; image?: boolean }[] => {
-    if (sel?.kind === "menus") return [{ key: "title", label: "Name" }, { key: "slug", label: "Slug" }];
-    if (sel?.kind === "pages") return [{ key: "label", label: "Title" }, { key: "slug", label: "Slug" }, { key: "category", label: "Category" }];
+    if (sel?.kind === "menus") return [{ key: "title", label: $t("shell.name") }, { key: "slug", label: $t("shell.slug") }];
+    if (sel?.kind === "pages") return [{ key: "label", label: $t("shell.title") }, { key: "slug", label: $t("shell.slug") }, { key: "category", label: $t("shell.category") }];
     const source = sel?.kind === "documents" ? activeDocType : coll;
     if (!source) return [];
     const keys = ["title", "slug", ...(source.columns ?? (sel?.kind === "documents" ? [] : source.fields.filter(field => !isSeoField(field.key)).map(field => field.key)))];
-    const titleLabel = sel?.kind === "documents" && !source.fields.some(field => field.key === "title") ? source.fields.find(field => field.key === "name")?.label ?? "Title" : "Title";
+    const titleLabel = sel?.kind === "documents" && !source.fields.some(field => field.key === "title") ? source.fields.find(field => field.key === "name")?.label ?? $t("shell.title") : $t("shell.title");
     const seen = new Set<string>();
     const out: { key: string; label: string; image?: boolean }[] = [];
 
@@ -452,7 +453,7 @@
       if (seen.has(k)) continue;
       seen.add(k);
       const f = source.fields.find((x) => x.key === k);
-      out.push({ key: k, label: k === "slug" ? "Slug" : k === "title" ? titleLabel : f?.label ?? k, image: f?.type === "image" });
+      out.push({ key: k, label: k === "slug" ? $t("shell.slug") : k === "title" ? titleLabel : f?.labelKey ? $t(f.labelKey) : f?.label ?? k, image: f?.type === "image" });
     }
     return sel?.kind === "documents" ? [...out.filter(column => column.image), ...out.filter(column => !column.image && column.key !== "slug"), ...out.filter(column => column.key === "slug")] : out;
   });
@@ -468,7 +469,7 @@
     });
   });
 
-  const sidebar = $derived(buildSidebar(manifest));
+  const sidebar = $derived(buildSidebar(manifest, $t));
   const pageCategory = $derived(sel?.kind === "pages" ? sel.category : undefined);
   const schema = $derived<Schema | undefined>(manifest.schema);
   const docTypes = $derived(schema?.documents ?? []);
@@ -515,7 +516,7 @@
 
   const menu = $derived.by(() => { const slug = sel?.kind === "menu" ? sel.slug : null; return manifest.menus?.entries.find((m) => m.slug === slug); });
   const sortedMenus = $derived([...(manifest.menus?.entries ?? [])].sort((a, b) => (sortBy === "slug" ? a.slug.localeCompare(b.slug) : a.title.localeCompare(b.title)) * sortDir));
-  const listTitle = $derived(sel?.kind === "menus" ? "All Menus" : sel?.kind === "documents" ? activeDocType?.title ?? "Documents" : sel?.kind === "pages" ? `All ${pageCategory ?? "pages"}` : coll?.listTitle?.trim() || `All ${coll?.label ?? "entries"}`);
+  const listTitle = $derived(sel?.kind === "menus" ? $t("shell.allMenus") : sel?.kind === "documents" ? activeDocType?.title ?? $t("shell.documents") : sel?.kind === "pages" ? pageCategory !== undefined ? $t("shell.allNamedEntries", { name: pageCategory }) : $t("shell.allPages") : coll?.listTitle?.trim() || (coll?.label !== undefined ? $t("shell.allNamedEntries", { name: coll.label }) : $t("shell.allEntries")));
   const listRows = $derived(sel?.kind === "menus"
     ? sortedMenus.map((m) => ({ slug: m.slug, cells: { slug: m.slug, title: m.title } as Record<string, string>, draft: false, target: { kind: "menu", slug: m.slug } as Sel }))
     : sel?.kind === "documents"
@@ -538,7 +539,7 @@
       setSettings(settings);
       settingsError = "";
     } catch {
-      settingsError = "Settings could not be saved in this browser. Allow browser storage and try again.";
+      settingsError = $t("shell.settingsStorageError");
     }
   });
 
@@ -682,7 +683,7 @@
   function cellValue(p: { slug: string; frontmatter: Record<string, unknown> }, key: string): string {
     const v = key === "slug" ? effectiveSlug(p.frontmatter, p.slug) : p.frontmatter[key];
     const field = coll?.fields.find(field => field.key === key);
-    if (field?.type === "reference") return referenceLabel(v, referenceOptions(field, manifest.documents)) || "—";
+    if (field?.type === "reference") return referenceLabel(v, referenceOptions(field, manifest.documents), $t) || "—";
     if (v === true) return "✓";
     if (v === false || v == null) return "—";
     if (Array.isArray(v)) return v.join(", ");
@@ -692,12 +693,12 @@
   function newPage(type = pageDocType) {
     if (!type || !schema || type.creatable === false || type.singleton) return;
     actionDialog = {
-      title: `Add ${type.title}`, description: "Enter a name to start a draft from the template. Nothing is written until you press Save.", fieldLabel: type.shared ? "Name" : "Page name", confirmLabel: "Create draft",
+      title: $t("shell.addDocument", { name: type.title }), description: $t("shell.newDocumentDescription"), fieldLabel: type.shared ? $t("shell.name") : $t("shell.pageName"), confirmLabel: $t("shell.createDraft"),
       onconfirm: (title) => {
         const slug = slugify(title);
-        if (!slug) throw new Error("Enter a title containing letters or numbers.");
+        if (!slug) throw new Error($t("shell.titleRequired"));
         const taken = [...(manifest.documents ?? []).filter(doc => !type.shared || doc.type === type.name).flatMap((doc) => [doc.slug, ...(type.shared || docTypes.find(type => type.name === doc.type)?.shared ? [] : [effectiveSlug(doc.data, doc.slug)])]), ...(!type.shared ? manifest.pages.map((page) => page.slug) : [])];
-        if (taken.includes(slug)) throw new Error(`The slug "${slug}" is already used by another document or page.`);
+        if (taken.includes(slug)) throw new Error($t("shell.slugAlreadyUsed", { slug }));
         const id = `${type.name}:${slug}`;
         const data = newDocumentFromTemplate(schema, type.name, title, slug);
         newDocument = { type: type.name, id, slug };
@@ -710,10 +711,10 @@
 
   function newPost(c: ManifestCollection) {
     actionDialog = {
-      title: `Add to ${c.label}`, description: "Enter a title to start a draft. Nothing is written until you press Save.", fieldLabel: "Title", confirmLabel: "Create draft",
+      title: $t("shell.addToCollection", { name: c.label }), description: $t("shell.newPostDescription"), fieldLabel: $t("shell.title"), confirmLabel: $t("shell.createDraft"),
       onconfirm: (title) => {
         const slug = slugify(title, c.posts.flatMap((post) => [post.slug, effectiveSlug(post.frontmatter, post.slug)]));
-        if (!slug) throw new Error("Enter a title containing letters or numbers.");
+        if (!slug) throw new Error($t("shell.titleRequired"));
         newEntry = { collection: c.name, post: { slug, frontmatter: { ...initialCollectionValues(c.fields, title), slug }, body: emptyBody() } };
         openSelection({ kind: "post", collection: c.name, slug });
       },
@@ -725,8 +726,8 @@
     const current = post, collection = coll, unsaved = newEntry !== null;
     if (!current || !collection) return;
     actionDialog = {
-      title: `Delete “${String(current.frontmatter.title ?? current.slug)}”?`, confirmLabel: "Delete", danger: true,
-      description: unsaved ? "This discards the new post and its unsaved changes." : `This deletes ${current.slug}.json${githubMode ? ` from ${manifest.github?.branch}` : ""} and discards any unsaved changes. This cannot be undone in the editor.`,
+      title: $t("shell.deletePostTitle", { name: String(current.frontmatter.title ?? current.slug) }), confirmLabel: $t("shell.delete"), danger: true,
+      description: unsaved ? $t("shell.discardNewPostDescription") : githubMode ? $t("shell.deleteRemotePostDescription", { slug: current.slug, branch: String(manifest.github?.branch) }) : $t("shell.deleteLocalPostDescription", { slug: current.slug }),
       onconfirm: async () => {
         if (!unsaved) {
           if (githubMode) {
@@ -734,8 +735,8 @@
             catch (error) { handleAuthError(error); throw error; }
           }
           else {
-          const res = await fetch(`/rigel/api/local/${collection.name}/${encodeURIComponent(current.slug)}`, { method: "DELETE" });
-          if (!res.ok) throw new Error((await res.text()) || `Delete failed (${res.status})`);
+          const res = await fetch(`/rigel/api/local/${collection.name}/${encodeURIComponent(current.slug)}`, { method: "DELETE", headers: { "Accept-Language": $locale } });
+          if (!res.ok) throw new Error((await res.text()) || $t("shell.deleteFailedStatus", { status: res.status }));
           }
           collection.posts = collection.posts.filter((p) => p.slug !== current.slug);
         }
@@ -762,7 +763,7 @@
   onstorage={(event) => {
     if ((event.key === "rigelcms.session" || event.key === null) && blueprint?.github && !readSession(blueprint.github)) {
       invalidateSession();
-      connectionError = "Signed out in another tab. Reconnect GitHub to save. Your unsaved edits are still here.";
+      connectionError = $t("shell.signedOutAnotherTab");
     }
   }}
   onresize={endPreviewResize}
@@ -784,31 +785,31 @@
 <div class="rigel connection-shell">
   <main id="github-connection" class="connection-card" aria-busy={connectionBusy}>
     <div class="connection-brand"><img src={logo} alt="" width="64" height="64" /><span>Rigel <span class="brand-suffix">CMS</span></span></div>
-    <h1>{!ready ? "Loading editor" : "Connect GitHub"}</h1>
+    <h1>{!ready ? $t("shell.loadingEditor") : $t("shell.connectGithub")}</h1>
     {#if !ready}
-      {#if loadError}<p class="connection-error" role="alert">{loadError}</p><button class="primary" onclick={loadBlueprint}>Retry loading</button>
-      {:else}<p role="status">Loading the editor configuration…</p>{/if}
+      {#if loadError}<p class="connection-error" role="alert">{loadError}</p><button class="primary" onclick={loadBlueprint}>{$t("shell.retryLoading")}</button>
+      {:else}<p role="status">{$t("shell.loadingConfiguration")}</p>{/if}
     {:else if manifest.github}
       {#if githubAccess}
-        <p>Signed in as <strong>{githubAccess.user.login}</strong>.</p>
+        <p>{#each $t("shell.signedInAs", { name: "{name}" }).split(/(\{name\})/) as part}{#if part === "{name}"}<strong>{githubAccess.user.login}</strong>{:else}{part}{/if}{/each}</p>
         {#if githubAccess.status === "read-only" || githubAccess.status === "installation-required"}
-          <p>You don’t have editing access. Contact the website administrator.</p>
+          <p>{$t("shell.noEditingAccess")}</p>
         {:else}
-          <p role="status">{connectionBusy ? "Opening the editor…" : "Access confirmed. Try opening the editor again."}</p>
+          <p role="status">{connectionBusy ? $t("shell.openingEditor") : $t("shell.accessConfirmed")}</p>
         {/if}
         {#if githubAccess.status !== "ready"}
-          <a id="github-install" class="primary" href={githubAccess.installUrl} target="_blank" rel="noopener noreferrer">Manage GitHub access</a>
+          <a id="github-install" class="primary" href={githubAccess.installUrl} target="_blank" rel="noopener noreferrer">{$t("shell.manageGithubAccess")}</a>
         {/if}
       {:else}
-        <p>Sign in to edit this website.</p>
+        <p>{$t("shell.signInHint")}</p>
       {/if}
       <div class="connection-actions">
         {#if sessionExpiresAt && !tokenExpired}
-          <button id="github-check-access" class="primary" disabled={connectionBusy} onclick={recheckGitHub}>{connectionBusy ? "Checking access…" : githubAccess?.status === "ready" ? "Open editor" : "Check access"}</button>
+          <button id="github-check-access" class="primary" disabled={connectionBusy} onclick={recheckGitHub}>{connectionBusy ? $t("shell.checkingAccess") : githubAccess?.status === "ready" ? $t("shell.openEditor") : $t("shell.checkAccess")}</button>
         {/if}
-        <button id="github-sign-in" class:primary={!sessionExpiresAt || tokenExpired} class:outlined={sessionExpiresAt > 0 && !tokenExpired} disabled={connectionBusy} onclick={connectGitHub}>{connectionBusy && !sessionExpiresAt ? "Signing in…" : sessionExpiresAt ? "Sign in again" : "Sign in with GitHub"}</button>
+        <button id="github-sign-in" class:primary={!sessionExpiresAt || tokenExpired} class:outlined={sessionExpiresAt > 0 && !tokenExpired} disabled={connectionBusy} onclick={connectGitHub}>{connectionBusy && !sessionExpiresAt ? $t("shell.signingIn") : sessionExpiresAt ? $t("shell.signInAgain") : $t("shell.signInWithGithub")}</button>
       </div>
-      <p class="connection-note">By continuing, you agree to the <a href="https://rigelcms.dev/terms" target="_blank" rel="noopener noreferrer">Terms of Use</a> and acknowledge the <a href="https://rigelcms.dev/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</p>
+      <p class="connection-note">{#each $t("shell.legalNotice", { terms: "{terms}", privacy: "{privacy}" }).split(/(\{terms\}|\{privacy\})/) as part}{#if part === "{terms}"}<a href="https://rigelcms.dev/terms" target="_blank" rel="noopener noreferrer">{$t("shell.termsOfUse")}</a>{:else if part === "{privacy}"}<a href="https://rigelcms.dev/privacy" target="_blank" rel="noopener noreferrer">{$t("shell.privacyPolicy")}</a>{:else}{part}{/if}{/each}</p>
     {/if}
     {#if connectionError}<p class="connection-error" role="alert">{connectionError}</p>{/if}
   </main>
@@ -816,13 +817,13 @@
 {:else}
 <div class="rigel" class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
   <aside id="rigel-sidebar" data-tooltip-position="right">
-    <a class="brand" href="/rigel/" role="button" aria-label="Welcome" onclick={(event) => { event.preventDefault(); goWelcome(); }}>
+    <a class="brand" href="/rigel/" role="button" aria-label={$t("shell.welcome")} onclick={(event) => { event.preventDefault(); goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
     <TopBar {manifest} {sel} onselect={select} />
 
-    <nav id="rigel-sidebar-navigation" class="rail-scroll" aria-label="Content">
+    <nav id="rigel-sidebar-navigation" class="rail-scroll" aria-label={$t("shell.content")}>
       {#each sidebar as node}
         {#if node.kind === "heading"}
           <h3 class="sidebar-heading">{node.label}</h3>
@@ -850,16 +851,16 @@
     </nav>
 
     {#if githubMode && manifest.github?.publishBranch}
-      <button id="publish-button" class="sidebar-publish" aria-label="Publish" data-tooltip={dirty ? "Save your edits before publishing" : "Publish saved branch changes"} disabled={publishBusy || publishLoading || saveState === "saving" || connectionBusy || tokenExpired || githubAccess?.status !== "ready"} onclick={reviewPublish}>
-        <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">Publish</span>
+      <button id="publish-button" class="sidebar-publish" aria-label={$t("shell.publish")} data-tooltip={dirty ? $t("shell.saveBeforePublishing") : $t("shell.publishSavedChanges")} disabled={publishBusy || publishLoading || saveState === "saving" || connectionBusy || tokenExpired || githubAccess?.status !== "ready"} onclick={reviewPublish}>
+        <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">{$t("shell.publish")}</span>
       </button>
     {/if}
-    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} data-tooltip={settings.userPref.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
-      <SidebarIcon name="sidebar-simple" /><span class="sidebar-label">Collapse sidebar</span>
+    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} data-tooltip={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
+      <SidebarIcon name="sidebar-simple" /><span class="sidebar-label">{$t("shell.collapseSidebar")}</span>
     </button>
     <div class="aside-foot">
       <div class="user-menu-wrap">
-        <button class="user-btn" aria-label={githubMode ? "GitHub user menu" : "Local user menu"} data-tooltip={githubMode ? "GitHub user menu" : "Local user menu"} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
+        <button class="user-btn" aria-label={githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} data-tooltip={githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
           {@render avatar()}
           <span class="user-details"><span class="uname">{userName}</span><small>{userLogin}</small></span>
           <span class="user-menu-icon"><Icon name="dotsThreeOutlineVertical" size={18} /></span>
@@ -873,26 +874,26 @@
             <div class="divider"></div>
             <a role="menuitem" href="/" target="_blank" rel="noopener">
               <Icon name="external" size={13} />
-              Live Site
+              {$t("shell.liveSite")}
             </a>
             <div class="divider"></div>
             <button role="menuitem" onclick={() => { userOpen = false; settingsOpen = true; }}>
               <Icon name="gear" size={13} />
-              Settings
+              {$t("shell.settings")}
             </button>
             <button role="menuitem" onclick={() => { userOpen = false; shortcutsOpen = true; }}>
               <Icon name="keyboard" size={13} />
-              Keyboard Shortcuts
+              {$t("shell.keyboardShortcutsMenu")}
             </button>
             <div class="divider"></div>
             {#if githubMode}
-            <a role="menuitem" href={githubAccess?.installUrl} target="_blank" rel="noopener noreferrer">Configure GitHub access</a>
-            <button role="menuitem" class="github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={() => { userOpen = false; void connectGitHub(); }}>Reconnect GitHub</button>
+            <a role="menuitem" href={githubAccess?.installUrl} target="_blank" rel="noopener noreferrer">{$t("shell.configureGithubAccess")}</a>
+            <button role="menuitem" class="github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={() => { userOpen = false; void connectGitHub(); }}>{$t("shell.reconnectGithub")}</button>
             {/if}
-            <button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? "Sign out of this editor" : "Local mode"} onclick={signOut}>
+            <button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? $t("shell.signOutTooltip") : $t("shell.localMode")} onclick={signOut}>
               <Icon name="signOut" size={13} />
-              Sign Out
-              {#if !githubMode}<span class="soon">backend: github</span>{/if}
+              {$t("shell.signOut")}
+              {#if !githubMode}<span class="soon">{$t("shell.githubBackendHint")}</span>{/if}
             </button>
           </div>
         {/if}
@@ -904,8 +905,8 @@
     <main id="rigel-editor-pane" class:wide={sel?.kind === "collection" || sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "document" || sel?.kind === "post" || sel?.kind === "menus" || sel?.kind === "menu" || sel?.kind === "media"} class:visual-pane={visualSelection}>
       {#if githubMode && (tokenExpired || githubAccess?.status !== "ready" || connectionError)}
         <div class="github-session" role="status">
-          <p>{connectionError || (tokenExpired ? "Your GitHub session expired. Your unsaved edits are still here." : "Repository access changed. Reconnect GitHub before saving.")}</p>
-          <button class="primary" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{connectionBusy ? "Connecting…" : "Reconnect GitHub"}</button>
+          <p>{connectionError || (tokenExpired ? $t("shell.sessionExpired") : $t("shell.repositoryAccessChanged"))}</p>
+          <button class="primary" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{connectionBusy ? $t("shell.connecting") : $t("shell.reconnectGithub")}</button>
         </div>
       {/if}
       {#if settingsError}<p role="alert">{settingsError}</p>{/if}
@@ -913,30 +914,30 @@
         {#if sel.kind === "page" || sel.kind === "post" || sel.kind === "menu" || sel.kind === "document"}
         <div class="editor-actions">
         {#if sel.kind === "page" && page}
-          <p class="back"><button onclick={() => select(page.shared ? null : { kind: "pages", category: page.category })}>← Back to {page.shared ? "Welcome" : page.category ?? "Pages"}</button></p>
+          <p class="back"><button onclick={() => select(page.shared ? null : { kind: "pages", category: page.category })}>{$t("shell.backTo", { name: page.shared ? $t("shell.welcome") : page.category ?? $t("shell.pages") })}</button></p>
         {:else if sel.kind === "document"}
           {@const backSel: Sel | null = activeDocType?.singleton ? null : sel.type === pageDocType?.name ? { kind: "pages" } : { kind: "documents", type: sel.type }}
-          <p class="back"><button onclick={() => select(backSel)}>← Back to {activeDocType?.singleton ? "Welcome" : sel.type === pageDocType?.name ? "Pages" : activeDocType?.title ?? "Documents"}</button></p>
+          <p class="back"><button onclick={() => select(backSel)}>{$t("shell.backTo", { name: activeDocType?.singleton ? $t("shell.welcome") : sel.type === pageDocType?.name ? $t("shell.pages") : activeDocType?.title ?? $t("shell.documents") })}</button></p>
         {:else if sel.kind === "post" && coll}
-          <p class="back"><button onclick={() => select({ kind: "collection", name: coll.name })}>← Back to {coll.label}</button></p>
+          <p class="back"><button onclick={() => select({ kind: "collection", name: coll.name })}>{$t("shell.backTo", { name: coll.label })}</button></p>
         {:else if sel.kind === "menu"}
-          <p class="back"><button onclick={() => select({ kind: "menus" })}>← Back to Menus</button></p>
+          <p class="back"><button onclick={() => select({ kind: "menus" })}>{$t("shell.backTo", { name: $t("shell.menus") })}</button></p>
         {/if}
           <div class="save-actions">
             <span class="save-status" role="status" class:dirty={dirty && saveState !== "saving"} class:saving={saveState === "saving"} class:saved={!dirty && saveState === "saved"} class:error={saveState === "error"}>
-              {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : dirty ? "Unsaved" : saveState === "saved" ? "Saved" : ""}
+              {saveState === "saving" ? $t("shell.saving") : saveState === "error" ? $t("shell.saveFailed") : dirty ? $t("shell.unsaved") : saveState === "saved" ? $t("shell.saved") : ""}
             </span>
-            <button class="primary save-button" disabled={!dirty || saveState === "saving"} onclick={() => save()}>{saveState === "saving" ? "Saving…" : "Save"}</button>
+            <button class="primary save-button" disabled={!dirty || saveState === "saving"} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
           </div>
         </div>
         {/if}
         <div class="titlebar">
           <h2>{sel.kind === "page" ? page?.label : sel.kind === "menu" ? String(draft.title || menu?.slug || "") : sel.kind === "post" ? String(draft.title || post?.slug || "") : sel.kind === "document" ? activeDocType?.singleton ? activeDocType.title : String(draft.title || draft.name || activeDocument?.slug || sel.id) : listTitle}</h2>
         {#if (sel?.kind === "collection" && coll) || (sel?.kind === "pages" && pageDocType?.creatable !== false && pageDocType) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
-          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType))}>Add new</button>
+          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType))}>{$t("shell.addNew")}</button>
         {/if}
         {#if sel?.kind === "post" && post}
-          <button class="icon-btn" aria-label="Delete post" data-tooltip="Delete post" disabled={saveState === "saving"} onclick={deletePost}>
+          <button class="icon-btn" aria-label={$t("shell.deletePost")} data-tooltip={$t("shell.deletePost")} disabled={saveState === "saving"} onclick={deletePost}>
             <Icon name="trash" size={15} />
           </button>
         {/if}
@@ -945,16 +946,16 @@
       {#if saveError}
         <div class="save-toast" role="alert">
           <div class="save-toast-content">
-            <strong>Could not save changes</strong>
+            <strong>{$t("shell.saveChangesError")}</strong>
             <p>{saveError}</p>
-            <button class="outlined" disabled={saveState === "saving"} onclick={() => save()}>Retry save</button>
-            {#if githubMode}<button class="outlined github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>Reconnect GitHub</button>{/if}
+            <button class="outlined" disabled={saveState === "saving"} onclick={() => save()}>{$t("shell.retrySave")}</button>
+            {#if githubMode}<button class="outlined github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{$t("shell.reconnectGithub")}</button>{/if}
           </div>
-          <button type="button" class="icon-btn" aria-label="Dismiss save error" onclick={() => { saveError = ""; }}><Icon name="x" size={18} /></button>
+          <button type="button" class="icon-btn" aria-label={$t("shell.dismissSaveError")} onclick={() => { saveError = ""; }}><Icon name="x" size={18} /></button>
         </div>
       {/if}
       {#if !ready}
-        <p>Loading…</p>
+        <p>{$t("shell.loading")}</p>
 
       {:else if sel?.kind === "media"}
         <ImagePicker inline />
@@ -981,7 +982,7 @@
                     <td>
                       {#if col.key === titleColumn}
                         <button class="table-link" onclick={() => select(row.target)}>{row.cells[col.key]}</button>
-                        {#if row.draft}<span class="badge">draft</span>{/if}
+                        {#if row.draft}<span class="badge">{$t("shell.draftBadge")}</span>{/if}
                       {:else if col.image}
                         {#if row.cells[col.key]}
                           <img class="table-thumbnail" src={row.cells[col.key]} alt="" width="32" height="32" loading="lazy" decoding="async" />
@@ -995,7 +996,7 @@
                   {/each}
                 </tr>
               {:else}
-                <tr><td colspan={columns.length}>No entries</td></tr>
+                <tr><td colspan={columns.length}>{$t("shell.noEntries")}</td></tr>
               {/each}
             </tbody>
           </table>
@@ -1028,14 +1029,14 @@
 
       {:else if sel?.kind === "menu" && menu && manifest.menus}
         <section class="menu-details">
-          <label><span>Slug</span><input type="text" value={menu.slug} readonly /></label>
-          <label><span>Name</span><input type="text" value={String(draft.title ?? "")} oninput={(e) => { draft.title = e.currentTarget.value; touch(); }} /></label>
+          <label><span>{$t("shell.slug")}</span><input type="text" value={menu.slug} readonly /></label>
+          <label><span>{$t("shell.name")}</span><input type="text" value={String(draft.title ?? "")} oninput={(e) => { draft.title = e.currentTarget.value; touch(); }} /></label>
         </section>
         <MenuEditor items={draft.items as MenuItem[]} maxDepth={manifest.menus.maxDepth} oninput={(items) => { draft.items = items; touch(); }} />
 
       {:else if sel?.kind === "page" && page}
         {#if !page.shared}
-          <section><label><span>Website route</span><input type="text" value={previewPath(manifest.preview ?? {}, { kind: "page", slug: page.slug }) ?? "Not configured"} readonly /></label><p class="hint">This copy page uses a fixed Astro route. Its URL can only be changed in the website code; slug metadata cannot move it.</p></section>
+          <section><label><span>{$t("shell.websiteRoute")}</span><input type="text" value={previewPath(manifest.preview ?? {}, { kind: "page", slug: page.slug }) ?? $t("shell.notConfigured")} readonly /></label><p class="hint">{$t("shell.fixedRouteHint")}</p></section>
         {/if}
         {#each page.groups as group (group.id)}
           <section>
@@ -1060,7 +1061,7 @@
           <VisualEditor
             docId={`${coll.name}:${post.slug}`}
             values={draft}
-            previewValues={collectionPreviewValues(coll.fields, draft, manifest.documents ?? [])}
+            previewValues={collectionPreviewValues(coll.fields, draft, manifest.documents ?? [], $t)}
             body={bodyDraft}
             bodyInline={settings.userPref.editorExperience === "inline"}
             onbody={(value) => { bodyDraft = value; touch(); }}
@@ -1079,20 +1080,20 @@
       {:else}
         <div class="welcome">
           <img src={logo} alt="" width="64" height="64" />
-          <h2>Welcome to Rigel CMS</h2>
-          <p>The best CMS in the whole space.</p>
-          <p class="welcome-hint">Select a page or collection from the sidebar to start editing.</p>
+          <h2>{$t("shell.welcomeTitle")}</h2>
+          <p>{$t("shell.welcomeTagline")}</p>
+          <p class="welcome-hint">{$t("shell.welcomeHint")}</p>
         </div>
       {/if}
       {#if settings.devMode && (sel?.kind === "page" || sel?.kind === "post" || sel?.kind === "menu" || sel?.kind === "document")}
         <section class="md-preview" class:article-state={sel.kind === "post"}>
-          <h3>Current draft</h3>
+          <h3>{$t("shell.currentDraft")}</h3>
           <pre>{JSON.stringify(sel.kind === "post" ? { frontmatter: draft, body: bodyDraft } : draft, null, 2)}</pre>
         </section>
       {/if}
     </main>
     {#if manifest.preview && previewTarget}
-      <div class="preview-divider" role="separator" tabindex="0" aria-label="Editor and preview width" aria-orientation="vertical" aria-controls="rigel-editor-pane" aria-valuemin={Math.round(splitMin * 100)} aria-valuemax={Math.round(splitMax * 100)} aria-valuenow={Math.round(previewSplit * 100)} aria-valuetext={`${Math.round(previewSplit * 100)}% editor width`} onpointerdown={startPreviewResize} onpointermove={movePreviewResize} onpointerup={endPreviewResize} onpointercancel={endPreviewResize} onlostpointercapture={endPreviewResize} onkeydown={keyPreviewResize}></div>
+      <div class="preview-divider" role="separator" tabindex="0" aria-label={$t("shell.editorPreviewWidth")} aria-orientation="vertical" aria-controls="rigel-editor-pane" aria-valuemin={Math.round(splitMin * 100)} aria-valuemax={Math.round(splitMax * 100)} aria-valuenow={Math.round(previewSplit * 100)} aria-valuetext={$t("shell.editorWidthPercent", { percent: Math.round(previewSplit * 100) })} onpointerdown={startPreviewResize} onpointermove={movePreviewResize} onpointerup={endPreviewResize} onpointercancel={endPreviewResize} onlostpointercapture={endPreviewResize} onkeydown={keyPreviewResize}></div>
       <SitePreview target={previewTarget} config={manifest.preview} isNew={!!newEntry} values={draft} body={bodyDraft} devMode={settings.devMode} />
     {/if}
   </div>

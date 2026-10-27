@@ -8,6 +8,7 @@ export type ArrayItem =
 export interface FieldDef {
   key: string;
   label: string;
+  labelKey?: string;
   type: ScalarFieldType | "object" | "array" | "reference";
   placeholder?: string;
   required?: boolean;

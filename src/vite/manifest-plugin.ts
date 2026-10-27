@@ -126,15 +126,29 @@ export const menus = {
       },
     },
     resolveId(id) {
-      if (id === VIRTUAL_ID || id === CONTENT_ID || id === "virtual:rigel-config") return "\0" + id;
+      if (id === VIRTUAL_ID || id === CONTENT_ID || id === "virtual:rigel-config" || id === "virtual:rigel-i18n") return "\0" + id;
     },
     load(id) {
+      if (id === "\0virtual:rigel-i18n") {
+        const imports: string[] = [];
+        const dictionaries = cfg.languages!.map((language, index) => {
+          const directory = fileURLToPath(new URL(`../editor/i18n/${language}/`, import.meta.url));
+          const catalogs = readdirSync(directory).filter(file => file.endsWith(".json")).sort().map((file, catalog) => {
+            const name = `__rigelLocale${index}_${catalog}`;
+            imports.push(`import ${name} from ${JSON.stringify(path.join(directory, file))};`);
+            return `...${name}`;
+          });
+          return `${JSON.stringify(language)}: { ${catalogs.join(", ")} }`;
+        });
+        return `${imports.join("\n")}\nexport default { ${dictionaries.join(", ")} };`;
+      }
       if (id === "\0virtual:rigel-config") {
         return `export default ${JSON.stringify({
           copyDir: cfg.copyDir,
           backend: cfg.backend,
           jsonOutput: cfg.jsonOutput,
           demo: cfg.demo,
+          languages: cfg.languages,
           publicDir: publicDir?.href,
           mediaDir: cfg.mediaDir,
           maxFileSize: cfg.maxFileSize,

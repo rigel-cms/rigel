@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import SchemaField from "./SchemaField.svelte";
   import Icon from "./Icon.svelte";
   import PropertiesTabs from "./PropertiesTabs.svelte";
@@ -92,15 +93,15 @@
 
 <div class="schema-panel" bind:this={host}>
   {#if docType.shared}
-    <p class="shared-badge"><Icon name="info" size={12} /> {docType.demo ? "Field examples for testing. These values are separate from your website settings." : "Shared content. Changes appear on every page that references it."}</p>
+    <p class="shared-badge"><Icon name="info" size={12} /> {$t(docType.demo ? "fields.demoContentNotice" : "fields.sharedContentNotice")}</p>
   {/if}
   <div class:page-properties-header={!docType.shared}>
   {#if seoFields.length}<PropertiesTabs bind:tab />{/if}
   <section class="document-properties" hidden={tab !== "content"}>
-    <h3>{docType.shared ? "Content" : "Page properties"}</h3>
+    <h3>{$t(docType.shared ? "fields.content" : "fields.pageProperties")}</h3>
     {#if !docType.shared}
-      <label><span>URL slug</span><input type="text" value={String(values.slug ?? docId.slice(docType.name.length + 1))} oninput={(event) => onchange({ ...values, slug: event.currentTarget.value })} onblur={() => { if (Object.hasOwn(values, "slug")) onchange({ ...values, slug: slugify(String(values.slug)) }); }} /></label>
-      <p class="hint">Changes the URL, not the document identifier or filename. The website route must use the slug metadata.</p>
+      <label><span>{$t("fields.urlSlug")}</span><input type="text" value={String(values.slug ?? docId.slice(docType.name.length + 1))} oninput={(event) => onchange({ ...values, slug: event.currentTarget.value })} onblur={() => { if (Object.hasOwn(values, "slug")) onchange({ ...values, slug: slugify(String(values.slug)) }); }} /></label>
+      <p class="hint">{$t("fields.documentSlugHint")}</p>
     {/if}
     {#each docFields.filter(field => docType.shared || !isSeoField(field.key)) as field (field.key)}
       <div data-schema-path={field.key}>
@@ -111,40 +112,40 @@
   </div>
   <div id="properties-content" role={seoFields.length ? "tabpanel" : undefined} aria-labelledby={seoFields.length ? "properties-tab-content" : undefined} hidden={tab !== "content"}>
   {#if creating}
-    <p class="panel-note">New page. Save writes the JSON file; the route appears once the site has the file.</p>
+    <p class="panel-note">{$t("fields.newPageNotice")}</p>
   {/if}
   {#if sections.length || values.sections !== undefined}
     <section>
-      <h3>Structure</h3>
+      <h3>{$t("fields.structure")}</h3>
       <ul class="structure-list">
         {#each sections as section, index (section._key)}
           <li class:active={selected?.sectionKey === section._key}>
             <button type="button" class="structure-row" onclick={() => onselect({ docId, path: "", sectionKey: String(section._key) })}>
-              <span>{sectionLabel(schema, section._type)}</span>
+              <span>{sectionLabel(schema, section._type, $t("fields.section"))}</span>
               {#if devMode}<span class="schema-key">{section._key}</span>{/if}
             </button>
             <div class="structure-actions">
-              <button type="button" aria-label={`Move ${sectionLabel(schema, section._type)} up`} data-tooltip="Move up" disabled={index === 0} onclick={() => setSections(moveItem(sections, index, -1) as Record<string, unknown>[])}>↑</button>
-              <button type="button" aria-label={`Move ${sectionLabel(schema, section._type)} down`} data-tooltip="Move down" disabled={index === sections.length - 1} onclick={() => setSections(moveItem(sections, index, 1) as Record<string, unknown>[])}>↓</button>
-              <button type="button" aria-label={`Duplicate ${sectionLabel(schema, section._type)}`} data-tooltip="Duplicate" onclick={() => setSections(duplicateItem(sections, index) as Record<string, unknown>[])}>⧉</button>
-              <button type="button" aria-label={`Remove ${sectionLabel(schema, section._type)}`} data-tooltip="Remove" onclick={() => removeSection(index)}>×</button>
+              <button type="button" aria-label={$t("fields.moveSectionUp", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.moveUp")} disabled={index === 0} onclick={() => setSections(moveItem(sections, index, -1) as Record<string, unknown>[])}>↑</button>
+              <button type="button" aria-label={$t("fields.moveSectionDown", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.moveDown")} disabled={index === sections.length - 1} onclick={() => setSections(moveItem(sections, index, 1) as Record<string, unknown>[])}>↓</button>
+              <button type="button" aria-label={$t("fields.duplicateSection", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.duplicate")} onclick={() => setSections(duplicateItem(sections, index) as Record<string, unknown>[])}>⧉</button>
+              <button type="button" aria-label={$t("fields.removeSection", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.remove")} onclick={() => removeSection(index)}>×</button>
             </div>
           </li>
         {/each}
       </ul>
       <div class="add-section">
-        <Select ariaLabel="Section type to add" value={addType} onchange={next => { addType = String(next); }} options={[{ value: "", label: "Choose a section…" }, ...allowedTypes.map(type => ({ value: type.name, label: type.title }))]} />
-        <button type="button" class="outlined" disabled={!addType} onclick={addSection}>Add section</button>
+        <Select ariaLabel={$t("fields.sectionTypeToAdd")} value={addType} onchange={next => { addType = String(next); }} options={[{ value: "", label: $t("fields.chooseSection") }, ...allowedTypes.map(type => ({ value: type.name, label: type.title }))]} />
+        <button type="button" class="outlined" disabled={!addType} onclick={addSection}>{$t("fields.addSection")}</button>
       </div>
-      {#if pending.length}<p class="panel-note" role="status">{pending.length} new section{pending.length === 1 ? "" : "s"} will appear after Save.</p>{/if}
+      {#if pending.length}<p class="panel-note" role="status">{$t("fields.pendingSections", { count: pending.length })}</p>{/if}
     </section>
   {/if}
 
   {#if selectedSection || (selectedField && selected?.path.includes("."))}
   <section class="section-properties">
-    <h3>Section properties</h3>
+    <h3>{$t("fields.sectionProperties")}</h3>
     {#if selectedSection && selected?.sectionKey}
-      <p class="selected-path">{selectedField ? `${selectedField.label} · ` : ""}{selectedSection.title}</p>
+      <p class="selected-path">{selectedField ? `${selectedField.labelKey ? $t(selectedField.labelKey) : selectedField.label} · ` : ""}{selectedSection.title}</p>
       {#each selectedSection.fields as field (field.key)}
         {@const reference = field.type === "reference" ? sections.find((section) => section._key === selected?.sectionKey)?.[field.key] as { _ref?: string } | undefined : undefined}
         <div data-schema-path={`sections.${selected.sectionKey}.${field.key}`}>
@@ -158,12 +159,12 @@
             onvalue={(next) => onchange(replaceAt(values, `sections.${selected!.sectionKey}.${field.key}`, next))}
           />
           {#if reference?._ref && documents.some((doc) => doc.id === reference._ref)}
-            <button type="button" class="outlined" onclick={() => oneditdocument(reference._ref!)}>Edit {field.label.toLowerCase()} ↗</button>
+            <button type="button" class="outlined" onclick={() => oneditdocument(reference._ref!)}>{$t("fields.editReference", { label: field.label.toLowerCase() })}</button>
           {/if}
         </div>
       {/each}
     {:else if selectedField && selected}
-      <p class="selected-path">{selectedField.label}{selected.sectionKey ? ` · ${sectionLabel(schema, sections.find((section) => section._key === selected.sectionKey)?._type)}` : ""}</p>
+      <p class="selected-path">{selectedField.labelKey ? $t(selectedField.labelKey) : selectedField.label}{selected.sectionKey ? ` · ${sectionLabel(schema, sections.find((section) => section._key === selected.sectionKey)?._type, $t("fields.section"))}` : ""}</p>
       <SchemaField
         {schema}
         {documents}
@@ -181,7 +182,7 @@
   {#if seoFields.length}
     <div id="properties-seo" role="tabpanel" aria-labelledby="properties-tab-seo" hidden={tab !== "seo"}>
     <section class="seo-fields">
-      <h3>SEO</h3>
+      <h3>{$t("fields.seo")}</h3>
       {#each seoFields as field (field.key)}
         <div data-schema-path={field.key}>
           <SchemaField {schema} {documents} {devMode} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />

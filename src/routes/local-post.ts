@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { requestTranslator } from "../editor/i18n/server";
 import { serializeContentJson } from "../json-output";
 import { writeFile, mkdir, rm, readFile, readdir, rename, link } from "node:fs/promises";
 import { assertUniqueUrlSlugs, normalizeUrlSlug } from "../slugs";
@@ -33,35 +34,36 @@ export const POST: APIRoute = (context) => {
 };
 
 const savePost: APIRoute = async ({ request, params }) => {
+  const t = requestTranslator(request);
   if (import.meta.env.PROD) {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   const folder = collectionFolder(String(params.collection ?? ""));
   const slug = safeSlug(String(params.slug ?? ""));
   if (!folder || !slug) {
-    return new Response("Unknown collection/slug", { status: 404 });
+    return new Response(t("local.unknownCollectionSlug"), { status: 404 });
   }
 
   let body: { frontmatter: Record<string, unknown>; body: ArticleBody };
   try {
     body = await request.json();
-    if (!body || typeof body !== "object" || !body.frontmatter || typeof body.frontmatter !== "object" || Array.isArray(body.frontmatter)) throw new Error("Invalid article");
+    if (!body || typeof body !== "object" || !body.frontmatter || typeof body.frontmatter !== "object" || Array.isArray(body.frontmatter)) throw new Error(t("local.invalidArticle"));
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }
 
   const file = path.resolve(folder, `${slug}.json`);
   try {
-    validateBody(body.body);
+    validateBody(body.body, t);
     const fields = config.collections?.find((collection: CollectionConfig) => collection.name === params.collection)?.fields ?? [];
-    const documents = config.schema && config.root ? await readDocuments(config.schema, fileURLToPath(config.root), config.preview) : [];
-    validateCollectionValues(fields, body.frontmatter, documents);
-    if (Object.hasOwn(body.frontmatter, "slug")) body.frontmatter.slug = normalizeUrlSlug(body.frontmatter.slug);
+    const documents = config.schema && config.root ? await readDocuments(config.schema, fileURLToPath(config.root), config.preview, t) : [];
+    validateCollectionValues(fields, body.frontmatter, documents, t);
+    if (Object.hasOwn(body.frontmatter, "slug")) body.frontmatter.slug = normalizeUrlSlug(body.frontmatter.slug, t);
     const names = await readdir(folder).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
     const entries = await Promise.all(names.filter(name => name.endsWith(".json") && name !== `${slug}.json`).map(async name => ({ slug: name.slice(0, -5), values: JSON.parse(await readFile(path.join(folder, name), "utf8")).frontmatter })));
-    assertUniqueUrlSlugs([...entries, { slug, values: body.frontmatter }]);
+    assertUniqueUrlSlugs([...entries, { slug, values: body.frontmatter }], t);
   } catch (error) {
-    return new Response(error instanceof Error ? error.message : "Invalid article", { status: 400 });
+    return new Response(error instanceof Error ? error.message : t("local.invalidArticle"), { status: 400 });
   }
   await mkdir(path.dirname(file), { recursive: true });
   const fm = { ...body.frontmatter };
@@ -71,7 +73,7 @@ const savePost: APIRoute = async ({ request, params }) => {
     if (request.headers.get("If-None-Match") === "*") {
       try { await link(temporary, file); }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") return new Response("A post with that slug already exists. Reload the collection and create the draft again.", { status: 409 });
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") return new Response(t("local.postExists"), { status: 409 });
         throw error;
       }
     } else await rename(temporary, file);
@@ -79,20 +81,21 @@ const savePost: APIRoute = async ({ request, params }) => {
   return new Response(null, { status: 204 });
 };
 
-export const DELETE: APIRoute = async ({ params }) => {
+export const DELETE: APIRoute = async ({ request, params }) => {
+  const t = requestTranslator(request);
   if (import.meta.env.PROD) {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   const folder = collectionFolder(String(params.collection ?? ""));
   const slug = safeSlug(String(params.slug ?? ""));
   if (!folder || !slug) {
-    return new Response("Unknown collection/slug", { status: 404 });
+    return new Response(t("local.unknownCollectionSlug"), { status: 404 });
   }
   const file = path.resolve(folder, `${slug}.json`);
   try {
     await readFile(file); // only delete existing files
   } catch {
-    return new Response("No such post", { status: 404 });
+    return new Response(t("local.postNotFound"), { status: 404 });
   }
   await rm(file);
   return new Response(null, { status: 204 });

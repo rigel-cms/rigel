@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import { mount, unmount, onDestroy, tick, type Snippet } from "svelte";
   import BlockEditor from "./BlockEditor.svelte";
   import { tooltipRoot } from "./tooltip";
@@ -337,7 +338,7 @@
     structureSignature = "";
     const doc = docElement();
     if (!doc) {
-      error = "The page could not be loaded in the preview.";
+      error = $t("richtext.pageLoadError");
       return;
     }
     try {
@@ -348,12 +349,12 @@
       doc.addEventListener("mouseout", onOut, true);
       doc.addEventListener("submit", (event) => event.preventDefault(), true);
       doc.defaultView?.addEventListener("scroll", () => closeInline(), { passive: true });
-      if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error("This page isn’t set up for live editing. Changes won’t appear in this preview.");
+      if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error($t("richtext.liveEditingUnavailable"));
       loaded = true;
       bodyAvailable = !schema && !!body && !!doc.querySelector('[data-rigel-richtext="$body"]');
       patch();
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : "Preview unavailable";
+      error = cause instanceof Error ? cause.message : $t("richtext.previewUnavailable");
     }
   }
 
@@ -438,14 +439,14 @@
 <div class="visual-editor" bind:clientWidth={editorWidth} class:with-panel={panelOpen} class:resizing-properties={resizing} style={`--properties-width: ${panelWidth}px`}>
   <div class="visual-canvas">
     <div class="visual-toolbar">
-      <div class="mode-toggle" role="group" aria-label="Preview mode">
-        <button type="button" aria-pressed={mode === "browse"} onclick={() => setMode("browse")}>Browse</button>
-        <button type="button" aria-pressed={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
+      <div class="mode-toggle" role="group" aria-label={$t("richtext.previewMode")}>
+        <button type="button" aria-pressed={mode === "browse"} onclick={() => setMode("browse")}>{$t("richtext.browse")}</button>
+        <button type="button" aria-pressed={mode === "edit"} onclick={() => setMode("edit")}>{$t("richtext.edit")}</button>
       </div>
-      <span class="visual-hint">{mode === "edit" ? "Click a region to edit it. Scripts, forms and links stay disabled." : "Scripts, forms and links are disabled in this preview."}</span>
+      <span class="visual-hint">{mode === "edit" ? $t("richtext.editPreviewHint") : $t("richtext.browsePreviewHint")}</span>
       <div class="visual-actions">
-        {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label="Preview on website" data-tooltip="Preview on website"><Icon name="external" size={18} /></a>{/if}
-        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label="Toggle properties panel" data-tooltip="Toggle properties panel" onclick={() => (panelOpen = !panelOpen)}>
+        {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label={$t("richtext.previewOnWebsite")} data-tooltip={$t("richtext.previewOnWebsite")}><Icon name="external" size={18} /></a>{/if}
+        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label={$t("richtext.togglePropertiesPanel")} data-tooltip={$t("richtext.togglePropertiesPanel")} onclick={() => (panelOpen = !panelOpen)}>
           <SidebarIcon name="square-half" />
         </button>
       </div>
@@ -455,16 +456,16 @@
         <p class="visual-error" role="status">{error}</p>
       {/if}
       {#if !previewPath}
-        <p class="visual-error" role="status">{creating ? "New page — Save writes the file. The route renders once the site has it." : "No preview URL is mapped to this document. Use the properties panel to edit."}</p>
+        <p class="visual-error" role="status">{creating ? $t("richtext.newPagePreviewHint") : $t("richtext.noDocumentPreview")}</p>
       {:else}
-        <PreviewFrame bind:frame url={previewPath} {reloadToken} title="Website page editor" onload={onLoad} onloading={() => { stopBodyEdit(); inline = null; loaded = false; bodyAvailable = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />
+        <PreviewFrame bind:frame url={previewPath} {reloadToken} title={$t("richtext.websitePageEditor")} onload={onLoad} onloading={() => { stopBodyEdit(); inline = null; loaded = false; bodyAvailable = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />
       {/if}
       {#if inline}
         <input
           class="inline-editor"
           bind:this={inlineInput}
           type="text"
-          aria-label="Edit text"
+          aria-label={$t("richtext.editText")}
           style={`left:${inline.left}px;top:${inline.top}px;width:${inline.width}px;height:${inline.height}px;font-size:${inline.fontSize}`}
           value={inline.value}
           oninput={(event) => updateInline(event.currentTarget.value)}
@@ -477,7 +478,7 @@
     </div>
   </div>
   {#if panelOpen}
-    <div class="properties-divider" role="separator" tabindex="0" aria-label="Properties panel width" aria-orientation="vertical" aria-valuemin="280" aria-valuemax={panelMax} aria-valuenow={panelWidth} aria-valuetext={`${Math.round(panelWidth)} pixels`} onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize} onpointercancel={endResize} onlostpointercapture={endResize} onkeydown={keyResize}></div>
+    <div class="properties-divider" role="separator" tabindex="0" aria-label={$t("richtext.propertiesPanelWidth")} aria-orientation="vertical" aria-valuemin="280" aria-valuemax={panelMax} aria-valuenow={panelWidth} aria-valuetext={$t("richtext.panelPixels", { width: Math.round(panelWidth) })} onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize} onpointercancel={endResize} onlostpointercapture={endResize} onkeydown={keyResize}></div>
   {/if}
   {#if panelOpen && properties}
     {@render properties(selected, focusToken, inlineBodyEnabled || inlineBodyLoading, focusBody, inlineBodyLoading)}

@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel — Inhaltseditor",
+  "system.sidebar.website": "Website",
+  "system.sidebar.pages": "Seiten",
+  "system.sidebar.shared": "Gemeinsame Inhalte",
+  "system.sidebar.menus": "Menüs",
+  "system.sidebar.assets": "Dateien",
+  "system.sidebar.media": "Medien",
+  "system.sidebar.more": "Weitere Inhalte",
+  "system.reference.unavailable": "Nicht verfügbar ({id})",
+  "system.reference.expectedMany": "{label}: ein Array von Referenzen erwartet",
+  "system.reference.expectedOne": "{label}: eine einzelne Referenz erwartet",
+  "system.reference.existingOnly": "{label}: nur vorhandene Einträge auswählen"
+}

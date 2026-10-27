@@ -2,6 +2,7 @@ import { lstat, mkdir, readFile, readdir, realpath, rename, unlink, writeFile } 
 import path from "node:path";
 import { mediaMetadata, safeMediaName } from "../media-types";
 import { fileURLToPath } from "node:url";
+import { systemMessage, type Translator } from "../editor/i18n/format";
 
 export const imageFile = /\\.(jpe?g|png|webp|gif|avif)$/i;
 const SIDECAR = ".rigel-media.json";
@@ -106,29 +107,30 @@ export function deleteMediaFile(publicDir: string, folder: string | undefined, u
 export function validateMetaUpdate(
   body: unknown,
   existing: Set<string>,
+  message: Translator = systemMessage,
 ): { ok: true; value: { url: string; name?: string; title?: string; description?: string; alt?: string } } | { ok: false; error: string } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, error: "Invalid request body" };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, error: message("local.invalidMetadataBody") };
   const b = body as Record<string, unknown>;
   const allowed = ["url", "name", "title", "description", "alt"];
-  if (Object.keys(b).some(key => !allowed.includes(key))) return { ok: false, error: "Unknown metadata field" };
-  if (typeof b.url !== "string" || !existing.has(b.url)) return { ok: false, error: "Unknown asset" };
+  if (Object.keys(b).some(key => !allowed.includes(key))) return { ok: false, error: message("local.unknownMetadataField") };
+  if (typeof b.url !== "string" || !existing.has(b.url)) return { ok: false, error: message("local.unknownAsset") };
   const value: { url: string; name?: string; title?: string; description?: string; alt?: string } = { url: b.url };
   if ("name" in b) {
     const candidate = typeof b.name === "string" ? b.name.trim() : b.name;
-    if (!safeDisplayName(candidate)) return { ok: false, error: "Invalid display name" };
+    if (!safeDisplayName(candidate)) return { ok: false, error: message("local.invalidDisplayName") };
     value.name = typeof candidate === "string" ? candidate : undefined;
   }
   if ("title" in b) {
-    if (typeof b.title !== "string") return { ok: false, error: "Title must be a string" };
+    if (typeof b.title !== "string") return { ok: false, error: message("local.metadataTitleString") };
     value.title = sanitize(b.title, 200);
   }
   if ("description" in b) {
-    if (typeof b.description !== "string") return { ok: false, error: "Description must be a string" };
+    if (typeof b.description !== "string") return { ok: false, error: message("local.metadataDescriptionString") };
     value.description = sanitize(b.description, 1000);
   }
   if ("alt" in b) {
-    if (typeof b.alt !== "string") return { ok: false, error: "Alt text must be a string" };
-    if (!mediaMetadata(b.url)?.type.startsWith("image/")) return { ok: false, error: "Alt text is only available for images" };
+    if (typeof b.alt !== "string") return { ok: false, error: message("local.metadataAltString") };
+    if (!mediaMetadata(b.url)?.type.startsWith("image/")) return { ok: false, error: message("local.metadataAltImagesOnly") };
     value.alt = sanitize(b.alt.replace(/\s+/g, " "), 1000) ?? "";
   }
   return { ok: true, value };

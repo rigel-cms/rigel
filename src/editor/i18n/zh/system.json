@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel — 内容编辑器",
+  "system.sidebar.website": "网站",
+  "system.sidebar.pages": "页面",
+  "system.sidebar.shared": "共享内容",
+  "system.sidebar.menus": "菜单",
+  "system.sidebar.assets": "资源",
+  "system.sidebar.media": "媒体",
+  "system.sidebar.more": "更多内容",
+  "system.reference.unavailable": "不可用 ({id})",
+  "system.reference.expectedMany": "{label}：应为引用数组",
+  "system.reference.expectedOne": "{label}：应为单个引用",
+  "system.reference.existingOnly": "{label}：只能选择已有条目"
+}

@@ -1,5 +1,11 @@
-const display = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-export const months = Array.from({ length: 12 }, (_, month) => new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2000, month, 1))));
+import { get } from "svelte/store";
+import { locale, translate } from "../i18n";
+
+export function monthLabels(t = translate): string[] {
+  return ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"].map(month => t(`fields.month.${month}`));
+}
+
+export const months = monthLabels();
 
 export function isoDate(date: Date): string {
   return `${String(date.getUTCFullYear()).padStart(4, "0")}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
@@ -13,9 +19,9 @@ export function parseDate(value: string): Date | null {
   return isoDate(date) === value ? date : null;
 }
 
-export function formatDate(value: string): string {
+export function formatDate(value: string, language = get(locale)): string {
   const date = parseDate(value);
-  return date ? display.format(date) : value;
+  return date ? new Intl.DateTimeFormat(language === "en" ? "en-US" : language, { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }).format(date) : value;
 }
 
 export function todayDate(date = new Date()): string {

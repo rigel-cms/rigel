@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { systemMessage, type Translator } from "../editor/i18n/format";
 import { link, lstat, mkdir, open, readdir, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { constants } from "node:fs";
@@ -41,10 +42,10 @@ async function resolveFolder(root: string, folder: string): Promise<string> {
   return directory;
 }
 
-async function readJsonFile(file: string): Promise<unknown> {
+async function readJsonFile(file: string, t: Translator): Promise<unknown> {
   const info = await lstat(file);
   if (info.isSymbolicLink() || !info.isFile()) throw new DocumentStoreError("Document must be a regular file", 500);
-  if (info.size > MAX_BYTES) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
+  if (info.size > MAX_BYTES) throw new DocumentStoreError(t("local.documentTooLarge"), 413);
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     return JSON.parse(await handle.readFile("utf8"));
@@ -71,7 +72,7 @@ async function ensureFolder(root: string, folder: string): Promise<string> {
   return directory;
 }
 
-export async function readDocuments(schema: Schema, root: string, preview?: PreviewConfig): Promise<ContentDocument[]> {
+export async function readDocuments(schema: Schema, root: string, preview?: PreviewConfig, t: Translator = systemMessage): Promise<ContentDocument[]> {
   const documents: ContentDocument[] = [];
   for (const type of schema.documents) {
     let directory: string;
@@ -85,19 +86,19 @@ export async function readDocuments(schema: Schema, root: string, preview?: Prev
     for (const name of names) {
       const slug = name.slice(0, -5);
       if (!SLUG_PATTERN.test(slug)) throw new DocumentStoreError(`Invalid document filename ${name}`, 500);
-      const data = await readJsonFile(path.join(directory, name));
+      const data = await readJsonFile(path.join(directory, name), t);
       if (!isPlainObject(data)) throw new DocumentStoreError(`Document ${name} must be a JSON object`, 500);
       if (data._type !== undefined && data._type !== type.name) throw new DocumentStoreError(`${name}: _type must be ${type.name}`, 500);
       documents.push({ id: `${type.name}:${slug}`, type: type.name, slug, data: data as Record<string, unknown> });
     }
   }
-  try { validateDocumentSlugs(schema, documents, preview); }
+  try { validateDocumentSlugs(schema, documents, preview, t); }
   catch (error) { throw new DocumentStoreError((error as Error).message); }
   return documents;
 }
 
-export async function readDocument(schema: Schema, root: string, typeName: string, slug: string): Promise<ContentDocument | null> {
-  const documents = await readDocuments(schema, root);
+export async function readDocument(schema: Schema, root: string, typeName: string, slug: string, t: Translator = systemMessage): Promise<ContentDocument | null> {
+  const documents = await readDocuments(schema, root, undefined, t);
   return documents.find((doc) => doc.type === typeName && doc.slug === slug) ?? null;
 }
 
@@ -117,12 +118,13 @@ async function writeDocumentFile(
   mode: "create" | "update",
   preview?: PreviewConfig,
   jsonOutput?: JsonOutput,
+  t: Translator = systemMessage,
 ): Promise<void> {
   const type = schema.documents.find((entry) => entry.name === typeName);
-  if (!type) throw new DocumentStoreError(`Unknown document type ${typeName}`, 404);
-  if (mode === "create" && (type.creatable === false || type.singleton)) throw new DocumentStoreError("Creating entries is disabled for this document type", 403);
-  if (!SLUG_PATTERN.test(slug)) throw new DocumentStoreError("Invalid document slug", 400);
-  if (!isPlainObject(data)) throw new DocumentStoreError("Document must be an object", 400);
+  if (!type) throw new DocumentStoreError(t("local.unknownDocumentType", { type: typeName }), 404);
+  if (mode === "create" && (type.creatable === false || type.singleton)) throw new DocumentStoreError(t("local.creatingDisabled"), 403);
+  if (!SLUG_PATTERN.test(slug)) throw new DocumentStoreError(t("local.invalidDocumentSlug"), 400);
+  if (!isPlainObject(data)) throw new DocumentStoreError(t("local.documentObjectRequired"), 400);
   const directory = await ensureFolder(root, type.folder);
   const file = path.join(directory, `${slug}.json`);
   const existing = await lstat(file).catch((error: NodeJS.ErrnoException) => {
@@ -130,17 +132,17 @@ async function writeDocumentFile(
     throw error;
   });
   if (existing && (existing.isSymbolicLink() || !existing.isFile())) throw new DocumentStoreError("Document path is unsafe", 409);
-  if (mode === "create" && existing) throw new DocumentStoreError("A document with that slug already exists", 409);
-  if (mode === "update" && !existing) throw new DocumentStoreError("No such document", 404);
-  if (Buffer.byteLength(JSON.stringify(data)) > MAX_BYTES) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
+  if (mode === "create" && existing) throw new DocumentStoreError(t("local.documentExists"), 409);
+  if (mode === "update" && !existing) throw new DocumentStoreError(t("local.documentNotFound"), 404);
+  if (Buffer.byteLength(JSON.stringify(data)) > MAX_BYTES) throw new DocumentStoreError(t("local.documentTooLarge"), 413);
   data = { ...data };
   try {
-    if (!type.shared && Object.hasOwn(data, "slug")) data.slug = normalizeUrlSlug(data.slug);
-    const documents = await readDocuments(schema, root, preview);
-    validateDocumentSlugs(schema, [...documents.filter(doc => doc.id !== `${typeName}:${slug}`), { id: `${typeName}:${slug}`, type: typeName, slug, data }], preview);
+    if (!type.shared && Object.hasOwn(data, "slug")) data.slug = normalizeUrlSlug(data.slug, t);
+    const documents = await readDocuments(schema, root, preview, t);
+    validateDocumentSlugs(schema, [...documents.filter(doc => doc.id !== `${typeName}:${slug}`), { id: `${typeName}:${slug}`, type: typeName, slug, data }], preview, t);
   } catch (error) { throw new DocumentStoreError((error as Error).message); }
   const serialized = serializeContentJson(data, jsonOutput);
-  if (Buffer.byteLength(serialized) > MAX_BYTES) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
+  if (Buffer.byteLength(serialized) > MAX_BYTES) throw new DocumentStoreError(t("local.documentTooLarge"), 413);
   const temporary = path.join(directory, `.${slug}-${randomUUID()}.tmp`);
   try {
     const handle = await open(temporary, "wx", 0o600);
@@ -154,8 +156,8 @@ async function writeDocumentFile(
     else await rename(temporary, file);
   } catch (error) {
     if (error instanceof DocumentStoreError) throw error;
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new DocumentStoreError("A document with that slug already exists", 409);
-    throw new DocumentStoreError("Could not write document", 500);
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new DocumentStoreError(t("local.documentExists"), 409);
+    throw new DocumentStoreError(t("local.writeDocumentFailed"), 500);
   } finally {
     await unlink(temporary).catch(() => {});
   }

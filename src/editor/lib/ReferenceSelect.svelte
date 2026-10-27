@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import type { ReferenceOption } from "../../manifest/references";
   import Select from "./Select.svelte";
 
@@ -13,5 +14,5 @@
   const missing = $derived(selected.filter(id => !options.some(option => option.value === id)));
 </script>
 
-<Select {label} {multiple} value={multiple ? selected : selected[0] ?? ""} options={[...(!multiple ? [{ value: "", label: `Select ${label.toLowerCase()}…` }] : []), ...options, ...missing.map(id => ({ value: id, label: `Unavailable (${id})` }))]} {onchange} />
-{#if !options.length}<p class="hint">No entries have been declared yet.</p>{/if}
+<Select {label} {multiple} value={multiple ? selected : selected[0] ?? ""} options={[...(!multiple ? [{ value: "", label: $t("fields.selectLabel", { label: label.toLowerCase() }) }] : []), ...options, ...missing.map(id => ({ value: id, label: $t("fields.unavailableReference", { id }) }))]} {onchange} />
+{#if !options.length}<p class="hint">{$t("fields.noEntries")}</p>{/if}

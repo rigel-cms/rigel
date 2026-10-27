@@ -1,4 +1,5 @@
 import type { Manifest } from "./types";
+import { systemMessage, type Translator } from "../editor/i18n/format";
 
 export type Selection =
   | { kind: "media" }
@@ -27,24 +28,24 @@ export function navigationKey(target: Selection): string {
   return JSON.stringify([target.kind, "category" in target ? target.category : null, "name" in target ? target.name : null, "slug" in target ? target.slug : null, "type" in target ? target.type : null, "id" in target ? target.id : null, "collection" in target ? target.collection : null]);
 }
 
-export function buildSidebar(manifest: Manifest): SidebarNode[] {
+export function buildSidebar(manifest: Manifest, message: Translator = systemMessage): SidebarNode[] {
   const link = (target: SidebarTarget, label: string): SidebarLink => ({ kind: "link", target, label });
   const types = manifest.schema?.documents ?? [];
   const pageTypes = types.filter(type => !type.shared);
   const pages = manifest.pages.filter(page => !page.shared);
   const categories = [...new Set(pages.map(page => page.category).filter((category): category is string => !!category))].sort();
   const defaults: SidebarNode[] = [
-    { kind: "heading", label: "Website" },
-    link({ kind: "pages" }, "Pages"),
+    { kind: "heading", label: message("system.sidebar.website") },
+    link({ kind: "pages" }, message("system.sidebar.pages")),
     ...(manifest.collections ?? []).map(collection => link({ kind: "collection", name: collection.name }, collection.label)),
     ...categories.map(category => link({ kind: "pages", category }, category)),
     ...pageTypes.slice(1).map(type => link({ kind: "documents", type: type.name }, type.title)),
-    { kind: "heading", label: "Shared content" },
+    { kind: "heading", label: message("system.sidebar.shared") },
     ...types.filter(type => type.shared && !type.singleton).map(type => link({ kind: "documents", type: type.name }, type.title)),
     ...manifest.pages.filter(page => page.shared).map(page => link({ kind: "page", slug: page.slug }, page.label)),
-    ...(manifest.menus ? [link({ kind: "menus" }, "Menus")] : []),
-    { kind: "heading", label: "Assets" },
-    link({ kind: "media" }, "Media"),
+    ...(manifest.menus ? [link({ kind: "menus" }, message("system.sidebar.menus"))] : []),
+    { kind: "heading", label: message("system.sidebar.assets") },
+    link({ kind: "media" }, message("system.sidebar.media")),
     ...(types.some(type => type.shared && type.singleton) ? [{ kind: "separator" } as SidebarNode] : []),
     ...types.filter(type => type.shared && type.singleton).map(type => {
       const doc = manifest.documents?.find(doc => doc.type === type.name);
@@ -70,7 +71,7 @@ export function buildSidebar(manifest: Manifest): SidebarNode[] {
     nodes.push({ ...item, label: entry.label ?? item.label, ...(entry.icon ? { icon: entry.icon } : {}) });
   }
   const remaining = defaults.filter((node): node is SidebarLink => node.kind === "link" && !used.has(navigationKey(node.target)));
-  if (remaining.length) nodes.push({ kind: "heading", label: "More content" }, ...remaining);
+  if (remaining.length) nodes.push({ kind: "heading", label: message("system.sidebar.more") }, ...remaining);
   return nodes;
 }
 

@@ -6,6 +6,8 @@ import { withSeoFields } from "./manifest/seo";
 import { previewBaseUrl, previewRoute } from "./preview-urls";
 import type { JsonOutput } from "./json-output";
 import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
+import { systemMessage } from "./editor/i18n/format";
+import { localeNames, type Locale } from "./editor/i18n/locales";
 
 export interface RigelConfig {
   copyDir: string;
@@ -15,6 +17,7 @@ export interface RigelConfig {
   backend: "local" | "github";
   jsonOutput?: JsonOutput;
   demo?: boolean;
+  languages?: Locale[];
   collections?: CollectionConfig[];
   menus?: { folder: string; maxDepth?: number };
   schema?: Schema;
@@ -44,6 +47,9 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  if (cfg.languages === undefined) cfg.languages = ["en", "fr"];
+  if (!Array.isArray(cfg.languages) || Array.from(cfg.languages).some(language => typeof language !== "string" || !Object.hasOwn(localeNames, language))) throw new Error("rigel: languages must be an array of supported locale codes");
+  cfg.languages = [...new Set<Locale>(["en", ...cfg.languages])];
   if (cfg.maxFileSize === undefined) cfg.maxFileSize = DEFAULT_MAX_FILE_SIZE;
   if (!Number.isSafeInteger(cfg.maxFileSize) || cfg.maxFileSize <= 0) throw new Error("rigel: maxFileSize must be a positive integer in bytes");
   if (cfg.jsonOutput === undefined) cfg.jsonOutput = "pretty";
@@ -92,8 +98,8 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
     const schema = cfg.demo ? declared : validateSchema({ ...declared, documents: declared.documents.filter(type => !type.demo) });
     cfg.schema = { ...schema, documents: schema.documents.map(type => {
       if (type.shared) return type;
-      const fields = withSeoFields(type.fields.map(field => field.key === "title" && field.label === "Title" ? { ...field, label: "Page name" } : field));
-      if (!fields.some(field => field.key === "draft")) fields.push({ key: "draft", label: "Draft", type: "boolean" });
+      const fields = withSeoFields(type.fields);
+      if (!fields.some(field => field.key === "draft")) fields.push({ key: "draft", label: systemMessage("defaults.draft"), labelKey: "defaults.draft", type: "boolean" });
       return { ...type, fields };
     }) };
   }

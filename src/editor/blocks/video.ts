@@ -1,3 +1,4 @@
+import { translate } from "../i18n";
 import { DecoratorNode, type NodeKey } from "lexical";
 import { safePreviewUrl } from "../../preview-urls";
 import { createVideoOverlay } from "../lib/embed-preview";
@@ -22,7 +23,7 @@ export class VideoNode extends DecoratorNode<null> {
     video.playsInline = true;
     const preview = document.createElement("div");
     preview.style.cssText = "position:relative;min-height:220px";
-    preview.append(video, createVideoOverlay(document, "Video", this.__video.src, true));
+    preview.append(video, createVideoOverlay(document, () => translate("richtext.video"), this.__video.src, true));
     figure.append(preview);
     if (this.__video.caption) { const caption = document.createElement("figcaption"); caption.textContent = this.__video.caption; figure.append(caption); }
     return figure;

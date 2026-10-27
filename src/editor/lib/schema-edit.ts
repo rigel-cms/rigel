@@ -1,4 +1,5 @@
 import { cloneJson, newKey, regenerateKeys, setPath } from "../../schema/paths";
+import { translate } from "../i18n";
 import { isPlainObject, objectDef } from "../../schema/validate";
 import type { ContentDocument, DocumentDef, FieldDef, Schema } from "../../schema/types";
 
@@ -16,8 +17,8 @@ export function sectionTypeDef(schema: Schema, type: unknown) {
   return schema.objects.find((object) => object.name === type && object.type === "section");
 }
 
-export function sectionLabel(schema: Schema, type: unknown): string {
-  return sectionTypeDef(schema, type)?.title ?? String(type ?? "Section");
+export function sectionLabel(schema: Schema, type: unknown, fallback = translate("fields.section")): string {
+  return sectionTypeDef(schema, type)?.title ?? String(type ?? fallback);
 }
 
 export function fieldForPath(schema: Schema, docType: DocumentDef, values: Record<string, unknown>, path: string): FieldDef | null {

@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel — Editor de contenido",
+  "system.sidebar.website": "Sitio web",
+  "system.sidebar.pages": "Páginas",
+  "system.sidebar.shared": "Contenido compartido",
+  "system.sidebar.menus": "Menús",
+  "system.sidebar.assets": "Recursos",
+  "system.sidebar.media": "Archivos multimedia",
+  "system.sidebar.more": "Más contenido",
+  "system.reference.unavailable": "No disponible ({id})",
+  "system.reference.expectedMany": "{label}: se esperaba una lista de referencias",
+  "system.reference.expectedOne": "{label}: se esperaba una referencia",
+  "system.reference.existingOnly": "{label}: selecciona solo entradas existentes"
+}

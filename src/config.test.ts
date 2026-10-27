@@ -7,6 +7,7 @@ test("defaults to local backend + src/content/copy", () => {
     backend: "local",
     jsonOutput: "pretty",
     demo: true,
+    languages: ["en", "fr"],
     maxFileSize: 2 * 1024 * 1024,
   });
 });
@@ -14,6 +15,26 @@ test("defaults to local backend + src/content/copy", () => {
 test("maxFileSize is a positive byte count with no per-type ceiling", () => {
   for (const maxFileSize of [1, 2 * 1024 * 1024, 100 * 1024 * 1024]) expect(parseConfig({ maxFileSize }).maxFileSize).toBe(maxFileSize);
   for (const maxFileSize of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, "2MB", null]) expect(() => parseConfig({ maxFileSize } as never)).toThrow(/maxFileSize/);
+});
+
+test("languages keep English first, deduplicate and do not mutate the input", () => {
+  expect(parseConfig({ languages: undefined }).languages).toEqual(["en", "fr"]);
+  expect(parseConfig({ languages: ["es"] }).languages).toEqual(["en", "es"]);
+  expect(parseConfig({ languages: [] }).languages).toEqual(["en"]);
+  const languages = Object.freeze(["fr", "es", "en", "fr"] as const);
+  const cfg = parseConfig({ languages: languages as unknown as import("./config").RigelConfig["languages"] });
+  expect(cfg.languages).toEqual(["en", "fr", "es"]);
+  expect(languages).toEqual(["fr", "es", "en", "fr"]);
+  expect(parseConfig(cfg)).toEqual(cfg);
+  cfg.languages!.push("de");
+  expect(parseConfig().languages).toEqual(["en", "fr"]);
+  expect(parseConfig({ languages: ["ru", "zh", "ja", "it", "de", "nl"] }).languages).toEqual(["en", "ru", "zh", "ja", "it", "de", "nl"]);
+});
+
+test("languages reject unknown codes, regional tags, prototype names and wrong types", () => {
+  for (const languages of [null, "es", false, 1, {}, [null], [undefined], [1], [{}], ["pt"], ["en-US"], ["es_ES"], ["EN"], [""], ["__proto__"], ["constructor"], ["toString"], Array(1)]) {
+    expect(() => parseConfig({ languages } as never), JSON.stringify(languages)).toThrow(/languages/);
+  }
 });
 
 test("demo defaults on and false excludes demo documents without mutating the site schema", () => {

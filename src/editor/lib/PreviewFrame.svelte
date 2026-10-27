@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import { tick, untrack } from "svelte";
   import { fetchPreview } from "./preview-frame";
+  import { subscribeMediaLabels } from "./embed-preview";
 
   let { url, title, frame = $bindable(), reloadToken = 0, onload, onloading, onerror }: {
     url: string;
@@ -22,18 +24,19 @@
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const controller = new AbortController();
     const { signal } = controller;
+    let stopMediaLabels: (() => void) | undefined;
     source = null;
     loading = true;
     revealed = false;
     untrack(onloading);
-    function fail(message = "The prepared page could not be loaded. Check its URL and framing headers.") {
+    function fail(message = $t("richtext.preparedPageLoadError")) {
       if (signal.aborted) return;
       controller.abort();
       clearTimeout(timeout);
       loading = false;
       onerror(message);
     }
-    const timeout = setTimeout(() => fail("The preview took too long to load. Check its URL and try again."), 20000);
+    const timeout = setTimeout(() => fail($t("richtext.previewTimeout")), 20000);
     function wait(ms: number) {
       return new Promise<void>(resolve => {
         const finish = () => { clearTimeout(timer); signal.removeEventListener("abort", finish); resolve(); };
@@ -57,11 +60,13 @@
         onload();
         await tick();
         if (signal.aborted || iframe !== frame) return;
+        stopMediaLabels?.();
+        stopMediaLabels = subscribeMediaLabels(doc.body);
         clearTimeout(timeout);
         loading = false;
         revealed = true;
       } catch (cause) {
-        fail(cause instanceof Error ? cause.message : "Preview unavailable");
+        fail(cause instanceof Error ? cause.message : $t("richtext.previewUnavailable"));
       }
     }
     const handlers = { ready, fail: () => fail() };
@@ -69,9 +74,9 @@
     else fetchPreview(target, signal).then(srcdoc => {
       if (!signal.aborted) source = { srcdoc, ...handlers };
     }).catch(cause => {
-      fail(cause instanceof Error ? cause.message : "Preview unavailable");
+      fail(cause instanceof Error ? cause.message : $t("richtext.previewUnavailable"));
     });
-    return () => { controller.abort(); clearTimeout(timeout); };
+    return () => { stopMediaLabels?.(); controller.abort(); clearTimeout(timeout); };
   });
 </script>
 
@@ -82,6 +87,6 @@
     {/key}
   {/if}
   {#if loading}
-    <div class="preview-loading" role="status"><span class="preview-spinner" aria-hidden="true"></span>Loading preview…</div>
+    <div class="preview-loading" role="status"><span class="preview-spinner" aria-hidden="true"></span>{$t("richtext.loadingPreview")}</div>
   {/if}
 </div>

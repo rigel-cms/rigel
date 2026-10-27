@@ -118,6 +118,20 @@ test("resolves the virtual module id", () => {
   expect(raw(cfg).resolveId("virtual:rigel-manifest")).toBe("\0virtual:rigel-manifest");
 });
 
+test("i18n resolves a default dictionary record with explicit configured catalog imports", () => {
+  const plugin = raw({ ...cfg, languages: ["es"] });
+  expect(plugin.resolveId("virtual:rigel-i18n")).toBe("\0virtual:rigel-i18n");
+  const code = plugin.load("\0virtual:rigel-i18n")!;
+  expect(code).toContain("export default {");
+  expect(code).not.toContain("import.meta.glob");
+  for (const language of ["en", "es"]) {
+    for (const catalog of ["connection", "defaults", "fields", "local", "media", "richtext", "shell", "system", "validation"]) expect(code).toContain(`/i18n/${language}/${catalog}.json`);
+  }
+  expect(code).not.toMatch(/\/i18n\/(fr|ru|zh|ja|it|de|nl)\//);
+  const config = JSON.parse(plugin.load("\0virtual:rigel-config")!.slice("export default ".length, -1));
+  expect(config.languages).toEqual(["en", "es"]);
+});
+
 test("ignores unrelated ids", () => {
   const p = raw(cfg);
   expect(p.resolveId("other")).toBeUndefined();

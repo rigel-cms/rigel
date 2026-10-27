@@ -1,0 +1,6 @@
+{
+  "defaults.draft": "Черновик",
+  "defaults.seoTitle": "SEO-заголовок",
+  "defaults.seoDescription": "SEO-описание",
+  "defaults.socialImage": "Изображение для соцсетей"
+}

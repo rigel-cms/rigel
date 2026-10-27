@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { requestTranslator } from "../editor/i18n/server";
 import { randomUUID } from "node:crypto";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,9 +12,10 @@ import config from "virtual:rigel-config";
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, request }) => {
+  const t = requestTranslator(request);
   const filename = params.filename ?? "";
   if (import.meta.env.PROD || !safeMediaName(filename) || filename.startsWith(".") || /[/\\\u0000]/.test(filename)) {
-    return new Response("Not found", { status: 404 });
+    return new Response(t("local.notFound"), { status: 404 });
   }
   try {
     const file = path.join(await mediaDirectory(config.publicDir!, config.mediaDir), filename);
@@ -21,11 +23,12 @@ export const GET: APIRoute = async ({ params, request }) => {
     const bytes = await readFile(file);
     return new Response(new Uint8Array(bytes), { headers: mediaHeaders(filename, new URL(request.url).searchParams.get("preview") === "1") });
   } catch {
-    return new Response("Not found", { status: 404 });
+    return new Response(t("local.notFound"), { status: 404 });
   }
 };
 
 export const POST: APIRoute = async ({ request }) => {
+  const t = requestTranslator(request);
   if (import.meta.env.PROD) {
     return new Response("Local backend is dev-only", { status: 404 });
   }
@@ -36,16 +39,16 @@ export const POST: APIRoute = async ({ request }) => {
   const supplied = request.headers.get("X-Rigel-Filename");
   const fallback = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[mime ?? ""];
   const metadata = supplied ? (safeMediaName(supplied) ? mediaMetadata(supplied) : undefined) : fallback ? mediaMetadata(`image.${fallback}`) : undefined;
-  if (!metadata || metadata.type !== mime) return new Response("Unsupported or mismatched media type/filename", { status: 415 });
+  if (!metadata || metadata.type !== mime) return new Response(t("local.unsupportedMedia"), { status: 415 });
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   const length = request.headers.get("Content-Length");
   if (length !== null && !/^\d+$/.test(length)) {
     return new Response("Invalid Content-Length", { status: 400 });
   }
   if (length !== null && Number(length) > limit) {
-    return new Response(`Media exceeds ${limit / 1024 / 1024} MB`, { status: 413 });
+    return new Response(t("local.mediaTooLarge", { limit: limit / 1024 / 1024 }), { status: 413 });
   }
-  if (!request.body) return new Response("Empty media body", { status: 400 });
+  if (!request.body) return new Response(t("local.emptyMedia"), { status: 400 });
   const chunks: Uint8Array[] = [];
   let size = 0;
   const reader = request.body.getReader();
@@ -56,19 +59,19 @@ export const POST: APIRoute = async ({ request }) => {
       size += value.byteLength;
       if (size > limit) {
         void reader.cancel().catch(() => {});
-        return new Response(`Media exceeds ${limit / 1024 / 1024} MB`, { status: 413 });
+        return new Response(t("local.mediaTooLarge", { limit: limit / 1024 / 1024 }), { status: 413 });
       }
       chunks.push(value);
     }
   } catch {
-    return new Response("Could not read image body", { status: 400 });
+    return new Response(t("local.readImageFailed"), { status: 400 });
   } finally {
     reader.releaseLock();
   }
   const bytes = Buffer.concat(chunks, size);
-  if (!bytes.length) return new Response("Empty image body", { status: 400 });
+  if (!bytes.length) return new Response(t("local.emptyImage"), { status: 400 });
   const extension = metadata.extension === "jpeg" ? "jpg" : metadata.extension;
-  if (!validMediaBytes(bytes, extension)) return new Response("Media type does not match its bytes", { status: 415 });
+  if (!validMediaBytes(bytes, extension)) return new Response(t("local.mediaBytesMismatch"), { status: 415 });
   const filename = `${randomUUID()}.${extension}`;
   let url = "";
   try {
@@ -80,12 +83,13 @@ export const POST: APIRoute = async ({ request }) => {
     const author = (request.headers.get("X-Rigel-Author") ?? "").trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80);
     await updateMediaSidecar(directory, url, author ? { author } : {}, { name: (supplied ?? filename).slice(0, 120) });
   } catch {
-    return new Response("Could not save image", { status: 500 });
+    return new Response(t("local.saveImageFailed"), { status: 500 });
   }
   return Response.json({ url });
   };
 
   export const PUT: APIRoute = async ({ request }) => {
+  const t = requestTranslator(request);
     if (import.meta.env.PROD) {
       return new Response("Local backend is dev-only", { status: 404 });
     }
@@ -96,9 +100,9 @@ export const POST: APIRoute = async ({ request }) => {
     try { body = await request.json(); } catch { return new Response("Invalid JSON body", { status: 400 }); }
     let directory: string;
     try { directory = await mediaDirectory(config.publicDir!, config.mediaDir, true); }
-    catch { return new Response("Media directory unavailable", { status: 500 }); }
+    catch { return new Response(t("local.mediaDirectoryUnavailable"), { status: 500 }); }
     const assets = await listMedia(config.publicDir!, config.mediaDir);
-    const valid = validateMetaUpdate(body, new Set(assets.map(asset => asset.url)));
+    const valid = validateMetaUpdate(body, new Set(assets.map(asset => asset.url)), t);
     if (!valid.ok) return new Response(valid.error, { status: 400 });
     const patch: { name?: string; title?: string; description?: string; alt?: string } = {};
     if (valid.value.name !== undefined) patch.name = valid.value.name;
@@ -109,21 +113,22 @@ export const POST: APIRoute = async ({ request }) => {
       const file = path.join(fileURLToPath(config.publicDir!), ...valid.value.url.slice(1).split("/").map(decodeURIComponent));
       await updateMediaSidecar(directory, valid.value.url, patch, {}, file);
     } catch (error) {
-      return new Response("Could not save metadata", { status: (error as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500 });
+      return new Response(t("local.saveMetadataFailed"), { status: (error as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500 });
     }
     return Response.json((await listMedia(config.publicDir!, config.mediaDir)).find(asset => asset.url === valid.value.url) ?? { url: valid.value.url });
   };
 
 export const DELETE: APIRoute = async ({ request }) => {
+  const t = requestTranslator(request);
   if (import.meta.env.PROD) return new Response("Local backend is dev-only", { status: 404 });
   if (request.headers.get("Origin") !== new URL(request.url).origin) return new Response("Same-origin request required", { status: 403 });
   let body: unknown;
   try { body = await request.json(); } catch { return new Response("Invalid JSON body", { status: 400 }); }
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1 || !("url" in body) || typeof body.url !== "string") return new Response("A media URL is required", { status: 400 });
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1 || !("url" in body) || typeof body.url !== "string") return new Response(t("local.mediaUrlRequired"), { status: 400 });
   try {
-    if (!await deleteMediaFile(config.publicDir!, config.mediaDir, body.url)) return new Response("File not found", { status: 404 });
+    if (!await deleteMediaFile(config.publicDir!, config.mediaDir, body.url)) return new Response(t("local.fileNotFound"), { status: 404 });
     return new Response(null, { status: 204 });
   } catch {
-    return new Response("Could not delete file. Try again.", { status: 500 });
+    return new Response(t("local.deleteFileFailed"), { status: 500 });
   }
 };

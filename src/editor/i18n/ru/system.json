@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel: редактор содержимого",
+  "system.sidebar.website": "Сайт",
+  "system.sidebar.pages": "Страницы",
+  "system.sidebar.shared": "Общее содержимое",
+  "system.sidebar.menus": "Меню",
+  "system.sidebar.assets": "Ресурсы",
+  "system.sidebar.media": "Медиафайлы",
+  "system.sidebar.more": "Другое содержимое",
+  "system.reference.unavailable": "Недоступно ({id})",
+  "system.reference.expectedMany": "{label}: ожидается массив ссылок",
+  "system.reference.expectedOne": "{label}: ожидается одна ссылка",
+  "system.reference.existingOnly": "{label}: выбирайте только существующие записи"
+}

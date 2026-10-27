@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import { tick } from "svelte";
   import Icon from "./Icon.svelte";
   import type { ICONS } from "./icons";
@@ -125,7 +126,7 @@
 <div class="custom-select" onfocusout={() => { if (open) requestAnimationFrame(() => { if (trigger.ownerDocument.activeElement?.tagName === "IFRAME") close(); }); }}>
   {#if label}<span class="select-label" id={`${id}-label`}>{label}</span>{/if}
   <button bind:this={trigger} type="button" class="select-trigger" class:icon-only={!!icon} role="combobox" aria-label={label ? undefined : ariaLabel} aria-labelledby={label ? `${id}-label` : undefined} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`} aria-activedescendant={open && active >= 0 ? `${id}-option-${active}` : undefined} popovertarget={`${id}-list`} data-tooltip={tooltip} data-tooltip-position={tooltipPosition} data-tooltip-align={tooltipAlign} {disabled} onclick={event => { event.preventDefault(); menu.matches(":popover-open") ? close() : void reveal(); }} onkeydown={onkey}>
-    {#if icon}<Icon name={icon} size={18} />{:else}<span>{text || (multiple ? `Select ${label.toLowerCase() || "options"}…` : "Choose…")}</span><Icon name="caretDown" size={12} />{/if}
+    {#if icon}<Icon name={icon} size={18} />{:else}<span>{text || (multiple ? label ? $t("fields.selectLabel", { label: label.toLowerCase() }) : $t("fields.selectOptions") : $t("fields.choose"))}</span><Icon name="caretDown" size={12} />{/if}
   </button>
   <select hidden aria-hidden="true" tabindex="-1" aria-label={ariaLabel} {multiple} {disabled} {value} onchange={event => { value = multiple ? Array.from(event.currentTarget.selectedOptions, option => option.value) : event.currentTarget.value; onchange(value); }}>
     {#each options as option (option.value)}<option value={option.value} disabled={option.disabled}>{option.label}</option>{/each}
@@ -137,6 +138,6 @@
         <span>{option.label}</span><span class="select-check" aria-hidden="true">{selected.includes(option.value) ? "✓" : ""}</span>
       </div>
     {/each}
-    {#if !options.length}<p class="select-empty">No options available.</p>{/if}
+    {#if !options.length}<p class="select-empty">{$t("fields.noOptions")}</p>{/if}
   </div>
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import Icon from "./Icon.svelte";
   let { title, description, confirmLabel, fieldLabel, danger = false, onconfirm, onclose }: {
     title: string; description: string; confirmLabel: string; fieldLabel?: string; danger?: boolean;
@@ -20,20 +21,20 @@
     busy = true;
     error = "";
     try { await onconfirm(value.trim()); onclose(); }
-    catch (cause) { error = cause instanceof Error ? cause.message : "The action could not be completed. Try again."; }
+    catch (cause) { error = cause instanceof Error ? cause.message : $t("connection.actionFailed"); }
     finally { busy = false; }
   }
 </script>
 
 <dialog bind:this={dialog} class="rigel rigel-modal-backdrop action-dialog" aria-labelledby="action-title" aria-describedby="action-description" oncancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!busy) onclose(); }} onkeydown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onclose(); } }}>
   <form class="rigel-modal" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-    <div class="action-head"><h2 id="action-title">{title}</h2><button type="button" class="icon-btn" aria-label="Cancel" disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
+    <div class="action-head"><h2 id="action-title">{title}</h2><button type="button" class="icon-btn" aria-label={$t("connection.cancel")} disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
     <p id="action-description">{description}</p>
     {#if fieldLabel}<label><span>{fieldLabel}</span><input type="text" bind:this={input} bind:value required disabled={busy} /></label>{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="action-actions">
-      <button type="button" bind:this={cancel} disabled={busy} onclick={onclose}>Cancel</button>
-      <button type="submit" class:primary={!danger} class:danger-btn={danger} disabled={busy}>{busy ? 'Working…' : confirmLabel}</button>
+      <button type="button" bind:this={cancel} disabled={busy} onclick={onclose}>{$t("connection.cancel")}</button>
+      <button type="submit" class:primary={!danger} class:danger-btn={danger} disabled={busy}>{busy ? $t("connection.working") : confirmLabel}</button>
     </div>
   </form>
 </dialog>

@@ -986,7 +986,7 @@
 .rigel .settings-nav button:hover { background: var(--surface-raised); color: var(--text); }
 .rigel .settings-nav button.active { background: var(--accent-soft); color: var(--on-accent-soft); font-weight: 600; }
 .rigel .settings-nav .pico { width: 24px; flex-shrink: 0; }
-.rigel .settings-pane { padding: 1.25rem 1.5rem 1.25rem; }
+.rigel .settings-pane { min-width: 0; overflow-wrap: anywhere; padding: 1.25rem 1.5rem 1.25rem; }
 .rigel .settings-pane h3 {
   font-size: 0.875rem; font-weight: 600; text-transform: none;
   letter-spacing: 0; color: var(--text); margin: 0 0 0.75rem;

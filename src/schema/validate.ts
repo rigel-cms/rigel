@@ -11,6 +11,7 @@ import {
   type ScalarFieldType,
   type Schema,
 } from "./types";
+import { systemMessage, type Parameters, type Translator } from "../editor/i18n/format";
 
 const SCALARS: ScalarFieldType[] = ["string", "text", "markdown", "boolean", "number", "date", "image", "url", "color", "code", "password"];
 const UNSAFE = new Set(["__proto__", "constructor", "prototype"]);
@@ -24,19 +25,19 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return proto === Object.prototype || proto === null;
 }
 
-function fail(path: string, message: string): never {
-  throw new SchemaError(`${path}: ${message}`);
+function fail(path: string, key: string, message: Translator = systemMessage, parameters: Parameters = {}): never {
+  throw new SchemaError(message(key, { path, ...parameters }));
 }
 
-export function objectDef(schema: Schema, name: string): ObjectDef {
+export function objectDef(schema: Schema, name: string, message: Translator = systemMessage): ObjectDef {
   const def = schema.objects.find((entry) => entry.name === name);
-  if (!def) fail(name, "unknown object type");
+  if (!def) fail(name, "validation.schema.unknownObject", message);
   return def;
 }
 
-export function documentDef(schema: Schema, name: string): DocumentDef {
+export function documentDef(schema: Schema, name: string, message: Translator = systemMessage): DocumentDef {
   const def = schema.documents.find((entry) => entry.name === name);
-  if (!def) fail(name, "unknown document type");
+  if (!def) fail(name, "validation.schema.unknownDocument", message);
   return def;
 }
 
@@ -135,21 +136,21 @@ function scalarOk(type: ScalarFieldType, value: unknown): boolean {
   return true;
 }
 
-function requireValue(field: FieldDef, value: unknown, path: string) {
-  if (value === undefined || value === null) fail(path, "required");
-  if (typeof value === "string" && ["string", "text", "markdown", "image", "url"].includes(field.type) && !value.trim()) fail(path, "required");
-  if (field.required && Array.isArray(value) && !value.length) fail(path, "required");
+function requireValue(field: FieldDef, value: unknown, path: string, message: Translator) {
+  if (value === undefined || value === null) fail(path, "validation.schema.required", message);
+  if (typeof value === "string" && ["string", "text", "markdown", "image", "url"].includes(field.type) && !value.trim()) fail(path, "validation.schema.required", message);
+  if (field.required && Array.isArray(value) && !value.length) fail(path, "validation.schema.required", message);
 }
 
-function checkKeys(value: unknown, path: string) {
+function checkKeys(value: unknown, path: string, message: Translator) {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => checkKeys(item, `${path}[${index}]`));
+    value.forEach((item, index) => checkKeys(item, `${path}[${index}]`, message));
     return;
   }
   if (!isPlainObject(value)) return;
   for (const [key, child] of Object.entries(value)) {
-    if (UNSAFE.has(key)) fail(path, `unsafe key ${key}`);
-    checkKeys(child, `${path}.${key}`);
+    if (UNSAFE.has(key)) fail(path, "validation.schema.unsafeKey", message, { key });
+    checkKeys(child, `${path}.${key}`, message);
   }
 }
 
@@ -159,74 +160,75 @@ function validateObjectFields(
   value: Record<string, unknown>,
   path: string,
   documents: ContentDocument[],
+  message: Translator,
 ) {
   for (const field of fields) {
-    if (field.required) requireValue(field, value[field.key], `${path}.${field.key}`);
+    if (field.required) requireValue(field, value[field.key], `${path}.${field.key}`, message);
     if (value[field.key] === undefined) continue;
-    validateFieldValue(schema, field, value[field.key], `${path}.${field.key}`, documents);
+    validateFieldValue(schema, field, value[field.key], `${path}.${field.key}`, documents, message);
   }
   for (const key of Object.keys(value)) {
-    if (UNSAFE.has(key)) fail(path, `unsafe key ${key}`);
+    if (UNSAFE.has(key)) fail(path, "validation.schema.unsafeKey", message, { key });
   }
 }
 
-function validateFieldValue(schema: Schema, field: FieldDef, value: unknown, path: string, documents: ContentDocument[]) {
+function validateFieldValue(schema: Schema, field: FieldDef, value: unknown, path: string, documents: ContentDocument[], message: Translator) {
   if (field.type === "object") {
-    if (!isPlainObject(value)) fail(path, "must be an object");
-    checkKeys(value, path);
-    const def = field.of ? objectDef(schema, field.of) : undefined;
-    validateObjectFields(schema, def?.fields ?? field.fields ?? [], value, path, documents);
+    if (!isPlainObject(value)) fail(path, "validation.schema.object", message);
+    checkKeys(value, path, message);
+    const def = field.of ? objectDef(schema, field.of, message) : undefined;
+    validateObjectFields(schema, def?.fields ?? field.fields ?? [], value, path, documents, message);
     return;
   }
   if (field.type === "array") {
-    if (!Array.isArray(value)) fail(path, "must be an array");
-    if (field.min !== undefined && value.length < field.min) fail(path, `needs at least ${field.min} items`);
-    if (field.max !== undefined && value.length > field.max) fail(path, `allows at most ${field.max} items`);
-    checkKeys(value, path);
+    if (!Array.isArray(value)) fail(path, "validation.schema.array", message);
+    if (field.min !== undefined && value.length < field.min) fail(path, "validation.schema.minItems", message, { min: field.min });
+    if (field.max !== undefined && value.length > field.max) fail(path, "validation.schema.maxItems", message, { max: field.max });
+    checkKeys(value, path, message);
     const keys = new Set<string>();
     value.forEach((item, index) => {
       const itemPath = `${path}[${index}]`;
-      const def = matchItem(schema, field.items!, item, itemPath);
+      const def = matchItem(schema, field.items!, item, itemPath, message);
       if (def.type === "reference") {
-        if (!isPlainObject(item) || typeof item._ref !== "string") fail(itemPath, "must be a reference");
-        validateReference(schema, item, def.to ?? [], itemPath, documents);
+        if (!isPlainObject(item) || typeof item._ref !== "string") fail(itemPath, "validation.schema.reference", message);
+        validateReference(schema, item, def.to ?? [], itemPath, documents, message);
       } else if (def.type === "object") {
-        if (!isPlainObject(item)) fail(itemPath, "must be an object");
-        if (def.name && item._type !== def.name) fail(itemPath, `must be a ${def.name} section`);
-        checkKeys(item, itemPath);
-        validateObjectFields(schema, def.fields ?? objectDef(schema, def.name!).fields, item, itemPath, documents);
+        if (!isPlainObject(item)) fail(itemPath, "validation.schema.object", message);
+        if (def.name && item._type !== def.name) fail(itemPath, "validation.schema.section", message, { name: def.name });
+        checkKeys(item, itemPath, message);
+        validateObjectFields(schema, def.fields ?? objectDef(schema, def.name!, message).fields, item, itemPath, documents, message);
       } else if (!scalarOk(def.type as ScalarFieldType, item)) {
-        fail(itemPath, `must be a ${def.type}`);
+        fail(itemPath, "validation.schema.scalar", message, { type: def.type });
       }
       if (def.type === "object" || def.type === "reference") {
         const key = item && typeof item === "object" ? (item as Record<string, unknown>)._key : undefined;
-        if (typeof key !== "string" || !KEY_PATTERN.test(key)) fail(itemPath, "requires a stable _key");
-        if (keys.has(key as string)) fail(itemPath, `duplicate _key ${key}`);
+        if (typeof key !== "string" || !KEY_PATTERN.test(key)) fail(itemPath, "validation.schema.stableKey", message);
+        if (keys.has(key as string)) fail(itemPath, "validation.schema.duplicateKey", message, { key });
         keys.add(key as string);
       }
     });
     return;
   }
   if (field.type === "reference") {
-    if (!isPlainObject(value)) fail(path, "must be a reference");
-    validateReference(schema, value, field.to ?? [], path, documents);
+    if (!isPlainObject(value)) fail(path, "validation.schema.reference", message);
+    validateReference(schema, value, field.to ?? [], path, documents, message);
     return;
   }
   if ((field.type === "url" || field.type === "image") && value === "" && !field.required) return;
-  if (!scalarOk(field.type as ScalarFieldType, value)) fail(path, `must be a ${field.type}`);
+  if (!scalarOk(field.type as ScalarFieldType, value)) fail(path, "validation.schema.scalar", message, { type: field.type });
 }
 
 type ItemDef = { type: ScalarFieldType | "object" | "reference"; name?: string; fields?: FieldDef[]; to?: string[] };
 
-function matchItem(schema: Schema, items: ArrayItem[], item: unknown, path: string): ItemDef {
+function matchItem(schema: Schema, items: ArrayItem[], item: unknown, path: string, message: Translator): ItemDef {
   if (isPlainObject(item) && typeof item._type === "string") {
     const named = items.find((entry) => entry.type === "object" && entry.name === item._type);
-    if (named && named.type === "object") return { type: "object", name: named.name, fields: named.name ? objectDef(schema, named.name).fields : named.fields };
-    fail(path, `unknown section type ${item._type}`);
+    if (named && named.type === "object") return { type: "object", name: named.name, fields: named.name ? objectDef(schema, named.name, message).fields : named.fields };
+    fail(path, "validation.schema.unknownSection", message, { type: item._type });
   }
   if (items.length === 1) {
     const only = items[0];
-    if (only.type === "object") return { type: "object", name: only.name, fields: only.name ? objectDef(schema, only.name).fields : only.fields };
+    if (only.type === "object") return { type: "object", name: only.name, fields: only.name ? objectDef(schema, only.name, message).fields : only.fields };
     if (only.type === "reference") return { type: "reference", to: only.to };
     return only;
   }
@@ -236,22 +238,22 @@ function matchItem(schema: Schema, items: ArrayItem[], item: unknown, path: stri
   if (isPlainObject(item) && inline && inline.type === "object") return { type: "object", fields: inline.fields };
   const scalar = items.find((entry) => entry.type !== "object" && entry.type !== "reference" && scalarOk(entry.type, item));
   if (scalar) return scalar;
-  fail(path, "does not match an allowed array item type");
+  fail(path, "validation.schema.arrayItem", message);
 }
 
-function validateReference(schema: Schema, value: Record<string, unknown>, to: string[], path: string, documents: ContentDocument[]) {
+function validateReference(schema: Schema, value: Record<string, unknown>, to: string[], path: string, documents: ContentDocument[], message: Translator) {
   const ref = value._ref;
-  if (typeof ref !== "string" || !/^[a-z][a-zA-Z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(ref)) fail(path, "invalid reference id");
-  if (!to.some((name) => ref.startsWith(`${name}:`))) fail(path, `reference must target ${to.join(" or ")}`);
-  for (const key of Object.keys(value)) if (key !== "_ref" && !key.startsWith("_")) fail(path, `unknown reference property ${key}`);
-  if (!documents.some((doc) => doc.id === ref)) fail(path, `reference target ${ref} does not resolve`);
-  if (!schema.documents.some((doc) => ref.startsWith(`${doc.name}:`))) fail(path, `reference target type is not declared`);
+  if (typeof ref !== "string" || !/^[a-z][a-zA-Z0-9-]*:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(ref)) fail(path, "validation.schema.referenceId", message);
+  if (!to.some((name) => ref.startsWith(`${name}:`))) fail(path, "validation.schema.referenceTarget", message, { targets: to.reduceRight((alternatives, target, index) => index === to.length - 1 ? target : message("validation.schema.referenceAlternatives", { target, alternatives }), "") });
+  for (const key of Object.keys(value)) if (key !== "_ref" && !key.startsWith("_")) fail(path, "validation.schema.referenceProperty", message, { key });
+  if (!documents.some((doc) => doc.id === ref)) fail(path, "validation.schema.unresolvedTarget", message, { ref });
+  if (!schema.documents.some((doc) => ref.startsWith(`${doc.name}:`))) fail(path, "validation.schema.undeclaredTarget", message);
 }
 
-export function documentIndex(documents: ContentDocument[]): { byId: Map<string, ContentDocument>; list: ContentDocument[] } {
+export function documentIndex(documents: ContentDocument[], message: Translator = systemMessage): { byId: Map<string, ContentDocument>; list: ContentDocument[] } {
   const byId = new Map<string, ContentDocument>();
   for (const doc of documents) {
-    if (byId.has(doc.id)) throw new SchemaError(`Duplicate document id: ${doc.id}`);
+    if (byId.has(doc.id)) throw new SchemaError(message("validation.schema.duplicateDocument", { id: doc.id }));
     byId.set(doc.id, doc);
   }
   return { byId, list: documents };
@@ -263,15 +265,16 @@ export function validateDocument(
   slug: string,
   data: Record<string, unknown>,
   documents: ContentDocument[],
+  message: Translator = systemMessage,
 ): Record<string, unknown> {
-  const def = documentDef(schema, typeName);
-  if (!SLUG_PATTERN.test(slug)) fail(slug, "slug must be lowercase letters, numbers and single dashes");
-  if (!isPlainObject(data)) fail(slug, "document must be an object");
-  if (data._type !== undefined && data._type !== typeName) fail(slug, `_type must be ${typeName}`);
-  if (data._id !== undefined && data._id !== `${typeName}:${slug}`) fail(slug, `_id must be ${typeName}:${slug}`);
-  checkKeys(data, slug);
-  validateObjectFields(schema, def.fields, data, slug, documents);
-  validateReferencesDeep(schema, def.fields, data, `${typeName}:${slug}`, `${typeName}:${slug}`, documents);
+  const def = documentDef(schema, typeName, message);
+  if (!SLUG_PATTERN.test(slug)) fail(slug, "validation.schema.slug", message);
+  if (!isPlainObject(data)) fail(slug, "validation.schema.documentObject", message);
+  if (data._type !== undefined && data._type !== typeName) fail(slug, "validation.schema.documentType", message, { type: typeName });
+  if (data._id !== undefined && data._id !== `${typeName}:${slug}`) fail(slug, "validation.schema.documentId", message, { id: `${typeName}:${slug}` });
+  checkKeys(data, slug, message);
+  validateObjectFields(schema, def.fields, data, slug, documents, message);
+  validateReferencesDeep(schema, def.fields, data, `${typeName}:${slug}`, `${typeName}:${slug}`, documents, message);
   return data;
 }
 
@@ -282,32 +285,33 @@ function validateReferencesDeep(
   path: string,
   self: string,
   documents: ContentDocument[],
+  message: Translator,
 ) {
   for (const field of fields) {
     const current = value[field.key];
     if (current === undefined) continue;
     if (field.type === "reference") {
       const ref = (current as Record<string, unknown>)._ref;
-      if (ref === self) fail(path, "a document cannot reference itself");
+      if (ref === self) fail(path, "validation.schema.selfReference", message);
       const target = documents.find((doc) => doc.id === ref);
-      if (!target) fail(`${path}.${field.key}`, `reference ${ref} does not resolve`);
+      if (!target) fail(`${path}.${field.key}`, "validation.schema.unresolvedReference", message, { ref: String(ref) });
       const def = schema.documents.find((doc) => doc.name === target.type);
-      if (!field.to?.includes(target.type) || !def) fail(`${path}.${field.key}`, `reference ${ref} is not an allowed target`);
+      if (!field.to?.includes(target.type) || !def) fail(`${path}.${field.key}`, "validation.schema.disallowedReference", message, { ref: String(ref) });
     } else if (field.type === "object" && isPlainObject(current)) {
-      const objectFields = field.of ? objectDef(schema, field.of).fields : field.fields ?? [];
-      validateReferencesDeep(schema, objectFields, current, `${path}.${field.key}`, self, documents);
+      const objectFields = field.of ? objectDef(schema, field.of, message).fields : field.fields ?? [];
+      validateReferencesDeep(schema, objectFields, current, `${path}.${field.key}`, self, documents, message);
     } else if (field.type === "array" && Array.isArray(current)) {
       current.forEach((item, index) => {
         if (!isPlainObject(item)) return;
         for (const entry of field.items ?? []) {
           if (entry.type === "reference" && typeof item._ref === "string") {
             const target = documents.find((doc) => doc.id === item._ref);
-            if (!target) fail(`${path}.${field.key}[${index}]`, `reference ${item._ref} does not resolve`);
-            if (!entry.to.includes(target.type)) fail(`${path}.${field.key}[${index}]`, `reference ${item._ref} is not an allowed target`);
+            if (!target) fail(`${path}.${field.key}[${index}]`, "validation.schema.unresolvedReference", message, { ref: String(item._ref) });
+            if (!entry.to.includes(target.type)) fail(`${path}.${field.key}[${index}]`, "validation.schema.disallowedReference", message, { ref: String(item._ref) });
           }
           if (entry.type === "object") {
-            const objectFields = entry.name ? objectDef(schema, entry.name).fields : entry.fields ?? [];
-            validateReferencesDeep(schema, objectFields, item, `${path}.${field.key}[${index}]`, self, documents);
+            const objectFields = entry.name ? objectDef(schema, entry.name, message).fields : entry.fields ?? [];
+            validateReferencesDeep(schema, objectFields, item, `${path}.${field.key}[${index}]`, self, documents, message);
           }
         }
       });

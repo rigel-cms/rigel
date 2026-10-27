@@ -1,12 +1,15 @@
 <script lang="ts">
+  import { locale, t } from "../i18n";
   import { tick } from "svelte";
   import Icon from "./Icon.svelte";
   import Select from "./Select.svelte";
-  import { formatDate, months, monthDays, moveDay, moveMonth, parseDate, todayDate } from "./calendar";
+  import { formatDate, monthLabels, monthDays, moveDay, moveMonth, parseDate, todayDate } from "./calendar";
 
   let { label, value = "", required = false, onchange }: { label: string; value?: string; required?: boolean; onchange: (value: string) => void } = $props();
   const id = $props.id();
-  const monthOptions = months.map((label, index) => ({ label, value: String(index + 1) }));
+  const months = $derived(monthLabels($t));
+  const monthOptions = $derived(months.map((label, index) => ({ label, value: String(index + 1) })));
+  const weekdays = $derived(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"].map(day => ({ label: $t(`fields.weekday.${day}`), short: $t(`fields.weekdayShort.${day}`) })));
   let host: HTMLDivElement;
   let trigger: HTMLButtonElement;
   let menu: HTMLDivElement;
@@ -18,7 +21,7 @@
   const month = $derived(Number(focused.slice(5, 7)));
   const cells = $derived(monthDays(focused));
   const weeks = $derived(Array.from({ length: 6 }, (_, row) => cells.slice(row * 7, row * 7 + 7)));
-  const heading = $derived(`${months[month - 1]} ${year}`);
+  const heading = $derived($t("fields.calendarHeading", { month: months[month - 1], year }));
 
   function position() {
     if (!open || !trigger || !menu) return;
@@ -87,20 +90,20 @@
 <div class="date-picker" bind:this={host} onfocusout={() => { if (open) requestAnimationFrame(() => { if (!host?.contains(trigger.ownerDocument.activeElement)) close(); }); }}>
   <span class="select-label" id={`${id}-label`}>{label}</span>
   <button bind:this={trigger} type="button" class="select-trigger date-trigger" aria-labelledby={`${id}-label ${id}-value`} aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-calendar`} popovertarget={`${id}-calendar`} onclick={event => { event.preventDefault(); menu.matches(':popover-open') ? close() : void reveal(); }} onkeydown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); void reveal(); } }}>
-    <span id={`${id}-value`}>{formatDate(value) || "Choose date…"}</span><Icon name="calendar" size={18} />
+    <span id={`${id}-value`}>{formatDate(value, $locale) || $t("fields.chooseDate")}</span><Icon name="calendar" size={18} />
   </button>
-  <div bind:this={menu} id={`${id}-calendar`} class="date-popover" popover="auto" role="dialog" aria-label={`${label} calendar`} style={placement} ontoggle={event => { open = event.currentTarget.matches(':popover-open'); }} onkeydown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); } }}>
+  <div bind:this={menu} id={`${id}-calendar`} class="date-popover" popover="auto" role="dialog" aria-label={$t("fields.calendarFor", { label })} style={placement} ontoggle={event => { open = event.currentTarget.matches(':popover-open'); }} onkeydown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); } }}>
     <div class="date-header">
-      <button type="button" class="date-previous" aria-label="Previous month" disabled={focused.startsWith('0001-01')} onclick={() => focused = moveMonth(focused, -1)}><Icon name="caretRight" size={16} /></button>
-      <Select ariaLabel="Calendar month" value={String(month)} options={monthOptions} onchange={next => focused = moveMonth(focused, Number(next) - month)} />
-      <input type="number" aria-label="Calendar year" min="1" max="9999" value={year} onchange={setYear} onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); setYear(event); void focusDay(); } }} />
-      <button type="button" aria-label="Next month" disabled={focused.startsWith('9999-12')} onclick={() => focused = moveMonth(focused, 1)}><Icon name="caretRight" size={16} /></button>
+      <button type="button" class="date-previous" aria-label={$t("fields.previousMonth")} disabled={focused.startsWith('0001-01')} onclick={() => focused = moveMonth(focused, -1)}><Icon name="caretRight" size={16} /></button>
+      <Select ariaLabel={$t("fields.calendarMonth")} value={String(month)} options={monthOptions} onchange={next => focused = moveMonth(focused, Number(next) - month)} />
+      <input type="number" aria-label={$t("fields.calendarYear")} min="1" max="9999" value={year} onchange={setYear} onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); setYear(event); void focusDay(); } }} />
+      <button type="button" aria-label={$t("fields.nextMonth")} disabled={focused.startsWith('9999-12')} onclick={() => focused = moveMonth(focused, 1)}><Icon name="caretRight" size={16} /></button>
     </div>
     <span class="sr-only" id={`${id}-month`} aria-live="polite">{heading}</span>
     <table class="date-grid" role="grid" aria-labelledby={`${id}-month`} onkeydown={gridKey}>
-      <thead><tr>{#each ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as day}<th scope="col" aria-label={day}>{day.slice(0, 2)}</th>{/each}</tr></thead>
-      <tbody>{#each weeks as week}<tr>{#each week as day}<td role="gridcell" aria-selected={day ? day.value === value : undefined}>{#if day}<button type="button" data-date={day.value} tabindex={day.value === focused ? 0 : -1} aria-label={formatDate(day.value)} aria-current={day.value === today ? 'date' : undefined} onfocus={() => focused = day.value} onclick={() => choose(day.value)}>{day.day}</button>{/if}</td>{/each}</tr>{/each}</tbody>
+      <thead><tr>{#each weekdays as day}<th scope="col" aria-label={day.label}>{day.short}</th>{/each}</tr></thead>
+      <tbody>{#each weeks as week}<tr>{#each week as day}<td role="gridcell" aria-selected={day ? day.value === value : undefined}>{#if day}<button type="button" data-date={day.value} tabindex={day.value === focused ? 0 : -1} aria-label={formatDate(day.value, $locale)} aria-current={day.value === today ? 'date' : undefined} onfocus={() => focused = day.value} onclick={() => choose(day.value)}>{day.day}</button>{/if}</td>{/each}</tr>{/each}</tbody>
     </table>
-    <div class="date-actions"><button type="button" class="outlined" onclick={() => choose(todayDate())}>Today</button><button type="button" class="outlined" disabled={required || !value} onclick={() => choose('')}>Clear</button></div>
+    <div class="date-actions"><button type="button" class="outlined" onclick={() => choose(todayDate())}>{$t("fields.today")}</button><button type="button" class="outlined" disabled={required || !value} onclick={() => choose('')}>{$t("fields.clear")}</button></div>
   </div>
 </div>

@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { t } from "../i18n";
   let { onclose }: { onclose: () => void } = $props();
 
-  const rows: [string, string][] = [
-    ["Search", "⌘/Ctrl + K"],
-    ["Close dialog", "Esc"],
-  ];
+  const rows: [string, string][] = $derived([
+    [$t("shell.search"), $t("shell.searchShortcut")],
+    [$t("shell.closeDialog"), $t("shell.escapeKey")],
+  ]);
 </script>
 
 <div
@@ -13,8 +14,8 @@
   onclick={onclose}
   onkeydown={(e) => e.key === "Escape" && onclose()}
 >
-  <div class="rigel-modal" role="dialog" aria-label="Keyboard shortcuts" onclick={(e) => e.stopPropagation()}>
-    <h2>Keyboard shortcuts</h2>
+  <div class="rigel-modal" role="dialog" aria-label={$t("shell.keyboardShortcuts")} onclick={(e) => e.stopPropagation()}>
+    <h2>{$t("shell.keyboardShortcuts")}</h2>
     <table class="keys">
       <tbody>
         {#each rows as [action, key]}

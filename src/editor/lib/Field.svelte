@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import type { CopyField } from "../manifest/types";
   import Field from "./Field.svelte";
   import ImagePicker from "./ImagePicker.svelte";
@@ -63,7 +64,7 @@
         class="remove"
         onclick={() => oninput(items.filter((_, j) => j !== i))}
       >
-        Remove
+        {$t("fields.remove")}
       </button>
     </div>
   {/each}
@@ -75,6 +76,6 @@
       oninput([...items, blank]);
     }}
   >
-    Add item
+    {$t("fields.addItem")}
   </button>
 {/if}

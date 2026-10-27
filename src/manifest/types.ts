@@ -50,6 +50,7 @@ export interface Manifest {
 export interface CollectionField {
   key: string;
   label: string;
+  labelKey?: string;
   type: "string" | "text" | "boolean" | "date" | "tags" | "markdown" | "image" | "reference";
   to?: string;
   multiple?: boolean;

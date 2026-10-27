@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import Icon from "./Icon.svelte";
   import SidebarIcon from "./SidebarIcon.svelte";
   import { tick } from "svelte";
@@ -46,34 +47,34 @@
     for (const p of manifest.pages) {
       all.push({
         label: p.label,
-        hint: "Page",
+        hint: $t("shell.page"),
         action: () => onselect({ kind: "page", slug: p.slug }),
       });
     }
     for (const doc of manifest.documents ?? []) {
       all.push({
         label: String(doc.data.title ?? doc.data.name ?? doc.slug),
-        hint: `${doc.type} · ${doc.slug}`,
+        hint: $t("shell.searchItemHint", { name: doc.type, slug: doc.slug }),
         action: () => onselect({ kind: "document", type: doc.type, id: doc.id }),
       });
     }
     for (const c of manifest.collections ?? []) {
       all.push({
         label: c.label,
-        hint: "Collection",
+        hint: $t("shell.collection"),
         action: () => onselect({ kind: "collection", name: c.name }),
       });
       for (const po of c.posts) {
         all.push({
           label: String(po.frontmatter.title ?? po.slug),
-          hint: `${c.label} · ${po.slug}`,
+          hint: $t("shell.searchItemHint", { name: c.label, slug: po.slug }),
           action: () => onselect({ kind: "post", collection: c.name, slug: po.slug }),
         });
       }
     }
     if (manifest.menus) {
-      all.push({ label: "Menus", hint: "Collection", action: () => onselect({ kind: "menus" }) });
-      for (const m of manifest.menus.entries) all.push({ label: m.title, hint: `Menu · ${m.slug}`, action: () => onselect({ kind: "menu", slug: m.slug }) });
+      all.push({ label: $t("shell.menus"), hint: $t("shell.collection"), action: () => onselect({ kind: "menus" }) });
+      for (const m of manifest.menus.entries) all.push({ label: m.title, hint: $t("shell.searchMenuHint", { slug: m.slug }), action: () => onselect({ kind: "menu", slug: m.slug }) });
     }
     if (!q) return all.slice(0, 12);
     return all.filter((h) => h.label.toLowerCase().includes(q) || h.hint.toLowerCase().includes(q)).slice(0, 12);
@@ -112,9 +113,9 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<button class="search-trigger" aria-label="Search content" data-tooltip="Search content (⌘K)" onclick={() => { active = -1; open = true; }}>
+<button class="search-trigger" aria-label={$t("shell.searchContent")} data-tooltip={$t("shell.searchContentTooltip")} onclick={() => { active = -1; open = true; }}>
   <SidebarIcon name="magnifying-glass" />
-  <span class="sidebar-label">Search…</span>
+  <span class="sidebar-label">{$t("shell.searchPlaceholder")}</span>
   <kbd>⌘K</kbd>
 </button>
 
@@ -125,7 +126,7 @@
     onclick={() => (open = false)}
     onkeydown={(e) => e.key === "Escape" && (open = false)}
   >
-    <div class="palette" role="dialog" aria-label="Search content" onclick={(e) => e.stopPropagation()}>
+    <div class="palette" role="dialog" aria-label={$t("shell.searchContent")} onclick={(e) => e.stopPropagation()}>
       <div class="palette-search">
         <Icon name="magnifier" size={20} />
         <input
@@ -135,15 +136,15 @@
           aria-controls="rigel-search-results"
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 && hits[active] ? `rigel-search-hit-${active}` : undefined}
-          aria-label="Search pages, collections, posts"
-          placeholder="Search pages, collections, posts…"
+          aria-label={$t("shell.searchPagesCollectionsPosts")}
+          placeholder={$t("shell.searchPagesCollectionsPostsPlaceholder")}
           bind:value={query}
           oninput={() => active = -1}
           bind:this={inputEl}
         />
-        <kbd>esc</kbd>
+        <kbd>{$t("shell.escapeKeyLowercase")}</kbd>
       </div>
-      <ul id="rigel-search-results" role="listbox" aria-label="Search results">
+      <ul id="rigel-search-results" role="listbox" aria-label={$t("shell.searchResults")}>
         {#each hits as h, i (h.hint + h.label)}
           <li role="presentation">
             <button id={`rigel-search-hit-${i}`} role="option" aria-selected={active === i} onfocus={() => active = i} onclick={() => trigger(h)}>
@@ -152,13 +153,13 @@
             </button>
           </li>
         {:else}
-          <li class="empty" role="presentation">No results</li>
+          <li class="empty" role="presentation">{$t("shell.noResults")}</li>
         {/each}
       </ul>
       <div class="palette-footer">
-        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-        <span><kbd>↵</kbd> open</span>
-        <span><kbd>esc</kbd> close</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd> {$t("shell.searchNavigate")}</span>
+        <span><kbd>↵</kbd> {$t("shell.searchOpen")}</span>
+        <span><kbd>{$t("shell.escapeKeyLowercase")}</kbd> {$t("shell.searchClose")}</span>
       </div>
     </div>
   </div>

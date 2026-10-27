@@ -1,0 +1,6 @@
+{
+  "defaults.draft": "Draft",
+  "defaults.seoTitle": "SEO title",
+  "defaults.seoDescription": "SEO description",
+  "defaults.socialImage": "Social image"
+}

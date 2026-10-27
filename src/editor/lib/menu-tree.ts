@@ -1,4 +1,5 @@
 import type { MenuItem } from "../../manifest/menu";
+import { translate } from "../i18n";
 
 export function menuRows(items: MenuItem[], parentId: string | null = null, depth = 1): { item: MenuItem; parentId: string | null; depth: number; previous?: string; next?: string }[] {
   return items.flatMap((item, index) => [
@@ -16,8 +17,8 @@ export function editMenuItem(items: MenuItem[], id: string, update: (item: MenuI
 
 export function moveMenuItem(items: MenuItem[], id: string, targetId: string | null, position: "before" | "after" | "inside", maxDepth: number): MenuItem[] {
   const source = menuRows(items).find((row) => row.item.id === id)?.item;
-  if (!source) throw new Error("Menu item not found");
-  if (targetId && menuRows([source]).some((row) => row.item.id === targetId)) throw new Error("An item cannot be moved into itself or its children");
+  if (!source) throw new Error(translate("fields.menuItemNotFound"));
+  if (targetId && menuRows([source]).some((row) => row.item.id === targetId)) throw new Error(translate("fields.menuMoveIntoSelf"));
   const next = editMenuItem(items, id, () => null);
   let found = targetId === null;
   function insert(list: MenuItem[]): MenuItem[] {
@@ -31,7 +32,7 @@ export function moveMenuItem(items: MenuItem[], id: string, targetId: string | n
     });
   }
   const result = targetId === null ? [...next, source] : insert(next);
-  if (!found) throw new Error("Drop target no longer exists");
-  if (menuRows(result).some((row) => row.depth > maxDepth)) throw new Error(`This move exceeds the ${maxDepth}-level limit`);
+  if (!found) throw new Error(translate("fields.menuDropTargetMissing"));
+  if (menuRows(result).some((row) => row.depth > maxDepth)) throw new Error(translate("fields.menuMoveDepthLimit", { maxDepth }));
   return result;
 }

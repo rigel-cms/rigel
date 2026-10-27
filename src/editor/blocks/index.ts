@@ -1,3 +1,4 @@
+import { translate } from "../i18n";
 import { HeadingNode } from "@lexical/rich-text";
 import type { LexicalNode } from "lexical";
 import type { ICONS } from "../lib/icons";
@@ -24,19 +25,19 @@ import { create as h6 } from "./h6";
 import { create as table } from "./table";
 
 export const blockTypes: { value: string; label: string; icon: keyof typeof ICONS; create: () => LexicalNode }[] = [
-  { value: "paragraph", label: "Paragraph", icon: "paragraph", create: paragraph },
-  { value: "h1", label: "Heading 1", icon: "heading1", create: h1 },
-  { value: "h2", label: "Heading 2", icon: "heading2", create: h2 },
-  { value: "h3", label: "Heading 3", icon: "heading3", create: h3 },
-  { value: "h4", label: "Heading 4", icon: "heading4", create: h4 },
-  { value: "h5", label: "Heading 5", icon: "heading5", create: h5 },
-  { value: "h6", label: "Heading 6", icon: "heading6", create: h6 },
-  { value: "quote", label: "Quote", icon: "quotes", create: quote },
-  { value: "bullet", label: "Bulleted list", icon: "listBullets", create: bullet },
-  { value: "number", label: "Numbered list", icon: "listNumbers", create: number },
-  { value: "code", label: "Code block", icon: "code", create: code },
-  { value: "image", label: "Image", icon: "image", create: image },
-  { value: "divider", label: "Divider", icon: "minus", create: divider },
-  { value: "table", label: "Table", icon: "table", create: table },
+  { value: "paragraph", get label() { return translate("richtext.paragraph"); }, icon: "paragraph", create: paragraph },
+  { value: "h1", get label() { return translate("richtext.heading", { level: 1 }); }, icon: "heading1", create: h1 },
+  { value: "h2", get label() { return translate("richtext.heading", { level: 2 }); }, icon: "heading2", create: h2 },
+  { value: "h3", get label() { return translate("richtext.heading", { level: 3 }); }, icon: "heading3", create: h3 },
+  { value: "h4", get label() { return translate("richtext.heading", { level: 4 }); }, icon: "heading4", create: h4 },
+  { value: "h5", get label() { return translate("richtext.heading", { level: 5 }); }, icon: "heading5", create: h5 },
+  { value: "h6", get label() { return translate("richtext.heading", { level: 6 }); }, icon: "heading6", create: h6 },
+  { value: "quote", get label() { return translate("richtext.quote"); }, icon: "quotes", create: quote },
+  { value: "bullet", get label() { return translate("richtext.bulletedList"); }, icon: "listBullets", create: bullet },
+  { value: "number", get label() { return translate("richtext.numberedList"); }, icon: "listNumbers", create: number },
+  { value: "code", get label() { return translate("richtext.codeBlock"); }, icon: "code", create: code },
+  { value: "image", get label() { return translate("richtext.image"); }, icon: "image", create: image },
+  { value: "divider", get label() { return translate("richtext.divider"); }, icon: "minus", create: divider },
+  { value: "table", get label() { return translate("richtext.table"); }, icon: "table", create: table },
 ];
 export const blockNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, CodeNode, ImageNode, VideoNode, EmbedNode, DividerNode, TableNode, TableRowNode, TableCellNode];

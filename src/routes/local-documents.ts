@@ -1,4 +1,6 @@
 import type { APIRoute } from "astro";
+import { requestTranslator } from "../editor/i18n/server";
+import type { Translator } from "../editor/i18n/format";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import config from "virtual:rigel-config";
@@ -16,18 +18,18 @@ function guard(): { schema: Schema; root: string } | Response {
   return { schema: config.schema as Schema, root: fileURLToPath(config.root) };
 }
 
-async function readBody(request: Request): Promise<Record<string, unknown>> {
+async function readBody(request: Request, t: Translator): Promise<Record<string, unknown>> {
   const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > MAX_BODY) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
+  if (length > MAX_BODY) throw new DocumentStoreError(t("local.documentTooLarge"), 413);
   const raw = await request.text();
-  if (Buffer.byteLength(raw) > MAX_BODY) throw new DocumentStoreError("Document exceeds the 1 MiB limit", 413);
+  if (Buffer.byteLength(raw) > MAX_BODY) throw new DocumentStoreError(t("local.documentTooLarge"), 413);
   let body: unknown;
   try {
     body = JSON.parse(raw);
   } catch {
     throw new DocumentStoreError("Invalid JSON", 400);
   }
-  if (!isPlainObject(body) || !isPlainObject(body.data)) throw new DocumentStoreError("Body requires a data object", 400);
+  if (!isPlainObject(body) || !isPlainObject(body.data)) throw new DocumentStoreError(t("local.dataRequired"), 400);
   return body.data;
 }
 
@@ -39,42 +41,44 @@ function decodeParam(value: string): string {
   }
 }
 
-export const GET: APIRoute = async ({ params }) => {
+export const GET: APIRoute = async ({ request, params }) => {
+  const t = requestTranslator(request);
   const guarded = guard();
   if (guarded instanceof Response) return guarded;
   const id = decodeParam(String(params.id ?? ""));
   const target = validateDocumentId(guarded.schema, id);
-  if (!target) return new Response("Unknown document", { status: 404 });
+  if (!target) return new Response(t("local.unknownDocument"), { status: 404 });
   try {
-    const documents = await readDocuments(guarded.schema, guarded.root, config.preview);
+    const documents = await readDocuments(guarded.schema, guarded.root, config.preview, t);
     const document = documents.find((entry) => entry.id === id);
-    if (!document) return new Response("Unknown document", { status: 404 });
+    if (!document) return new Response(t("local.unknownDocument"), { status: 404 });
     return Response.json(document);
   } catch (error) {
     if (error instanceof DocumentStoreError) return new Response(error.message, { status: error.status });
-    return new Response("Could not read document", { status: 500 });
+    return new Response(t("local.readDocumentFailed"), { status: 500 });
   }
 };
 
 const handle: APIRoute = async ({ request, params }) => {
+  const t = requestTranslator(request);
   const guarded = guard();
   if (guarded instanceof Response) return guarded;
-  if (request.method === "DELETE") return new Response("Documents are created and removed by the site developer", { status: 405, headers: { Allow: "GET, POST, PUT" } });
+  if (request.method === "DELETE") return new Response(t("local.documentDeveloperOnly"), { status: 405, headers: { Allow: "GET, POST, PUT" } });
   if (request.headers.get("Origin") !== new URL(request.url).origin) return new Response("Same-origin request required", { status: 403 });
   const id = decodeParam(String(params.id ?? ""));
   const target = validateDocumentId(guarded.schema, id);
-  if (!target) return new Response("Unknown document type or slug", { status: 400 });
+  if (!target) return new Response(t("local.unknownDocumentTarget"), { status: 400 });
   try {
-    const data = await readBody(request);
-    const documents = await readDocuments(guarded.schema, guarded.root, config.preview);
+    const data = await readBody(request, t);
+    const documents = await readDocuments(guarded.schema, guarded.root, config.preview, t);
     const next = { ...data, _id: id, _type: target.type.name };
-    validateDocument(guarded.schema, target.type.name, target.slug, next, documents);
-    await writeDocument(guarded.schema, guarded.root, target.type.name, target.slug, next, request.method === "POST" ? "create" : "update", config.preview, config.jsonOutput);
+    validateDocument(guarded.schema, target.type.name, target.slug, next, documents, t);
+    await writeDocument(guarded.schema, guarded.root, target.type.name, target.slug, next, request.method === "POST" ? "create" : "update", config.preview, config.jsonOutput, t);
     return new Response(null, { status: 204 });
   } catch (error) {
     if (error instanceof DocumentStoreError) return new Response(error.message, { status: error.status });
     if (error instanceof SchemaError) return new Response(error.message, { status: 400 });
-    return new Response("Could not save document", { status: 500 });
+    return new Response(t("local.saveDocumentFailed"), { status: 500 });
   }
 };
 

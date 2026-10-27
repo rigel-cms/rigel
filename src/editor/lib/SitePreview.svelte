@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
   import { patchPreview, previewUrl, type PreviewConfig, type PreviewTarget } from "../../preview";
@@ -25,27 +26,27 @@
     try {
       const doc = frame?.contentDocument;
       doc?.addEventListener("contextmenu", event => { if (!devMode) event.preventDefault(); }, true);
-      if (!doc) throw new Error("The prepared page could not be loaded.");
-      if (!doc.querySelector('[data-rigel-text], [data-rigel-richtext], [data-rigel-image]')) throw new Error("This page has no prepared Rigel anchors.");
+      if (!doc) throw new Error($t("richtext.preparedPageUnavailable"));
+      if (!doc.querySelector('[data-rigel-text], [data-rigel-richtext], [data-rigel-image]')) throw new Error($t("richtext.noPreparedAnchors"));
       doc.addEventListener("click", event => event.preventDefault(), true);
       doc.addEventListener("submit", event => event.preventDefault(), true);
       loaded = true;
       patch();
-    } catch (cause) { error = cause instanceof Error ? cause.message : "Preview unavailable"; }
+    } catch (cause) { error = cause instanceof Error ? cause.message : $t("richtext.previewUnavailable"); }
   }
   $effect(() => { JSON.stringify(values); void body; patch(); });
 </script>
 
-<div class="site-preview" aria-label="Website preview">
+<div class="site-preview" aria-label={$t("richtext.websitePreview")}>
   <div class="preview-heading">
-    <strong>Website preview</strong>
-    {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label="Preview on website" data-tooltip="Preview on website"><Icon name="external" size={18} /></a>{/if}
+    <strong>{$t("richtext.websitePreview")}</strong>
+    {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label={$t("richtext.previewOnWebsite")} data-tooltip={$t("richtext.previewOnWebsite")}><Icon name="external" size={18} /></a>{/if}
   </div>
   {#if error}<p role="status" class="preview-error">{error}</p>{/if}
   {#if path}
-    {#key key}<PreviewFrame bind:frame url={path} title="Live website draft preview" {onload} onloading={() => { loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />{/key}
-    <small>Prepared template · Scripts, navigation and forms disabled. Unanchored fields and lists are not previewed.</small>
+    {#key key}<PreviewFrame bind:frame url={path} title={$t("richtext.liveDraftPreview")} {onload} onloading={() => { loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />{/key}
+    <small>{$t("richtext.preparedTemplateHint")}</small>
   {:else}
-    <p role="status">{target.kind === "menu" ? "Menu preview is not supported." : "No prepared preview URL is mapped to this content."}</p>
+    <p role="status">{target.kind === "menu" ? $t("richtext.menuPreviewUnsupported") : $t("richtext.noContentPreview")}</p>
   {/if}
 </div>

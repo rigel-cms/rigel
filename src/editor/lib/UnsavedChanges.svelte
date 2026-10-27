@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "../i18n";
   import Icon from "./Icon.svelte";
   let { busy, error, onsave, ondiscard, oncancel }: { busy: boolean; error: string; onsave: () => void; ondiscard: () => void; oncancel: () => void } = $props();
   let dialog: HTMLDialogElement;
@@ -13,15 +14,15 @@
 <dialog bind:this={dialog} class="rigel rigel-modal-backdrop unsaved-dialog" aria-labelledby="unsaved-title" aria-describedby="unsaved-description" oncancel={(event) => { event.preventDefault(); if (!busy) oncancel(); }}>
   <div class="rigel-modal">
     <div class="unsaved-head">
-      <h2 id="unsaved-title">Unsaved changes</h2>
-      <button type="button" class="icon-btn" aria-label="Keep editing" disabled={busy} onclick={oncancel}><Icon name="x" size={16} /></button>
+      <h2 id="unsaved-title">{$t("connection.unsavedTitle")}</h2>
+      <button type="button" class="icon-btn" aria-label={$t("connection.keepEditing")} disabled={busy} onclick={oncancel}><Icon name="x" size={16} /></button>
     </div>
-    <p id="unsaved-description">You have unsaved changes. Save before leaving, or discard this draft?</p>
+    <p id="unsaved-description">{$t("connection.unsavedDescription")}</p>
     {#if error}<p role="alert">{error}</p>{/if}
     <div class="unsaved-actions">
-      <button type="button" bind:this={cancel} disabled={busy} onclick={oncancel}>Keep editing</button>
-      <button type="button" disabled={busy} onclick={ondiscard}>Discard changes</button>
-      <button type="button" class="primary" disabled={busy} onclick={onsave}>{busy ? 'Saving…' : 'Save and leave'}</button>
+      <button type="button" bind:this={cancel} disabled={busy} onclick={oncancel}>{$t("connection.keepEditing")}</button>
+      <button type="button" disabled={busy} onclick={ondiscard}>{$t("connection.discardChanges")}</button>
+      <button type="button" class="primary" disabled={busy} onclick={onsave}>{busy ? $t("connection.saving") : $t("connection.saveAndLeave")}</button>
     </div>
   </div>
 </dialog>

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { t } from "../i18n";
+  import { subscribeMediaLabels } from "./embed-preview";
+  import { slashCommand } from "./slash-command";
   import { onMount, tick, untrack } from "svelte";
   import * as L from "lexical";
   import * as Rich from "@lexical/rich-text";
@@ -73,14 +76,14 @@
   let altInput: HTMLInputElement;
   const id = $props.id();
   const marks = [
-    { type: "bold", icon: "textB", label: "Bold" },
-    { type: "italic", icon: "textItalic", label: "Italic" },
-    { type: "code", icon: "code", label: "Inline code" },
-    { type: "strikethrough", icon: "textStrikethrough", label: "Strikethrough" },
-    { type: "underline", icon: "textUnderline", label: "Underline" },
-    { type: "highlight", icon: "highlighter", label: "Highlight" },
-    { type: "subscript", icon: "textSubscript", label: "Subscript" },
-    { type: "superscript", icon: "textSuperscript", label: "Superscript" },
+    { type: "bold", icon: "textB", label: "richtext.bold" },
+    { type: "italic", icon: "textItalic", label: "richtext.italic" },
+    { type: "code", icon: "code", label: "richtext.inlineCode" },
+    { type: "strikethrough", icon: "textStrikethrough", label: "richtext.strikethrough" },
+    { type: "underline", icon: "textUnderline", label: "richtext.underline" },
+    { type: "highlight", icon: "highlighter", label: "richtext.highlight" },
+    { type: "subscript", icon: "textSubscript", label: "richtext.subscript" },
+    { type: "superscript", icon: "textSuperscript", label: "richtext.superscript" },
   ] as const;
   let activeMarks = $state<string[]>([]);
   let canUndo = $state(false);
@@ -89,10 +92,11 @@
   let tableRows = $state(0);
   let tableColumns = $state(0);
   let tableHeader = $state(false);
-  const mediaTypes = [{ value: "video", label: "Video" }, { value: "youtube", label: "YouTube" }, { value: "vimeo", label: "Vimeo" }] as const;
-  const choices = $derived([...blockTypes, ...mediaTypes].filter(block => block.label.toLowerCase().includes((slash ?? "").toLowerCase())));
-  const textBlocks = blockTypes.filter(block => !["image", "table", "bullet", "number"].includes(block.value));
-  const activeBlock = $derived(blockTypes.find(block => block.value === blockType));
+  const mediaTypes = [{ value: "video", label: "richtext.video" }, { value: "youtube", label: "richtext.youtube" }, { value: "vimeo", label: "richtext.vimeo" }] as const;
+  const localizedBlocks = $derived.by(() => { $t; return blockTypes.map(block => ({ ...block })); });
+  const choices = $derived([...localizedBlocks, ...mediaTypes.map(block => ({ ...block, label: $t(block.label) }))].filter(block => block.label.toLowerCase().includes((slash ?? "").toLowerCase())));
+  const textBlocks = $derived(localizedBlocks.filter(block => !["image", "table", "bullet", "number"].includes(block.value)));
+  const activeBlock = $derived(localizedBlocks.find(block => block.value === blockType));
 
   function topBlock(node: L.LexicalNode | null) {
     if (!node || L.$isRootNode(node)) return null;
@@ -121,7 +125,7 @@
         blockType = Rich.$isHeadingNode(node) ? node.getTag() : Lists.$isListNode(node) ? node.getListType() : node.getType();
         activeMarks = L.$isRangeSelection(selection) ? marks.filter(mark => selection.hasFormat(mark.type)).map(mark => mark.type) : [];
         const text = node.getTextContent();
-        const match = node.getType() === "paragraph" && L.$isRangeSelection(selection) && selection.isCollapsed() ? text.match(/^\/([\w ]*)$/) : null;
+        const match = node.getType() === "paragraph" && L.$isRangeSelection(selection) && selection.isCollapsed() ? text.match(slashCommand) : null;
         const signature = node.getKey() + text;
         if (match && signature !== slashDismissed) { if (slash !== match[1]) slashIndex = 0; slash = match[1]; slashKey = node.getKey(); adding = false; }
         else if (!adding) slash = null;
@@ -178,7 +182,7 @@
   onMount(() => {
     if (editableRoot) {
       root = editableRoot; root.classList.add("block-content", "rigel-article-content"); root.contentEditable = "true";
-      root.setAttribute("role", "textbox"); root.setAttribute("aria-label", "Body"); root.setAttribute("aria-multiline", "true");
+      root.setAttribute("role", "textbox"); root.setAttribute("aria-label", $t("richtext.body")); root.setAttribute("aria-multiline", "true");
       root.setAttribute("aria-keyshortcuts", "Alt+F10");
     }
     view = root.ownerDocument.defaultView!;
@@ -188,9 +192,9 @@
     editor.setRootElement(root);
     if (inline) { root.style.whiteSpace = whiteSpace; root.style.wordBreak = wordBreak; }
     Tables.setScrollableTablesActive(editor, true);
-    try { validateBody(value); const state = editor.parseEditorState(JSON.stringify(value)); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
-    catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load article"; editor.setEditable(false); }
-    const cleanups = [Rich.registerRichText(editor), Lists.registerList(editor), registerHistory(editor, createEmptyHistoryState(), 300)];
+    try { validateBody(value, $t); const state = editor.parseEditorState(JSON.stringify(value)); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
+    catch (cause) { error = cause instanceof Error ? cause.message : $t("richtext.loadArticleError"); editor.setEditable(false); }
+    const cleanups = [subscribeMediaLabels(root), Rich.registerRichText(editor), Lists.registerList(editor), registerHistory(editor, createEmptyHistoryState(), 300)];
     root.contentEditable = String(editor.isEditable());
     cleanups.push(editor.registerEditableListener(editable => { root.contentEditable = String(editable); }));
     cleanups.push(Tables.registerTablePlugin(editor), Tables.registerTableSelectionObserver(editor, true));
@@ -245,13 +249,15 @@
     };
   });
 
+  $effect(() => { if (editableRoot) editableRoot.setAttribute("aria-label", $t("richtext.body")); });
+
   $effect(() => { if (!linkOpen) view?.CSS.highlights?.delete("rigel-link-selection"); });
 
   $effect(() => {
     const serialized = JSON.stringify(value);
     if (editor && serialized !== received) {
-      try { validateBody(value); received = serialized; const state = editor.parseEditorState(serialized); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
-      catch (cause) { error = cause instanceof Error ? cause.message : "Unable to load article"; }
+      try { validateBody(value, $t); received = serialized; const state = editor.parseEditorState(serialized); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
+      catch (cause) { error = cause instanceof Error ? cause.message : $t("richtext.loadArticleError"); }
     }
   });
 
@@ -276,7 +282,7 @@
   }
   async function addBlock() {
     slashKey = activeKey; adding = true; slash = ""; slashIndex = 0;
-    await tick(); editorHost.querySelector<HTMLInputElement>('[aria-label="Find a block"]')?.focus();
+    await tick(); slashMenu.querySelector<HTMLInputElement>('input')?.focus();
   }
   function inlineNodes(node: L.LexicalNode): L.LexicalNode[] {
     if (!L.$isElementNode(node)) return node.getTextContent() ? [L.$createTextNode(node.getTextContent())] : [];
@@ -381,7 +387,7 @@
     altOpen = false; refocus();
   }
   function applyLink(remove = false) {
-    if (!remove && !safePreviewUrl(linkUrl)) { linkError = "Enter a safe http, https, mailto or relative URL."; return; }
+    if (!remove && !safePreviewUrl(linkUrl)) { linkError = $t("richtext.safeUrlError"); return; }
     editor.update(() => {
       if (savedSelection) L.$setSelection(savedSelection.clone());
       const selection = L.$getSelection(), node = L.$isNodeSelection(selection) ? selection.getNodes()[0] : null;
@@ -571,113 +577,113 @@
 
 {#snippet formatButtons()}
   {#each marks.slice(0, 2) as mark}
-    <button type="button" aria-label={mark.label} data-tooltip={mark.label} aria-pressed={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={18} /></button>
+    <button type="button" aria-label={$t(mark.label)} data-tooltip={$t(mark.label)} aria-pressed={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={18} /></button>
   {/each}
-  <button type="button" aria-label="Link" data-tooltip="Link" aria-expanded={linkOpen} aria-controls={`${id}-link`} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
-  <button type="button" aria-label="More formatting" data-tooltip="More formatting" aria-haspopup="menu" aria-expanded={formatsOpen} aria-controls={`${id}-formats`} popovertarget={`${id}-formats`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); formatTrigger = event.currentTarget; formatMenu.matches(':popover-open') ? closeMenu() : openMenu(event, formatMenu); }}><Icon name="caretDown" size={18} /></button>
+  <button type="button" aria-label={$t("richtext.link")} data-tooltip={$t("richtext.link")} aria-expanded={linkOpen} aria-controls={`${id}-link`} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
+  <button type="button" aria-label={$t("richtext.moreFormatting")} data-tooltip={$t("richtext.moreFormatting")} aria-haspopup="menu" aria-expanded={formatsOpen} aria-controls={`${id}-formats`} popovertarget={`${id}-formats`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); formatTrigger = event.currentTarget; formatMenu.matches(':popover-open') ? closeMenu() : openMenu(event, formatMenu); }}><Icon name="caretDown" size={18} /></button>
 {/snippet}
 {#snippet tableControls()}
-  <div class="block-table-controls" role="group" aria-label="Table controls">
-    <button type="button" disabled={!tableCell || tableRows >= MAX_TABLE_ROWS} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("row")}><Icon name="plus" />Add row below</button>
-    <button type="button" disabled={!tableCell || tableColumns >= MAX_TABLE_COLUMNS} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("column")}><Icon name="plus" />Add column right</button>
-    <button type="button" disabled={!tableCell || tableRows <= 1} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("delete-row")}><Icon name="minus" />Remove row</button>
-    <button type="button" disabled={!tableCell || tableColumns <= 1} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("delete-column")}><Icon name="minus" />Remove column</button>
-    <label class="inline"><input type="checkbox" role="switch" class="switch" checked={tableHeader} disabled={!tableCell} onchange={event => tableAction("header", event.currentTarget.checked)} /><Icon name="table" /><span>Header row</span></label>
+  <div class="block-table-controls" role="group" aria-label={$t("richtext.tableControls")}>
+    <button type="button" disabled={!tableCell || tableRows >= MAX_TABLE_ROWS} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("row")}><Icon name="plus" />{$t("richtext.addRowBelow")}</button>
+    <button type="button" disabled={!tableCell || tableColumns >= MAX_TABLE_COLUMNS} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("column")}><Icon name="plus" />{$t("richtext.addColumnRight")}</button>
+    <button type="button" disabled={!tableCell || tableRows <= 1} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("delete-row")}><Icon name="minus" />{$t("richtext.removeRow")}</button>
+    <button type="button" disabled={!tableCell || tableColumns <= 1} onpointerdown={event => event.preventDefault()} onclick={() => tableAction("delete-column")}><Icon name="minus" />{$t("richtext.removeColumn")}</button>
+    <label class="inline"><input type="checkbox" role="switch" class="switch" checked={tableHeader} disabled={!tableCell} onchange={event => tableAction("header", event.currentTarget.checked)} /><Icon name="table" /><span>{$t("richtext.headerRow")}</span></label>
   </div>
 {/snippet}
 {#snippet toolbar(image: boolean)}
-  <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? "Image editing" : "Body formatting"} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData) || (inline && !!selectedVideo)}>
+  <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? $t("richtext.imageEditing") : $t("richtext.bodyFormatting")} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData) || (inline && !!selectedVideo)}>
     {#if image}
-      <button type="button" aria-label="Edit alt text" data-tooltip="Edit alt text" onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
-      <button type="button" aria-label={imageData?.url ? "Edit image link" : "Add image link"} data-tooltip={imageData?.url ? "Edit image link" : "Add image link"} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
+      <button type="button" aria-label={$t("richtext.editAltText")} data-tooltip={$t("richtext.editAltText")} onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
+      <button type="button" aria-label={imageData?.url ? $t("richtext.editImageLink") : $t("richtext.addImageLink")} data-tooltip={imageData?.url ? $t("richtext.editImageLink") : $t("richtext.addImageLink")} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
     {:else}
-    <Select ariaLabel="Block type" data-tooltip={activeBlock?.label ?? "Block type"} icon={activeBlock?.icon ?? "paragraph"} value={imageData || embedData ? "" : blockType} options={textBlocks} disabled={!!imageData} onchange={next => { hoverKey = ""; changeBlock(String(next)); }} />
+    <Select ariaLabel={$t("richtext.blockType")} data-tooltip={activeBlock?.label ?? $t("richtext.blockType")} icon={activeBlock?.icon ?? "paragraph"} value={imageData || embedData ? "" : blockType} options={textBlocks} disabled={!!imageData} onchange={next => { hoverKey = ""; changeBlock(String(next)); }} />
     {#if !inline || !["image", "video", "embed", "divider"].includes(blockType)}<span class="toolbar-separator" aria-hidden="true"></span>{@render formatButtons()}<span class="toolbar-separator" aria-hidden="true"></span>{/if}
     {/if}
     {#if image}
-      <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel="Replace image" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
+      <ImagePicker toolbar value={imageData?.src ?? ""} altText={imageData?.alt ?? ""} triggerLabel={$t("richtext.replaceImage")} onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: true }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {:else}
-      <button type="button" data-media-trigger aria-label="Insert media" data-tooltip="Insert media" aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={event => mediaPicker.toggleMenu(event.currentTarget)}><Icon name="image" size={18} /></button>
+      <button type="button" data-media-trigger aria-label={$t("richtext.insertMedia")} data-tooltip={$t("richtext.insertMedia")} aria-haspopup="menu" onpointerdown={event => event.preventDefault()} onclick={event => mediaPicker.toggleMenu(event.currentTarget)}><Icon name="image" size={18} /></button>
       <ImagePicker toolbar hiddenTrigger value="" onopen={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; linkOpen = false; altOpen = false; }} onpick={pickImage} onclose={() => { imageJob = null; refocus(); }} />
     {/if}
     {#if !image}
-    <button type="button" aria-label="Table" data-tooltip="Table" aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>
-    <button type="button" aria-label="Bulleted list" data-tooltip="Bulleted list" aria-pressed={listType === "bullet"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
-    <button type="button" aria-label="Numbered list" data-tooltip="Numbered list" aria-pressed={listType === "number"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
+    <button type="button" aria-label={$t("richtext.table")} data-tooltip={$t("richtext.table")} aria-pressed={blockType === "table"} popovertarget={`${id}-table`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); tableMenu.matches(':popover-open') ? closeMenu() : openMenu(event, tableMenu); }}><Icon name="table" size={18} /></button>
+    <button type="button" aria-label={$t("richtext.bulletedList")} data-tooltip={$t("richtext.bulletedList")} aria-pressed={listType === "bullet"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("bullet")}><Icon name="listBullets" size={18} /></button>
+    <button type="button" aria-label={$t("richtext.numberedList")} data-tooltip={$t("richtext.numberedList")} aria-pressed={listType === "number"} disabled={["image", "video", "embed", "divider"].includes(blockType)} onpointerdown={event => event.preventDefault()} onclick={() => toggleList("number")}><Icon name="listNumbers" size={18} /></button>
     {#if !inline}
-      <button type="button" class="block-history" disabled={!canUndo} onclick={() => editor.dispatchCommand(L.UNDO_COMMAND, undefined)}>Undo</button>
-      <button type="button" class="block-history" disabled={!canRedo} onclick={() => editor.dispatchCommand(L.REDO_COMMAND, undefined)}>Redo</button>
-      <button type="button" class="block-add" aria-label="Add block" data-tooltip="Add block" onclick={addBlock}>Add block</button>
+      <button type="button" class="block-history" disabled={!canUndo} onclick={() => editor.dispatchCommand(L.UNDO_COMMAND, undefined)}>{$t("richtext.undo")}</button>
+      <button type="button" class="block-history" disabled={!canRedo} onclick={() => editor.dispatchCommand(L.REDO_COMMAND, undefined)}>{$t("richtext.redo")}</button>
+      <button type="button" class="block-add" aria-label={$t("richtext.addBlock")} data-tooltip={$t("richtext.addBlock")} onclick={addBlock}>{$t("richtext.addBlock")}</button>
     {/if}
     {/if}
-    {#if inline || image}<span class="toolbar-separator" aria-hidden="true"></span><button type="button" aria-label="More actions" data-tooltip="More actions" aria-haspopup="true" popovertarget={`${id}-actions`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); menu.matches(':popover-open') ? closeMenu() : openMenu(event); }}><Icon name="dotsThreeOutlineVertical" size={18} /></button>{/if}
+    {#if inline || image}<span class="toolbar-separator" aria-hidden="true"></span><button type="button" aria-label={$t("richtext.moreActions")} data-tooltip={$t("richtext.moreActions")} aria-haspopup="true" popovertarget={`${id}-actions`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); menu.matches(':popover-open') ? closeMenu() : openMenu(event); }}><Icon name="dotsThreeOutlineVertical" size={18} /></button>{/if}
   </div>
 {/snippet}
 <div class="block-editor" bind:this={editorHost}>
   <MediaPicker bind:this={mediaPicker} hiddenTrigger onopen={() => editor.blur()} onimage={() => { if (!imageJob) imageJob = { key: activeKey, replace: false }; editorHost.querySelector<HTMLButtonElement>('.body-toolbar:not(.image-toolbar) [data-image-trigger]')?.click(); }} onvideo={pickVideo} onembed={pickEmbed} onclose={() => { mediaJob = null; refocus(); }} />
-  {#if !inline}<div class="markdown-heading"><div class="field-label">Body</div><div class="markdown-modes"><button type="button" aria-pressed={markdownView} onclick={() => { markdownView = !markdownView; linkOpen = false; closeMenu(); dismissSlash(); }}>View as Markdown</button></div></div>{/if}
+  {#if !inline}<div class="markdown-heading"><div class="field-label">{$t("richtext.body")}</div><div class="markdown-modes"><button type="button" aria-pressed={markdownView} onclick={() => { markdownView = !markdownView; linkOpen = false; closeMenu(); dismissSlash(); }}>{$t("richtext.viewAsMarkdown")}</button></div></div>{/if}
   {@render toolbar(inline && !!imageData)}
   {#if !inline}{@render toolbar(true)}{/if}
 
   {#if error}<p role="alert">{error}</p>{/if}
   {#if linkOpen}
-    <div class="markdown-link" class:image-form={!!imageData} style={linkPosition} id={`${id}-link`} role="group" aria-label="Edit link" onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; refocus(); } if (event.key === "Enter") { event.preventDefault(); applyLink(); } }}>
-      <label for={`${id}-url`}>Link URL</label>
+    <div class="markdown-link" class:image-form={!!imageData} style={linkPosition} id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; refocus(); } if (event.key === "Enter") { event.preventDefault(); applyLink(); } }}>
+      <label for={`${id}-url`}>{$t("richtext.linkUrl")}</label>
       <div class="markdown-link-controls">
         <input id={`${id}-url`} type="text" placeholder="https://…" bind:this={linkInput} bind:value={linkUrl} aria-invalid={!!linkError} />
-        <button type="button" aria-label="Apply link" data-tooltip="Apply link" onclick={() => applyLink()}><Icon name="check" size={16} /></button>
-        <button type="button" aria-label="Remove link" data-tooltip="Remove link" onclick={() => applyLink(true)}><Icon name="linkBreak" size={16} /></button>
-        <button type="button" aria-label="Close link" data-tooltip="Close link" onclick={() => { linkOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
+        <button type="button" aria-label={$t("richtext.applyLink")} data-tooltip={$t("richtext.applyLink")} onclick={() => applyLink()}><Icon name="check" size={16} /></button>
+        <button type="button" aria-label={$t("richtext.removeLink")} data-tooltip={$t("richtext.removeLink")} onclick={() => applyLink(true)}><Icon name="linkBreak" size={16} /></button>
+        <button type="button" aria-label={$t("richtext.closeLink")} data-tooltip={$t("richtext.closeLink")} onclick={() => { linkOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
       </div>
       {#if linkError}<p role="alert">{linkError}</p>{/if}
     </div>
   {/if}
   {#if altOpen}
-    <div class="markdown-link image-form" style={linkPosition} role="group" aria-label="Edit image alt text" onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); altOpen = false; refocus(); } if (event.key === "Enter") { event.preventDefault(); applyAlt(); } }}>
-      <label for={`${id}-alt`}>Alt text (leave empty if decorative)</label>
+    <div class="markdown-link image-form" style={linkPosition} role="group" aria-label={$t("richtext.editImageAltText")} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); altOpen = false; refocus(); } if (event.key === "Enter") { event.preventDefault(); applyAlt(); } }}>
+      <label for={`${id}-alt`}>{$t("richtext.decorativeAltText")}</label>
       <div class="markdown-link-controls">
-        <input id={`${id}-alt`} type="text" aria-label="Image alt text" bind:this={altInput} bind:value={altText} />
-        <button type="button" aria-label="Apply alt text" data-tooltip="Apply alt text" onclick={applyAlt}><Icon name="check" size={16} /></button>
-        <button type="button" aria-label="Close alt text" data-tooltip="Close alt text" onclick={() => { altOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
+        <input id={`${id}-alt`} type="text" aria-label={$t("richtext.imageAltText")} bind:this={altInput} bind:value={altText} />
+        <button type="button" aria-label={$t("richtext.applyAltText")} data-tooltip={$t("richtext.applyAltText")} onclick={applyAlt}><Icon name="check" size={16} /></button>
+        <button type="button" aria-label={$t("richtext.closeAltText")} data-tooltip={$t("richtext.closeAltText")} onclick={() => { altOpen = false; refocus(); }}><Icon name="x" size={16} /></button>
       </div>
     </div>
   {/if}
-  {#if !inline && !imageData && !selectedVideo && floating && !markdownView}<div class="block-float" style={floating} role="group" aria-label="Selected text formatting">{@render formatButtons()}</div>{/if}
+  {#if !inline && !imageData && !selectedVideo && floating && !markdownView}<div class="block-float" style={floating} role="group" aria-label={$t("richtext.selectedTextFormatting")}>{@render formatButtons()}</div>{/if}
   {#if markdownView}
-    <div class="block-markdown-view">{#if inline}<button type="button" class="outlined" onclick={async () => { markdownView = false; await tick(); editor.focus(); }}>Close Markdown view</button>{/if}<pre class="block-markdown" aria-label="Body as Markdown" tabindex="0">{articleMarkdown(value)}</pre></div>
+    <div class="block-markdown-view">{#if inline}<button type="button" class="outlined" onclick={async () => { markdownView = false; await tick(); editor.focus(); }}>{$t("richtext.closeMarkdownView")}</button>{/if}<pre class="block-markdown" aria-label={$t("richtext.bodyAsMarkdown")} tabindex="0">{articleMarkdown(value)}</pre></div>
   {/if}
-  <div class="block-surface" bind:this={surface} hidden={markdownView} onpointermove={hover} role="group" aria-label="Article blocks">
-    {#if insertion && !markdownView}<button type="button" class="block-insert" style={`top:${insertion.top}px;left:${insertion.left}px`} aria-label="Insert paragraph here" data-tooltip="Insert paragraph" onpointerdown={event => event.preventDefault()} onpointerleave={leaveInsertion} onblur={() => { insertion = null; }} onclick={insertParagraph}><Icon name="plus" size={16} /></button>{/if}
-    {#if !inline}<div class="block-content" contenteditable="true" role="textbox" aria-label="Body" aria-multiline="true" bind:this={root}></div>{/if}
-    {#if hoverKey || activeKey}<button bind:this={handle} type="button" class="block-handle" style={`top:${handleTop}px;${inline ? `left:${handleLeft}px` : ''}`} aria-label="Block options and drag handle" data-tooltip="Drag to reorder; click for block options" onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={() => endDrag()} onpointercancel={() => endDrag(true)} onlostpointercapture={() => endDrag(true)} onclick={openMenu}><Icon name="dotsThreeOutlineVertical" size={16} /></button>{/if}
+  <div class="block-surface" bind:this={surface} hidden={markdownView} onpointermove={hover} role="group" aria-label={$t("richtext.articleBlocks")}>
+    {#if insertion && !markdownView}<button type="button" class="block-insert" style={`top:${insertion.top}px;left:${insertion.left}px`} aria-label={$t("richtext.insertParagraphHere")} data-tooltip={$t("richtext.insertParagraph")} onpointerdown={event => event.preventDefault()} onpointerleave={leaveInsertion} onblur={() => { insertion = null; }} onclick={insertParagraph}><Icon name="plus" size={16} /></button>{/if}
+    {#if !inline}<div class="block-content" contenteditable="true" role="textbox" aria-label={$t("richtext.body")} aria-multiline="true" bind:this={root}></div>{/if}
+    {#if hoverKey || activeKey}<button bind:this={handle} type="button" class="block-handle" style={`top:${handleTop}px;${inline ? `left:${handleLeft}px` : ''}`} aria-label={$t("richtext.blockOptionsHandle")} data-tooltip={$t("richtext.dragBlockHint")} onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={() => endDrag()} onpointercancel={() => endDrag(true)} onlostpointercapture={() => endDrag(true)} onclick={openMenu}><Icon name="dotsThreeOutlineVertical" size={16} /></button>{/if}
     {#if drop}<div class="block-drop-indicator" style={`top:${drop.top}px;${inline ? `position:fixed;left:${root.getBoundingClientRect().left}px;width:${root.getBoundingClientRect().width}px;right:auto` : ''}`}></div>{/if}
-    <div bind:this={slashMenu} class="block-slash" id={`${id}-slash`} popover="manual" style={slashPosition} role="listbox" aria-label="Insert block" onkeydown={slashKeydown}>
+    <div bind:this={slashMenu} class="block-slash" id={`${id}-slash`} popover="manual" style={slashPosition} role="listbox" aria-label={$t("richtext.insertBlock")} onkeydown={slashKeydown}>
       {#if slash !== null}
-        <p class="hint">Choose a block</p>
-        {#if adding}<input type="search" role="combobox" aria-expanded="true" aria-controls={`${id}-slash`} aria-activedescendant={choices.length ? `${id}-slash-${slashIndex}` : undefined} aria-label="Find a block" placeholder="Find a block…" bind:value={slash} oninput={() => { slashIndex = 0; }} />{/if}
+        <p class="hint">{$t("richtext.chooseBlock")}</p>
+        {#if adding}<input type="search" role="combobox" aria-expanded="true" aria-controls={`${id}-slash`} aria-activedescendant={choices.length ? `${id}-slash-${slashIndex}` : undefined} aria-label={$t("richtext.findBlock")} placeholder={$t("richtext.findBlockPlaceholder")} bind:value={slash} oninput={() => { slashIndex = 0; }} />{/if}
         {#each choices as block, index}<button id={`${id}-slash-${index}`} type="button" role="option" aria-selected={index === slashIndex} onfocus={() => { slashIndex = index; }} onpointerdown={event => event.preventDefault()} onclick={() => changeBlock(block.value, true)}>{block.label}</button>{/each}
-        {#if !choices.length}<p role="status">No matching blocks.</p>{/if}
+        {#if !choices.length}<p role="status">{$t("richtext.noMatchingBlocks")}</p>{/if}
       {/if}
     </div>
   </div>
-  <div class="block-menu block-table-menu" id={`${id}-table`} bind:this={tableMenu} popover="auto" style={menuPosition} role="group" aria-label="Table">
-    {#if blockType === "table"}{@render tableControls()}{:else}<button type="button" onclick={() => { slashKey = activeKey; adding = true; changeBlock("table", true); }}>Add table</button>{/if}
+  <div class="block-menu block-table-menu" id={`${id}-table`} bind:this={tableMenu} popover="auto" style={menuPosition} role="group" aria-label={$t("richtext.table")}>
+    {#if blockType === "table"}{@render tableControls()}{:else}<button type="button" onclick={() => { slashKey = activeKey; adding = true; changeBlock("table", true); }}>{$t("richtext.addTable")}</button>{/if}
   </div>
-  <div class="block-menu" id={`${id}-actions`} bind:this={menu} popover="auto" style={menuPosition} role="group" aria-label={inline ? "More actions" : "Block options"}>
+  <div class="block-menu" id={`${id}-actions`} bind:this={menu} popover="auto" style={menuPosition} role="group" aria-label={inline ? $t("richtext.moreActions") : $t("richtext.blockOptions")}>
     {#if inline}
-      <button type="button" class="block-history" disabled={!canUndo} onclick={() => { editor.dispatchCommand(L.UNDO_COMMAND, undefined); closeMenu(); editor.focus(); }}>Undo</button>
-      <button type="button" class="block-history" disabled={!canRedo} onclick={() => { editor.dispatchCommand(L.REDO_COMMAND, undefined); closeMenu(); editor.focus(); }}>Redo</button>
-      <button type="button" onclick={() => { markdownView = true; closeMenu(); }}>View as Markdown</button>
+      <button type="button" class="block-history" disabled={!canUndo} onclick={() => { editor.dispatchCommand(L.UNDO_COMMAND, undefined); closeMenu(); editor.focus(); }}>{$t("richtext.undo")}</button>
+      <button type="button" class="block-history" disabled={!canRedo} onclick={() => { editor.dispatchCommand(L.REDO_COMMAND, undefined); closeMenu(); editor.focus(); }}>{$t("richtext.redo")}</button>
+      <button type="button" onclick={() => { markdownView = true; closeMenu(); }}>{$t("richtext.viewAsMarkdown")}</button>
     {/if}
-    <button type="button" onclick={() => blockAction("duplicate")}>Duplicate block</button>
-    <button type="button" onclick={() => blockAction("delete")}>Delete block</button>
-    <button type="button" onclick={() => blockAction("up")}>Move up</button>
-    <button type="button" onclick={() => blockAction("down")}>Move down</button>
-    {#if !inline}<Select ariaLabel="Convert block type" value={blockType} options={textBlocks} onchange={next => changeBlock(String(next))} />{/if}
+    <button type="button" onclick={() => blockAction("duplicate")}>{$t("richtext.duplicateBlock")}</button>
+    <button type="button" onclick={() => blockAction("delete")}>{$t("richtext.deleteBlock")}</button>
+    <button type="button" onclick={() => blockAction("up")}>{$t("richtext.moveUp")}</button>
+    <button type="button" onclick={() => blockAction("down")}>{$t("richtext.moveDown")}</button>
+    {#if !inline}<Select ariaLabel={$t("richtext.convertBlockType")} value={blockType} options={textBlocks} onchange={next => changeBlock(String(next))} />{/if}
   </div>
-  <div class="block-menu block-format-menu" id={`${id}-formats`} bind:this={formatMenu} popover="auto" style={menuPosition} role="menu" tabindex="-1" aria-label="More formatting" ontoggle={event => { formatsOpen = event.currentTarget.matches(':popover-open'); }} onkeydown={formatKeydown}>
+  <div class="block-menu block-format-menu" id={`${id}-formats`} bind:this={formatMenu} popover="auto" style={menuPosition} role="menu" tabindex="-1" aria-label={$t("richtext.moreFormatting")} ontoggle={event => { formatsOpen = event.currentTarget.matches(':popover-open'); }} onkeydown={formatKeydown}>
     {#each marks.slice(2) as mark}
-      <button type="button" role="menuitemcheckbox" aria-label={mark.label} aria-checked={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={16} /><span>{mark.label}</span>{#if activeMarks.includes(mark.type)}<Icon name="check" size={16} />{/if}</button>
+      <button type="button" role="menuitemcheckbox" aria-label={$t(mark.label)} aria-checked={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={16} /><span>{$t(mark.label)}</span>{#if activeMarks.includes(mark.type)}<Icon name="check" size={16} />{/if}</button>
     {/each}
   </div>
 </div>

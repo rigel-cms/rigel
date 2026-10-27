@@ -1,0 +1,14 @@
+{
+  "system.editorTitle": "Rigel — コンテンツエディター",
+  "system.sidebar.website": "ウェブサイト",
+  "system.sidebar.pages": "ページ",
+  "system.sidebar.shared": "共有コンテンツ",
+  "system.sidebar.menus": "メニュー",
+  "system.sidebar.assets": "アセット",
+  "system.sidebar.media": "メディア",
+  "system.sidebar.more": "その他のコンテンツ",
+  "system.reference.unavailable": "利用できません ({id})",
+  "system.reference.expectedMany": "{label}: 参照の配列が必要です",
+  "system.reference.expectedOne": "{label}: 参照を1つ指定してください",
+  "system.reference.existingOnly": "{label}: 既存のエントリーのみ選択してください"
+}

@@ -1,44 +1,26 @@
 # Rigel CMS
 
-A CMS for Astro sites. You edit the text, git keeps the history.
+[![npm version](https://img.shields.io/npm/v/@rigel-cms/rigel)](https://www.npmjs.com/package/@rigel-cms/rigel)
+[![Astro 7](https://img.shields.io/badge/Astro-7-BC52EE?logo=astro&logoColor=white)](https://astro.build/)
+[![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)](package.json)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
-## Collection validation
+A CMS for Astro sites. You edit the text, Git keeps the history.
 
-New collection drafts initialize every configured field, including Rigel's automatic `description`, `metaTitle`, and `ogImage` strings. Existing content is never filled in automatically; unknown properties are preserved and missing optional fields remain allowed.
+Edit page copy, structured content and articles at `/rigel/`. Your content stays in your repository, and your Astro site controls how it looks.
 
-Rigel validates configured collection field types and `required: true` on load and before local or GitHub saves. Required strings must contain non-whitespace text, required arrays must contain an item, and `false` is a valid required boolean. Dates use real `YYYY-MM-DD` calendar dates; optional dates may be empty. Tags are arrays of strings and references must select configured entries.
+- Visual editing on prepared page templates, with unsaved changes shown in the preview.
+- A block editor for articles and a media library with local uploads.
+- Explicit Save, with warnings before leaving unsaved changes.
+- Local file editing or GitHub drafts with pull-request publishing.
 
-Astro content schemas remain the host site's contract: Rigel does not discover or execute them. Align Rigel field types and requiredness with the host schema. For example, Astro's `z.string()` accepts an initialized empty description; `z.string().min(1)` also needs Rigel's `required: true`.
+Rigel edits content, not `.astro` components. Developers define the editable fields and add preview bindings to their templates. Saving content and publishing the website are separate steps.
 
-## Editor templates and website previews
+## Get started
 
-Set `template` on a collection, schema document type, or copy-page mapping to choose the editor's prepared HTML. It is a static root-relative path on the editor's own origin, independent of `draftUrl` and `liveUrl`:
+Use the [Astro starter](https://github.com/rigel-cms/rigel-starter), or follow the [installation guide](https://rigelcms.dev/docs/getting-started/) to add Rigel to an existing site. Requires Node.js 24 and Astro 7.3 or later within Astro 7.
 
-```js
-rigel({
-  preview: {
-    draftUrl: "https://drafts.example.com/",
-    liveUrl: "https://example.com/",
-    collections: {
-      blog: { url: "/blog/{slug}/", template: "/rigel/preview/blog/" },
-    },
-    documents: {
-      page: { url: "/{slug}/", index: "/", template: "/templates/page/" },
-    },
-    pages: {
-      about: { url: "/about/", template: "/templates/about/" },
-    },
-  },
-});
-```
-
-`template` supplies the editing canvas independently of the website route. Collection canvases can use it before the first Save; new schema page documents still require their first Save before opening a canvas. `url` supplies the real route for "Preview on website" on `draftUrl` and live links on `liveUrl`. Saving or editing a slug does not switch the canvas to a deployed article. The host site must build each template with Rigel anchors such as `data-rigel-text="title"` and `data-rigel-richtext="$body"`; Rigel does not generate it.
-
-Explicit templates may use `/rigel/preview/`, but not the editor or API routes. Queries, fragments, traversal and `{slug}` patterns are rejected in template paths. Existing string page mappings and collection `new` mappings remain supported; `new` retains its previous draft-base behavior when `template` is absent.
-
-## Media uploads
-
-Set `maxFileSize` in the `rigel()` options in `astro.config.mjs`. The value is bytes and defaults to `2 * 1024 * 1024` (2 MB). For example, `rigel({ maxFileSize: 50 * 1024 * 1024 })` allows 50 MB per file. The limit applies to uploads and downloaded image imports, not existing files or linked videos. Your host may impose its own limit.
+[Documentation](https://rigelcms.dev/docs/) · [Content model](https://rigelcms.dev/docs/content-model/) · [Previews](https://rigelcms.dev/docs/preview/) · [GitHub setup](https://rigelcms.dev/docs/github-publishing/)
 
 ## License
 

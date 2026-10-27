@@ -100,7 +100,7 @@ function createTooltips() {
       if (event.pointerType === "touch") return;
       if (event.target === tip) { clearTimeout(timer); return; }
       const element = target(event);
-      if (!element || element.contains(event.relatedTarget as Node | null) || element === anchor || element === doc.activeElement) return;
+      if (!element || element.contains(event.relatedTarget as Node | null) || element === anchor) return;
       hide(); timer = setTimeout(() => show(element), 450);
     };
     const out = (event: PointerEvent) => {

@@ -1,11 +1,7 @@
 {
   "name": "@rigel-cms/rigel",
-  "version": "1.0.0-rc.1",
-  "publishConfig": {
-    "access": "public",
-    "tag": "rc"
-  },
-  "description": "Rigel CMS — the copy editor for Astro sites. Clients edit text, git keeps the history.",
+  "version": "1.0.0",
+  "description": "A CMS for Astro sites. You edit the text, Git keeps the history.",
   "author": {
     "name": "FreshJuice",
     "email": "contact@freshjuice.dev",
@@ -53,7 +49,6 @@
     "vite": "^8.0.0"
   },
   "devDependencies": {
-
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",
     "astro": "^7.3.2",

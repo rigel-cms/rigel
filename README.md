@@ -32,7 +32,7 @@ rigel({
 });
 ```
 
-`template` supplies the editing canvas for new and saved content. `url` supplies the real route for "Preview on website" on `draftUrl` and live links on `liveUrl`. Saving or editing a slug does not switch the canvas to a deployed article. The host site must build each template with Rigel anchors such as `data-rigel-text="title"` and `data-rigel-richtext="$body"`; Rigel does not generate it.
+`template` supplies the editing canvas independently of the website route. Collection canvases can use it before the first Save; new schema page documents still require their first Save before opening a canvas. `url` supplies the real route for "Preview on website" on `draftUrl` and live links on `liveUrl`. Saving or editing a slug does not switch the canvas to a deployed article. The host site must build each template with Rigel anchors such as `data-rigel-text="title"` and `data-rigel-richtext="$body"`; Rigel does not generate it.
 
 Explicit templates may use `/rigel/preview/`, but not the editor or API routes. Queries, fragments, traversal and `{slug}` patterns are rejected in template paths. Existing string page mappings and collection `new` mappings remain supported; `new` retains its previous draft-base behavior when `template` is absent.
 

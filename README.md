@@ -22,6 +22,10 @@ Use the [Astro starter](https://github.com/rigel-cms/rigel-starter), or follow t
 
 [Documentation](https://rigelcms.dev/docs/) · [Content model](https://rigelcms.dev/docs/content-model/) · [Previews](https://rigelcms.dev/docs/preview/) · [GitHub setup](https://rigelcms.dev/docs/github-publishing/)
 
+## Extensions
+
+Register your own slash commands, toolbar buttons and saved article blocks with Svelte components. The [extension guide](docs/extensions.md) covers registration, editable blocks and published rendering.
+
 ## License
 
 [Apache-2.0](LICENSE). Copyright 2026 [Alex Zappa](https://alex.zappa.dev/) ([FreshJuice](https://freshjuice.dev/)).

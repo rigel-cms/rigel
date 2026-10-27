@@ -126,9 +126,27 @@ export const menus = {
       },
     },
     resolveId(id) {
-      if (id === VIRTUAL_ID || id === CONTENT_ID || id === "virtual:rigel-config" || id === "virtual:rigel-i18n") return "\0" + id;
+      if (id === "virtual:rigel-extensions" || id === VIRTUAL_ID || id === CONTENT_ID || id === "virtual:rigel-config" || id === "virtual:rigel-i18n") return "\0" + id;
     },
     load(id) {
+      if (id === "\0virtual:rigel-extensions") {
+        if (!cfg.extensions!.length) return "export default [];";
+        if (!root) throw new Error("rigel: extensions require the Astro project root");
+        const directory = fileURLToPath(root);
+        const imports = cfg.extensions!.map((module, index) => {
+          let filename = directory;
+          for (const part of module.slice(2).split("/")) {
+            filename = path.join(filename, part);
+            try {
+              if (lstatSync(filename).isSymbolicLink()) throw new Error("rigel: extension paths must not contain symlinks");
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            }
+          }
+          return `import __rigelExtension${index} from ${JSON.stringify(filename)};`;
+        });
+        return `${imports.join("\n")}\nexport default [${cfg.extensions!.map((_, index) => `__rigelExtension${index}`).join(", ")}];`;
+      }
       if (id === "\0virtual:rigel-i18n") {
         const imports: string[] = [];
         const dictionaries = cfg.languages!.map((language, index) => {

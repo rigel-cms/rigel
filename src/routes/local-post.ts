@@ -8,6 +8,8 @@ import path from "node:path";
 
 import { validateBody, type ArticleBody } from "../article-body";
 import config from "virtual:rigel-config";
+import extensions from "virtual:rigel-extensions";
+import { resolveExtensions, validateExtensionBlocks } from "../extensions";
 import { validateCollectionValues } from "../manifest/collections";
 import { readDocuments } from "../schema/store";
 import { fileURLToPath } from "node:url";
@@ -55,6 +57,7 @@ const savePost: APIRoute = async ({ request, params }) => {
   const file = path.resolve(folder, `${slug}.json`);
   try {
     validateBody(body.body, t);
+    validateExtensionBlocks(body.body, resolveExtensions(extensions).blocks);
     const fields = config.collections?.find((collection: CollectionConfig) => collection.name === params.collection)?.fields ?? [];
     const documents = config.schema && config.root ? await readDocuments(config.schema, fileURLToPath(config.root), config.preview, t) : [];
     validateCollectionValues(fields, body.frontmatter, documents, t);

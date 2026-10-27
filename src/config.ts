@@ -18,6 +18,7 @@ export interface RigelConfig {
   jsonOutput?: JsonOutput;
   demo?: boolean;
   languages?: Locale[];
+  extensions?: string[];
   collections?: CollectionConfig[];
   menus?: { folder: string; maxDepth?: number };
   schema?: Schema;
@@ -47,6 +48,9 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  if (cfg.extensions === undefined) cfg.extensions = [];
+  if (!Array.isArray(cfg.extensions) || Array.from(cfg.extensions).some(module => typeof module !== "string" || !module.startsWith("./") || !module.slice(2).split("/").every(part => /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/.test(part) && part !== "node_modules" && part !== "." && part !== "..")) || new Set(cfg.extensions).size !== cfg.extensions.length) throw new Error("rigel: extensions must be unique explicit ./module paths inside the site project");
+  cfg.extensions = [...cfg.extensions];
   if (cfg.languages === undefined) cfg.languages = ["en", "fr"];
   if (!Array.isArray(cfg.languages) || Array.from(cfg.languages).some(language => typeof language !== "string" || !Object.hasOwn(localeNames, language))) throw new Error("rigel: languages must be an array of supported locale codes");
   cfg.languages = [...new Set<Locale>(["en", ...cfg.languages])];

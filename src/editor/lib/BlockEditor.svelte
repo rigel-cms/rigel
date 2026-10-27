@@ -12,6 +12,10 @@
   import { ImageNode, type ImageData } from "../blocks/image";
   import { VideoNode, type VideoData } from "../blocks/video";
   import { EmbedNode, type EmbedData } from "../blocks/embed";
+  import { ExtensionNode, cloneBlockData } from "../blocks/extension";
+  import { extensionRegistry, extensionBlock, registerExtensionNodes } from "./extension-preview";
+  import { resolveExtensions, type ExtensionCommand, type ExtensionContext, type ExtensionSelection } from "../../extensions";
+  import extensionModules from "virtual:rigel-extensions";
   import ImagePicker from "./ImagePicker.svelte";
   import MediaPicker from "./MediaPicker.svelte";
   import type { StockResult } from "./images";
@@ -38,6 +42,20 @@
   let last = untrack(() => JSON.stringify(value));
   let received = last;
   let error = $state("");
+  let extensionError = $state("");
+  let extensionBusy = $state(false);
+  let extensionDisposed = false;
+  let extensionRevision = 0;
+  const extensionCommands = Object.values(extensionRegistry.commands);
+  const toolbarCommands = extensionCommands.filter(command => command.toolbar === true || (command.group && command.toolbar !== false));
+  const toolbarGroups = resolveExtensions(extensionModules).groups.map(group => ({ ...group, commands: toolbarCommands.filter(command => command.group === group.name) })).filter(group => group.commands.length);
+  let extensionMenu: HTMLDivElement;
+  let extensionTrigger = $state<HTMLButtonElement>();
+  let clickedExtensionTrigger: HTMLButtonElement;
+  let extensionGroup = $state("");
+  let extensionPosition = $state("");
+  const activeExtensionGroup = $derived(toolbarGroups.find(group => group.name === extensionGroup));
+
   let markdownView = $state(false);
   let activeKey = $state("");
   let hoverKey = $state("");
@@ -71,6 +89,7 @@
   let embedData = $state<EmbedData | null>(null);
   let videoData = $state<VideoData | null>(null);
   const selectedVideo = $derived(embedData ?? videoData);
+  const extensionOnly = $derived((!!selectedVideo || blockType === "extension") && toolbarCommands.length > 0);
   let altOpen = $state(false);
   let altText = $state("");
   let altKey = "";
@@ -95,7 +114,7 @@
   let tableHeader = $state(false);
   const mediaTypes = [{ value: "video", label: "richtext.video" }, { value: "youtube", label: "richtext.youtube" }, { value: "vimeo", label: "richtext.vimeo" }] as const;
   const localizedBlocks = $derived.by(() => { $t; return blockTypes.map(block => ({ ...block })); });
-  const choices = $derived([...localizedBlocks, ...mediaTypes.map(block => ({ ...block, label: $t(block.label) }))].filter(block => block.label.toLowerCase().includes((slash ?? "").toLowerCase())));
+  const choices = $derived([...localizedBlocks, ...mediaTypes.map(block => ({ ...block, label: $t(block.label) })), ...extensionCommands.filter(command => command.slash).map(command => ({ value: `extension:${command.name}`, label: command.label, keyword: command.slash }))].filter(block => `${block.label} ${"keyword" in block ? block.keyword : ""}`.toLowerCase().includes((slash ?? "").toLowerCase())));
   const textBlocks = $derived(localizedBlocks.filter(block => !["image", "table", "bullet", "number"].includes(block.value)));
   const activeBlock = $derived(localizedBlocks.find(block => block.value === blockType));
 
@@ -146,13 +165,13 @@
     const selection = view.getSelection();
     if (!root.ownerDocument.hasFocus()) { floating = ""; return; }
     if (editorHost.contains(root.ownerDocument.activeElement) && !root.contains(root.ownerDocument.activeElement)) return;
-    if (inline || imageData || selectedVideo) {
-      if (imageData || selectedVideo ? root.ownerDocument.activeElement !== root : !selection?.rangeCount || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) { floating = ""; return; }
+    if (inline || imageData || selectedVideo || extensionOnly) {
+      if (imageData || selectedVideo || extensionOnly ? !root.contains(root.ownerDocument.activeElement) : !selection?.rangeCount || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) { floating = ""; return; }
       const block = editor.getElementByKey(activeKey);
       if (!block) { floating = ""; return; }
-      const rect = imageData || selectedVideo || selection!.isCollapsed ? block.getBoundingClientRect() : selection!.getRangeAt(0).getBoundingClientRect();
+      const rect = imageData || selectedVideo || extensionOnly || selection!.isCollapsed ? block.getBoundingClientRect() : selection!.getRangeAt(0).getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > view.innerHeight) { floating = ""; return; }
-      if (selectedVideo) { floating = ""; return; }
+      if (selectedVideo && !toolbarCommands.length) { floating = ""; return; }
       const toolbarRect = editorHost.querySelector(imageData ? '.image-toolbar' : '.body-toolbar')?.getBoundingClientRect();
       const toolbarHeight = toolbarRect?.height || 42, toolbarWidth = toolbarRect?.width || 330;
       const top = rect.top >= toolbarHeight + 12 ? rect.top - toolbarHeight - 8 : rect.bottom + 8;
@@ -196,7 +215,7 @@
     Tables.setScrollableTablesActive(editor, true);
     try { validateBody(value, $t); const state = editor.parseEditorState(JSON.stringify(value)); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
     catch (cause) { error = cause instanceof Error ? cause.message : $t("richtext.loadArticleError"); editor.setEditable(false); }
-    const cleanups = [subscribeMediaLabels(root), Rich.registerRichText(editor), Lists.registerList(editor), registerHistory(editor, createEmptyHistoryState(), 300)];
+    const cleanups = [subscribeMediaLabels(root), registerExtensionNodes(editor), Rich.registerRichText(editor), Lists.registerList(editor), registerHistory(editor, createEmptyHistoryState(), 300)];
     root.contentEditable = String(editor.isEditable());
     cleanups.push(editor.registerEditableListener(editable => { root.contentEditable = String(editable); }));
     cleanups.push(Tables.registerTablePlugin(editor), Tables.registerTableSelectionObserver(editor, true));
@@ -217,15 +236,16 @@
       refresh();
       if (dirtyElements.size || dirtyLeaves.size) {
         const next = editorState.toJSON(), serialized = JSON.stringify(next);
-        if (serialized !== last) { last = serialized; received = serialized; oninput(next); }
+        if (serialized !== last) { extensionRevision++; last = serialized; received = serialized; oninput(next); }
       }
     });
     refresh();
-    const position = () => { positionHandle(); positionFloating(); positionInsertion(); };
+    const position = () => { positionHandle(); positionFloating(); positionInsertion(); positionExtensionMenu(); };
     const toolbarObserver = new ResizeObserver(() => { positionFloating(); positionInsertion(); });
     editorHost.querySelectorAll('.body-toolbar').forEach(toolbar => toolbarObserver.observe(toolbar));
     toolbarObserver.observe(root);
     const outside = (event: PointerEvent) => {
+      if (extensionMenu?.matches(":popover-open") && !extensionMenu.contains(event.target as Node) && !extensionTrigger?.contains(event.target as Node)) closeMenu();
       if (linkOpen && !editorHost.querySelector('.markdown-link')?.contains(event.target as Node)) linkOpen = false;
       if ((inline || imageData || selectedVideo) && !root.contains(event.target as Node) && !editorHost.contains(event.target as Node)) { floating = ""; linkOpen = false; altOpen = false; closeMenu(); }
       if (slash !== null && !slashMenu?.contains(event.target as Node) && !root.contains(event.target as Node) && !(event.target as Element).closest('.block-add')) dismissSlash();
@@ -235,10 +255,17 @@
     view.addEventListener("pointerdown", outside, true); view.addEventListener("keydown", escape);
     if (root.ownerDocument !== document) document.addEventListener("pointerdown", outside, true);
     view.addEventListener("blur", positionFloating);
+    const extensionFailure = (event: Event) => { extensionError = (event as CustomEvent<string>).detail; };
+    const extensionTeardown = () => { extensionDisposed = true; };
+    root.addEventListener("rigel-extension-error", extensionFailure);
+    view.addEventListener("pagehide", extensionTeardown);
     root.addEventListener("pointerdown", contentClick); root.addEventListener("click", contentClick);
     root.addEventListener("pointerleave", leaveInsertion);
     if (inline) view.addEventListener("pointermove", hover);
     return () => {
+      extensionDisposed = true;
+      root.removeEventListener("rigel-extension-error", extensionFailure);
+      view.removeEventListener("pagehide", extensionTeardown);
       toolbarObserver?.disconnect();
       view.CSS.highlights?.delete("rigel-link-selection");
       view.removeEventListener("resize", position); view.removeEventListener("scroll", position, true);
@@ -247,7 +274,7 @@
       root.removeEventListener("pointerdown", contentClick); root.removeEventListener("click", contentClick);
       root.removeEventListener("pointerleave", leaveInsertion);
       if (inline) view.removeEventListener("pointermove", hover);
-      endDrag(true); updates(); cleanups.forEach(cleanup => cleanup()); editor.setRootElement(null);
+      closeMenu(); endDrag(true); updates(); cleanups.forEach(cleanup => cleanup()); editor.setRootElement(null);
     };
   });
 
@@ -258,7 +285,7 @@
   $effect(() => {
     const serialized = JSON.stringify(value);
     if (editor && serialized !== received) {
-      try { validateBody(value, $t); received = serialized; const state = editor.parseEditorState(serialized); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
+      try { validateBody(value, $t); extensionRevision++; received = serialized; const state = editor.parseEditorState(serialized); last = JSON.stringify(state.toJSON()); editor.setEditorState(state); }
       catch (cause) { error = cause instanceof Error ? cause.message : $t("richtext.loadArticleError"); }
     }
   });
@@ -291,6 +318,11 @@
     return node.getChildren().flatMap(child => L.$isElementNode(child) && !child.isInline() ? [...inlineNodes(child), L.$createLineBreakNode()] : [child]);
   }
   function changeBlock(type: string, fromSlash = false) {
+    if (type.startsWith("extension:")) {
+      const name = type.slice(10);
+      if (Object.hasOwn(extensionRegistry.commands, name)) void runExtension(extensionRegistry.commands[name], fromSlash);
+      return;
+    }
     if (type === "video" || type === "youtube" || type === "vimeo") {
       mediaJob = { key: fromSlash ? slashKey : activeKey, replace: fromSlash && !adding };
       dismissSlash(); closeMenu();
@@ -326,6 +358,84 @@
       hoverKey = "";
     });
     editor.focus();
+  }
+  async function runExtension(command: ExtensionCommand, fromSlash = false) {
+    if (extensionBusy || extensionDisposed || !editor.isEditable()) return;
+    extensionBusy = true; extensionError = "";
+    const revision = extensionRevision, href = view.location.href;
+    const origin = fromSlash && !adding ? slashKey : "";
+    let selection: L.BaseSelection | null = null;
+    let key = "";
+    let snapshot: ExtensionSelection = { text: "", blockType: "" };
+    const actions: (() => void)[] = [];
+    let accepting = true;
+    const current = () => {
+      if (!accepting || extensionDisposed || extensionRevision !== revision || view.location.href !== href || !root.isConnected || !editor.isEditable() || (fromSlash && slash === null)) throw new Error("Extension command is no longer active");
+    };
+    try {
+      editor.getEditorState().read(() => {
+        selection = (savedSelection ?? L.$getSelection())?.clone() ?? null;
+        const node = L.$isRangeSelection(selection) || Tables.$isTableSelection(selection) ? topBlock(selection.anchor.getNode()) : L.$isNodeSelection(selection) ? topBlock(selection.getNodes()[0]) : null;
+        key = node?.getKey() ?? activeKey;
+        snapshot = { text: selection?.getTextContent() ?? "", blockType: node instanceof Rich.HeadingNode ? node.getTag() : node?.getType() ?? "paragraph", ...(node instanceof ExtensionNode ? { block: { name: node.__name, data: cloneBlockData(node.__data) } } : {}) };
+      });
+    } catch (cause) { extensionError = cause instanceof Error ? cause.message : String(cause); extensionBusy = false; return; }
+    const context: ExtensionContext = {
+      selection: snapshot,
+      insertText(text) {
+        current();
+        if (typeof text !== "string") throw new Error("Extension text must be a string");
+        if (!text) return;
+        actions.push(() => {
+          let target = L.$getSelection();
+          if (!L.$isRangeSelection(target)) {
+            const paragraph = L.$createParagraphNode(), previous = L.$getNodeByKey(key);
+            if (previous) previous.insertAfter(paragraph); else L.$getRoot().append(paragraph);
+            target = paragraph.select();
+          }
+          if (L.$isRangeSelection(target)) target.insertText(text);
+        });
+      },
+      insertBlock(name, raw) {
+        current();
+        const block = extensionBlock(name), data = cloneBlockData(raw);
+        if (!block) throw new Error(`Unknown extension block: ${name}`);
+        block.validate(cloneBlockData(data));
+        actions.push(() => {
+          const node = new ExtensionNode(name, data), selected = L.$getSelection();
+          const previous = L.$isRangeSelection(selected) ? topBlock(selected.anchor.getNode()) : L.$isNodeSelection(selected) ? topBlock(selected.getNodes()[0]) : L.$getNodeByKey(key);
+          if (previous && previous.getKey() === origin && !previous.getTextContentSize()) previous.replace(node);
+          else if (previous) previous.insertAfter(node);
+          else L.$getRoot().append(node);
+          const paragraph = L.$createParagraphNode(); node.insertAfter(paragraph); paragraph.select();
+        });
+      },
+      updateBlock(raw) {
+        current();
+        if (!snapshot.block) throw new Error("Select an extension block first");
+        const block = extensionBlock(snapshot.block.name), data = cloneBlockData(raw);
+        if (!block) throw new Error("Extension unavailable");
+        block.validate(cloneBlockData(data));
+        actions.push(() => { const node = L.$getNodeByKey(key); if (node instanceof ExtensionNode) node.getWritable().__data = data; });
+      },
+    };
+    try {
+      await command.run(context);
+      current();
+      if (actions.length) {
+        editor.update(() => {
+          if (selection) L.$setSelection(selection.clone());
+          const paragraph = origin ? L.$getNodeByKey(origin) : null;
+          if (paragraph instanceof L.ParagraphNode) paragraph.clear().select();
+          for (const action of actions) action();
+          const remaining = origin ? L.$getNodeByKey(origin) : null;
+          if (remaining instanceof L.ParagraphNode && remaining.isEmpty()) remaining.remove();
+        }, { discrete: true, tag: "history-push" });
+        if (fromSlash) dismissSlash();
+        editor.focus();
+      }
+    } catch (cause) { extensionError = cause instanceof Error ? cause.message : String(cause); }
+    finally { accepting = false; extensionBusy = false; }
   }
   function format(type: L.TextFormatType) {
     closeMenu();
@@ -455,7 +565,54 @@
   function pickEmbed(embed: EmbedData) {
     insertMedia(() => new EmbedNode({ ...embed, privacy: embed.privacy !== false }));
   }
-  function closeMenu() { for (const popup of [menu, tableMenu, formatMenu]) if (popup?.matches(":popover-open")) popup.hidePopover(); }
+  function closeMenu() { for (const popup of [menu, tableMenu, formatMenu, extensionMenu]) if (popup?.matches(":popover-open")) popup.hidePopover(); }
+  function positionExtensionMenu() {
+    if (!extensionMenu?.matches(":popover-open") || !extensionTrigger?.isConnected) return;
+    const rect = extensionTrigger.getBoundingClientRect();
+    const width = Math.min(224, view.document.documentElement.clientWidth - 16);
+    const below = view.innerHeight - rect.bottom - 8, above = rect.top - 8;
+    const upward = below < 160 && above > below;
+    const height = Math.max(32, Math.min(280, upward ? above : below));
+    extensionPosition = `left:${Math.max(8, Math.min(rect.left, view.document.documentElement.clientWidth - width - 8))}px;top:${upward ? Math.max(8, rect.top - Math.min(extensionMenu.scrollHeight, height) - 4) : rect.bottom + 4}px;width:${width}px;max-height:${height}px`;
+  }
+  async function openExtensionGroup(name: string, trigger: HTMLButtonElement, last = false) {
+    if (extensionBusy || error) return;
+    if (extensionGroup === name && extensionTrigger === trigger && extensionMenu.matches(":popover-open")) { closeMenu(); trigger.focus({ preventScroll: true }); return; }
+    closeMenu(); hoverKey = ""; extensionTrigger = trigger; extensionGroup = name;
+    await tick();
+    extensionMenu.showPopover(); positionExtensionMenu();
+    await tick(); positionExtensionMenu();
+    const buttons = extensionMenu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+    (last ? buttons[buttons.length - 1] : buttons[0])?.focus({ preventScroll: true });
+  }
+  function extensionGroupTrigger(node: HTMLElement, state: { name: string; expanded: boolean; disabled: boolean; trigger: HTMLButtonElement | undefined }) {
+    const button = node.querySelector<HTMLButtonElement>("button");
+    function update(next: typeof state) {
+      state = next;
+      button?.setAttribute("aria-haspopup", "menu");
+      button?.setAttribute("aria-controls", `${id}-extension-group`);
+      button?.setAttribute("aria-expanded", String(state.expanded && state.trigger === button));
+      if (button) button.disabled = state.disabled;
+    }
+    const pointerdown = (event: PointerEvent) => { event.preventDefault(); };
+    const click = () => { if (button) clickedExtensionTrigger = button; };
+    const keydown = (event: KeyboardEvent) => {
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !button) return;
+      event.preventDefault();
+      void openExtensionGroup(state.name, button, event.key === "ArrowUp" || event.key === "End");
+    };
+    update(state);
+    node.addEventListener("pointerdown", pointerdown);
+    node.addEventListener("click", click, true);
+    node.addEventListener("keydown", keydown);
+    return { update, destroy() { node.removeEventListener("pointerdown", pointerdown); node.removeEventListener("click", click, true); node.removeEventListener("keydown", keydown); } };
+  }
+  function extensionMenuItem(node: HTMLElement) {
+    node.querySelector("button")?.setAttribute("role", "menuitem");
+    const pointerdown = (event: PointerEvent) => { event.preventDefault(); };
+    node.addEventListener("pointerdown", pointerdown);
+    return { destroy() { node.removeEventListener("pointerdown", pointerdown); } };
+  }
   function openMenu(event?: MouseEvent, popup = menu) {
     if (suppressClick) { suppressClick = false; return; }
     const fromToolbar = !!(event?.currentTarget as Element)?.closest('.body-toolbar, .block-float');
@@ -466,12 +623,12 @@
     popup.showPopover();
     void tick().then(() => popup.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus());
   }
-  function formatKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu(); formatTrigger?.focus(); return; }
+  function formatKeydown(event: KeyboardEvent, popup = formatMenu, trigger = formatTrigger) {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMenu(); trigger?.focus({ preventScroll: true }); return; }
     if (event.key === "Tab") { closeMenu(); return; }
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const buttons = [...formatMenu.querySelectorAll<HTMLButtonElement>("button")];
+    const buttons = [...popup.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
     const index = buttons.indexOf(root.ownerDocument.activeElement as HTMLButtonElement);
     buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
   }
@@ -561,6 +718,11 @@
     }, { discrete: true });
   }
   function contentClick(event: MouseEvent) {
+    const extension = (event.target as Element).closest<HTMLElement>('[data-rigel-extension-editor][data-block-key]');
+    if (extension) {
+      editor.update(() => { const selection = L.$createNodeSelection(); selection.add(extension.dataset.blockKey!); L.$setSelection(selection); });
+      return;
+    }
     const element = (event.target as Element).closest<HTMLElement>('figure[data-block-key],hr[data-block-key]');
     if (element && (event.target as Element).closest('[data-rigel-edit-video]')) {
       event.preventDefault();
@@ -593,8 +755,37 @@
     <label class="inline"><input type="checkbox" role="switch" class="switch" checked={tableHeader} disabled={!tableCell} onchange={event => tableAction("header", event.currentTarget.checked)} /><Icon name="table" /><span>{$t("richtext.headerRow")}</span></label>
   </div>
 {/snippet}
+{#snippet extensionButtons()}
+  {#each toolbarCommands.filter(command => !command.group) as command}
+    <span data-rigel-command={command.name} style="display:contents">
+    <svelte:boundary onerror={cause => { extensionError = cause instanceof Error ? cause.message : String(cause); }}>
+      {#if command.button}
+        {@const Button = command.button}
+        <Button label={command.label} disabled={extensionBusy || !!error} onclick={() => { void runExtension(command); }} />
+      {:else}
+        <button type="button" disabled={extensionBusy || !!error} aria-label={command.label} data-tooltip={command.label} onpointerdown={event => event.preventDefault()} onclick={() => { void runExtension(command); }}>{command.label}</button>
+      {/if}
+      {#snippet failed()}<span role="status">{$t("richtext.loadArticleError")}</span>{/snippet}
+    </svelte:boundary>
+    </span>
+  {/each}
+  {#each toolbarGroups as group}
+    <span data-rigel-group={group.name} class="extension-group-trigger" use:extensionGroupTrigger={{ name: group.name, expanded: extensionGroup === group.name, disabled: extensionBusy || !!error, trigger: extensionTrigger }}>
+      <svelte:boundary onerror={cause => { extensionError = cause instanceof Error ? cause.message : String(cause); }}>
+        {#if group.button}
+          {@const Button = group.button}
+          <Button label={group.label} disabled={extensionBusy || !!error} onclick={() => { void openExtensionGroup(group.name, clickedExtensionTrigger); }} />
+        {:else}
+          <button type="button" disabled={extensionBusy || !!error} onclick={event => { void openExtensionGroup(group.name, event.currentTarget); }}>{group.label}<Icon name="caretDown" size={12} /></button>
+        {/if}
+        {#snippet failed()}<span role="status">{$t("richtext.loadArticleError")}</span>{/snippet}
+      </svelte:boundary>
+    </span>
+  {/each}
+{/snippet}
 {#snippet toolbar(image: boolean)}
-  <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? $t("richtext.imageEditing") : $t("richtext.bodyFormatting")} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData) || (inline && !!selectedVideo)}>
+  <div class="body-toolbar formatting-toolbar" class:image-toolbar={image} role="group" aria-label={image ? $t("richtext.imageEditing") : $t("richtext.bodyFormatting")} style={inline || image ? floating : undefined} hidden={markdownView || ((inline || image) && !floating) || (image && !imageData) || (inline && !!selectedVideo && !toolbarCommands.length)}>
+    {#if !extensionOnly}
     {#if image}
       <button type="button" aria-label={$t("richtext.editAltText")} data-tooltip={$t("richtext.editAltText")} onpointerdown={event => event.preventDefault()} onclick={openAlt}><Icon name="textAa" size={18} /></button>
       <button type="button" aria-label={imageData?.url ? $t("richtext.editImageLink") : $t("richtext.addImageLink")} data-tooltip={imageData?.url ? $t("richtext.editImageLink") : $t("richtext.addImageLink")} onpointerdown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
@@ -618,6 +809,8 @@
       <button type="button" class="block-add" aria-label={$t("richtext.addBlock")} data-tooltip={$t("richtext.addBlock")} onclick={addBlock}>{$t("richtext.addBlock")}</button>
     {/if}
     {/if}
+    {/if}
+    {@render extensionButtons()}
     {#if inline || image}<span class="toolbar-separator" aria-hidden="true"></span><button type="button" aria-label={$t("richtext.moreActions")} data-tooltip={$t("richtext.moreActions")} aria-haspopup="true" popovertarget={`${id}-actions`} onpointerdown={event => event.preventDefault()} onclick={event => { event.preventDefault(); menu.matches(':popover-open') ? closeMenu() : openMenu(event); }}><Icon name="dotsThreeOutlineVertical" size={18} /></button>{/if}
   </div>
 {/snippet}
@@ -628,6 +821,7 @@
   {#if !inline}{@render toolbar(true)}{/if}
 
   {#if error}<p role="alert">{error}</p>{/if}
+  {#if extensionError}<p role="alert">{extensionError}</p>{/if}
   {#if linkOpen}
     <div class="markdown-link" class:image-form={!!imageData} style={linkPosition} id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; refocus(); } if (event.key === "Enter") { event.preventDefault(); applyLink(); } }}>
       <label for={`${id}-url`}>{$t("richtext.linkUrl")}</label>
@@ -650,7 +844,7 @@
       </div>
     </div>
   {/if}
-  {#if !inline && !imageData && !selectedVideo && floating && !markdownView}<div class="block-float" style={floating} role="group" aria-label={$t("richtext.selectedTextFormatting")}>{@render formatButtons()}</div>{/if}
+  {#if !inline && !imageData && (!selectedVideo || toolbarCommands.length) && floating && !markdownView}<div class="block-float" style={floating} role="group" aria-label={$t("richtext.selectedTextFormatting")}>{#if !extensionOnly}{@render formatButtons()}{/if}{@render extensionButtons()}</div>{/if}
   {#if markdownView}
     <div class="block-markdown-view">{#if inline}<button type="button" class="outlined" onclick={async () => { markdownView = false; await tick(); editor.focus(); }}>{$t("richtext.closeMarkdownView")}</button>{/if}<pre class="block-markdown" aria-label={$t("richtext.bodyAsMarkdown")} tabindex="0">{articleMarkdown(value)}</pre></div>
   {/if}
@@ -683,7 +877,22 @@
     <button type="button" onclick={() => blockAction("down")}>{$t("richtext.moveDown")}</button>
     {#if !inline}<Select ariaLabel={$t("richtext.convertBlockType")} value={blockType} options={textBlocks} onchange={next => changeBlock(String(next))} />{/if}
   </div>
-  <div class="block-menu block-format-menu" id={`${id}-formats`} bind:this={formatMenu} popover="auto" style={menuPosition} role="menu" tabindex="-1" aria-label={$t("richtext.moreFormatting")} ontoggle={event => { formatsOpen = event.currentTarget.matches(':popover-open'); }} onkeydown={formatKeydown}>
+  <div class="block-menu extension-group-menu" id={`${id}-extension-group`} data-rigel-group-menu={extensionGroup || undefined} bind:this={extensionMenu} popover="auto" style={extensionPosition} role="menu" tabindex="-1" aria-label={activeExtensionGroup?.label} ontoggle={event => { if (!event.currentTarget.matches(':popover-open')) extensionGroup = ""; }} onkeydown={event => formatKeydown(event, extensionMenu, extensionTrigger)}>
+    {#each activeExtensionGroup?.commands ?? [] as command}
+      <span data-rigel-command={command.name} use:extensionMenuItem>
+        <svelte:boundary onerror={cause => { extensionError = cause instanceof Error ? cause.message : String(cause); }}>
+          {#if command.button}
+            {@const Button = command.button}
+            <Button label={command.label} disabled={extensionBusy || !!error} onclick={() => { closeMenu(); void runExtension(command); }} />
+          {:else}
+            <button type="button" role="menuitem" disabled={extensionBusy || !!error} onpointerdown={event => event.preventDefault()} onclick={() => { closeMenu(); void runExtension(command); }}>{command.label}</button>
+          {/if}
+          {#snippet failed()}<span role="status">{$t("richtext.loadArticleError")}</span>{/snippet}
+        </svelte:boundary>
+      </span>
+    {/each}
+  </div>
+  <div class="block-menu block-format-menu" id={`${id}-formats`} bind:this={formatMenu} popover="auto" style={menuPosition} role="menu" tabindex="-1" aria-label={$t("richtext.moreFormatting")} ontoggle={event => { formatsOpen = event.currentTarget.matches(':popover-open'); }} onkeydown={event => formatKeydown(event)}>
     {#each marks.slice(2) as mark}
       <button type="button" role="menuitemcheckbox" aria-label={$t(mark.label)} aria-checked={activeMarks.includes(mark.type)} onpointerdown={event => event.preventDefault()} onclick={() => format(mark.type)}><Icon name={mark.icon} size={16} /><span>{$t(mark.label)}</span>{#if activeMarks.includes(mark.type)}<Icon name="check" size={16} />{/if}</button>
     {/each}

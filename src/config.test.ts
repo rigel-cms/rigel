@@ -8,6 +8,7 @@ test("defaults to local backend + src/content/copy", () => {
     jsonOutput: "pretty",
     demo: true,
     languages: ["en", "fr"],
+    extensions: [],
     maxFileSize: 2 * 1024 * 1024,
   });
 });
@@ -69,6 +70,14 @@ test("jsonOutput defaults to pretty and only accepts declared formats", () => {
   for (const jsonOutput of ["compact", "", "Pretty", null, false, 2, {}, ["pretty"]]) {
     expect(() => parseConfig({ jsonOutput } as never)).toThrow(/jsonOutput/);
   }
+});
+
+test("extension paths are explicit, local, unique and independent per config", () => {
+  const extensions = ["./src/extensions/notes.ts", "./src/other.js"];
+  expect(parseConfig({ extensions }).extensions).toEqual(extensions);
+  expect(parseConfig({ extensions }).extensions).not.toBe(extensions);
+  expect(parseConfig({ extensions: undefined }).extensions).toEqual([]);
+  for (const extensions of [null, "./notes.ts", {}, [null], [undefined], Array(1), [""], ["notes.ts"], ["@scope/plugin"], ["https://example.com/plugin.ts"], ["file:///plugin.ts"], ["/plugin.ts"], ["../plugin.ts"], ["./../plugin.ts"], ["./src/../plugin.ts"], ["./src/./plugin.ts"], ["./src//plugin.ts"], ["./src/"], ["./src/notes.ts?raw"], ["./src/notes.ts#x"], ["./src/%2e%2e/plugin.ts"], ["./src/notes\\plugin.ts"], ["./node_modules/plugin/index.js"], ["./notes.ts", "./notes.ts"]]) expect(() => parseConfig({ extensions } as never)).toThrow(/extensions/);
 });
 
 test("respects overrides", () => {

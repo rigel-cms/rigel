@@ -4,6 +4,7 @@ import { pageRoute } from "./schema/paths";
 import { slugify } from "./slugs";
 import { renderArticle } from "./article-render";
 import { createEmbedPreview } from "./editor/lib/embed-preview";
+import { mountExtensionPreviews } from "./editor/lib/extension-preview";
 import { safePreviewUrl, previewBaseUrl, previewRoute } from "./preview-urls";
 export { safePreviewUrl } from "./preview-urls";
 
@@ -75,6 +76,14 @@ export function anchorValue(values: unknown, path: string): { found: boolean; va
 
 const markdown = new MarkdownIt({ html: false, linkify: false });
 const rendered = new WeakMap<Element, string>();
+const extensionPreviews = new WeakMap<Document, Map<Element, () => void>>();
+
+export function cleanupPreview(doc: Document) {
+  const previews = extensionPreviews.get(doc);
+  if (!previews) return;
+  for (const [element, cleanup] of previews) { cleanup(); rendered.delete(element); }
+  previews.clear();
+}
 
 export interface PatchDocuments {
   editingBody?: Element | null;
@@ -91,6 +100,13 @@ function rebindTree(root: Element | DocumentFragment, update: (element: Element)
 }
 
 export function patchPreview(doc: Document, values: Record<string, unknown>, body: "" | import("./article-body").ArticleBody, options: PatchDocuments = {}) {
+  let previews = extensionPreviews.get(doc);
+  if (!previews) {
+    previews = new Map();
+    extensionPreviews.set(doc, previews);
+    doc.defaultView?.addEventListener("pagehide", () => cleanupPreview(doc), { once: true });
+  }
+  for (const [element, cleanup] of previews) if (!element.isConnected) { cleanup(); previews.delete(element); rendered.delete(element); }
   const sourceFor = (element: Element): Record<string, unknown> | undefined => {
     const id = element.getAttribute("data-rigel-doc");
     if (id === "") return {};
@@ -169,11 +185,11 @@ export function patchPreview(doc: Document, values: Record<string, unknown>, bod
     const blocks = el.dataset.rigelRichtext === "$body";
     const source = blocks ? JSON.stringify(result.value) : typeof result.value === "string" ? result.value : "";
     if (rendered.get(el) === source) continue;
-    rendered.set(el, source);
     const fragment = DOMPurify.sanitize(blocks ? (result.value ? renderArticle(result.value as import("./article-body").ArticleBody, { preview: true }) : "") : markdown.render(source), {
       RETURN_DOM_FRAGMENT: true,
       ALLOWED_TAGS: ["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "aside", "figure", "figcaption", "pre", "code", "strong", "em", "s", "u", "mark", "sub", "sup", "a", "img", "br", "hr", "table", "thead", "tbody", "tr", "th", "td", ...(blocks ? ["video"] : [])],
-      ALLOWED_ATTR: ["href", "src", "alt", "title", "start", "scope", ...(blocks ? ["controls", "muted", "preload", "playsinline", "poster", "class"] : [])],
+      ALLOW_DATA_ATTR: false,
+      ALLOWED_ATTR: ["href", "src", "alt", "title", "start", "scope", ...(blocks ? ["controls", "muted", "preload", "playsinline", "poster", "class", "data-rigel-embed", "data-rigel-video-id", "data-rigel-video-title", "data-rigel-extension", "data-rigel-extension-data"] : [])],
     });
     if (blocks) for (const marker of fragment.querySelectorAll<HTMLElement>("[data-rigel-embed]")) {
       marker.replaceWith(createEmbedPreview({ provider: marker.dataset.rigelEmbed, id: marker.dataset.rigelVideoId, title: marker.dataset.rigelVideoTitle }, doc));
@@ -181,7 +197,11 @@ export function patchPreview(doc: Document, values: Record<string, unknown>, bod
     for (const link of fragment.querySelectorAll("[href], [src]")) {
       for (const attr of ["href", "src"]) if (link.hasAttribute(attr) && !safePreviewUrl(link.getAttribute(attr)!, attr === "src")) link.removeAttribute(attr);
     }
+    previews.get(el)?.();
+    previews.delete(el);
     el.replaceChildren(fragment);
+    if (blocks) previews.set(el, mountExtensionPreviews(el));
+    rendered.set(el, source);
   }
   for (const [anchor, attr, tag] of [["image", "src", "IMG"], ["alt", "alt", "IMG"], ["href", "href", "A"]]) {
     for (const el of doc.querySelectorAll(`[data-rigel-${anchor}]`)) {

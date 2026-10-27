@@ -6,7 +6,20 @@ import { emptyBody } from "../article-body";
 import { initialCollectionValues } from "../manifest/collections";
 import config from "virtual:rigel-config";
 
+vi.mock("virtual:rigel-extensions", () => ({ default: [{ name: "notes", blocks: [{ name: "note", label: "Note", editor() {}, render() {}, validate(data: Record<string, unknown>) { if (typeof data.text !== "string") throw new Error("Note requires text"); } }] }] }));
 const folder = path.resolve("_temp/article-route-check");
+
+test("local saves apply registered validation before writes and preserve unknown blocks", async () => {
+  const body = { root: { type: "root", version: 1, children: [{ type: "extension", version: 1, name: "note", data: { text: "Safe" } }, { type: "extension", version: 1, name: "uninstalled", data: { unknown: true } }] } };
+  expect((await save("extensions", { title: "Extensions" }, body)).status).toBe(204);
+  const file = path.join(folder, "extensions.json"), before = await readFile(file, "utf8");
+  expect(JSON.parse(before).body).toEqual(body);
+  body.root.children[0].data = {} as typeof body.root.children[0]["data"];
+  const response = await save("extensions", { title: "Invalid" }, body);
+  expect(response.status).toBe(400);
+  expect(await response.text()).toContain("Note requires text");
+  expect(await readFile(file, "utf8")).toBe(before);
+});
 vi.mock("virtual:rigel-config", () => ({ default: { collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [
   { key: "title", label: "Title", type: "string", required: true },
   { key: "description", label: "Description", type: "text" },

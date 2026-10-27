@@ -1,4 +1,5 @@
 import type { SerializedEditorState } from "lexical";
+import { validateBlockData, validateExtensionName } from "./extensions";
 import { safePreviewUrl } from "./preview-urls";
 import { safeEmbed } from "./editor/lib/embeds";
 import { systemMessage, type Translator } from "./editor/i18n/format";
@@ -20,6 +21,16 @@ export function validateBody(value: unknown, message: Translator = systemMessage
   function check(raw: unknown, parent = "", depth = 0) {
     if (++count > 10000 || depth > 32 || !raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(message("validation.body.invalidTree"));
     const node = raw as ArticleNode;
+    if (Object.hasOwn(node, "type") && node.type === "extension") {
+      const prototype = Object.getPrototypeOf(node);
+      if ((prototype !== Object.prototype && prototype !== null) || parent !== "root" || Reflect.ownKeys(node).length !== 4 || ["type", "version", "name", "data"].some(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(node, key);
+        return !descriptor?.enumerable || !Object.hasOwn(descriptor, "value");
+      }) || node.version !== 1) throw new Error("rigel: invalid extension block envelope");
+      validateExtensionName(node.name);
+      validateBlockData(node.data);
+      return;
+    }
     if (!types.has(node.type) || node.version !== 1 || (node.type === "root") !== !parent) throw new Error(message("validation.body.unsupportedBlock"));
     const inline = ["text", "linebreak", "link"];
     if (parent === "root" && (inline.includes(node.type) || ["listitem", "tablerow", "tablecell"].includes(node.type))) throw new Error(message("validation.body.expectedBlock"));

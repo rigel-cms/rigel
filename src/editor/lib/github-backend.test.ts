@@ -5,7 +5,20 @@ import { emptyBody } from "../../article-body";
 import { readValues } from "../../routes/serialize";
 import { loadManifestRemote, saveRemoteSelection, deleteRemotePost } from "./github-backend";
 
+vi.mock("virtual:rigel-extensions", () => ({ default: [{ name: "notes", blocks: [{ name: "note", label: "Note", editor() {}, render() {}, validate(data: Record<string, unknown>) { if (typeof data.text !== "string") throw new Error("Note requires text"); } }] }] }));
 const ctx = { token: "secret-token", repo: "owner/site", branch: "drafts" };
+
+test("GitHub saves apply registered validation before requests and preserve unknown blocks", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  const body = { root: { ...emptyBody().root, children: [{ type: "extension", version: 1, name: "note", data: { text: "Safe" } }, { type: "extension", version: 1, name: "uninstalled", data: { unknown: true } }] } };
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Extensions" }, body, false);
+  const path = "playground/src/content/blog/hello.json", before = s.files.get(path)!.text, calls = s.calls.length;
+  expect(JSON.parse(before).body).toEqual(body);
+  body.root.children[0].data = {} as typeof body.root.children[0]["data"];
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Invalid" }, body, false)).rejects.toThrow("Note requires text");
+  expect(s.calls).toHaveLength(calls);
+  expect(s.files.get(path)!.text).toBe(before);
+});
 const blueprint = (): Manifest => ({
   github: {repo:ctx.repo, branch:"drafts", publishBranch:"main", repoRoot:"playground", authOrigin:"https://auth.example", appSlug:"rigel", copyDir:"src/content/copy", collections:[{name:"blog",folder:"src/content/blog"}], menus:{folder:"src/content/menus",maxDepth:3}},
   pages:[{slug:"contact",label:"Contact",groups:[],values:{}}],

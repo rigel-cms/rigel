@@ -34,14 +34,16 @@
     ".": "./src/index.ts",
     "./content": "./src/content.ts",
     "./preview": "./src/preview.ts",
-    "./article": "./src/article-render.ts",
+    "./article": "./src/article.ts",
+    "./extensions": "./src/extensions.ts",
     "./types": "./src/env.d.ts",
     "./routes/*": "./src/routes/*"
   },
   "files": [
     "src",
     "!src/**/*.test.ts",
-    "README.md"
+    "README.md",
+    "docs/extensions.md"
   ],
   "peerDependencies": {
     "astro": "^7.3.0",

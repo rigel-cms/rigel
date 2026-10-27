@@ -1,4 +1,8 @@
 import { expect, test, vi } from "vitest";
+import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "vite";
 import { rigelManifestPlugin } from "./manifest-plugin";
 import type { RigelConfig } from "../config";
 import { rigel } from "../index";
@@ -14,6 +18,48 @@ function raw(cfg: RigelConfig): RawPlugin {
 }
 
 const cfg: RigelConfig = { copyDir: "src/content/copy", backend: "local" };
+
+test("extensions are isolated static default imports relative to Astro root", async () => {
+  const plugin = rigelManifestPlugin({ ...cfg, extensions: ["./src/notes.ts", "./custom/other.js"] }, undefined, new URL("file:///site%20root/")) as unknown as RawPlugin;
+  expect(plugin.resolveId("virtual:rigel-extensions")).toBe("\0virtual:rigel-extensions");
+  expect(plugin.resolveId("virtual:unknown")).toBeUndefined();
+  expect(plugin.load("\0virtual:unknown")).toBeUndefined();
+  expect(plugin.load("\0virtual:rigel-extensions")).toBe('import __rigelExtension0 from "/site root/src/notes.ts";\nimport __rigelExtension1 from "/site root/custom/other.js";\nexport default [__rigelExtension0, __rigelExtension1];');
+  expect(plugin.load("\0virtual:rigel-config")).not.toContain("notes.ts");
+  expect(plugin.load("\0virtual:rigel-manifest")).not.toContain("notes.ts");
+  const empty = raw(cfg).load("\0virtual:rigel-extensions")!;
+  expect(empty).toBe("export default [];");
+  expect((await import("data:text/javascript," + encodeURIComponent(empty))).default).toEqual([]);
+  expect(() => raw({ ...cfg, extensions: ["./notes.ts"] }).load("\0virtual:rigel-extensions")).toThrow(/root/);
+});
+test("extension builds include only configured modules and preserve executable exports", async () => {
+  await mkdir("_temp", { recursive: true });
+  const directory = await mkdtemp(path.resolve("_temp/extensions-"));
+  try {
+    await writeFile(path.join(directory, "notes.js"), 'export default { name: "notes", commands: [{ name: "note", label: "Note", run() { return "executable"; } }] };');
+    await writeFile(path.join(directory, "unconfigured.js"), 'throw new Error("Unconfigured extension was imported");');
+    await writeFile(path.join(directory, "entry.js"), 'export { default } from "virtual:rigel-extensions";');
+    const bundle = async (extensions: string[]) => {
+      const result = await build({ configFile: false, root: directory, logLevel: "silent", plugins: [rigelManifestPlugin({ ...cfg, extensions }, undefined, pathToFileURL(directory + path.sep))], build: { write: false, minify: false, lib: { entry: path.join(directory, "entry.js"), formats: ["es"] } } });
+      const output = Array.isArray(result) ? result[0].output : "output" in result ? result.output : [];
+      const code = output.flatMap(file => file.type === "chunk" ? [file.code] : []).join("\n");
+      return { code, modules: (await import("data:text/javascript," + encodeURIComponent(code))).default };
+    };
+    const enabled = await bundle(["./notes.js"]);
+    expect(enabled.modules[0].commands[0].run()).toBe("executable");
+    expect(enabled.code).not.toContain("Unconfigured");
+    const disabled = await bundle([]);
+    expect(disabled.modules).toEqual([]);
+    expect(disabled.code).not.toContain("executable");
+    const standalone = await build({ configFile: false, root: directory, logLevel: "silent", build: { write: false, minify: false, lib: { entry: path.resolve("src/extensions.ts"), formats: ["es"] } } });
+    const standaloneOutput = Array.isArray(standalone) ? standalone[0].output : "output" in standalone ? standalone.output : [];
+    expect(standaloneOutput.flatMap(file => file.type === "chunk" ? [file.code] : []).join("\n")).not.toContain("virtual:");
+    await symlink(path.join(directory, "notes.js"), path.join(directory, "linked.js"));
+    const plugin = rigelManifestPlugin({ ...cfg, extensions: ["./linked.js"] }, undefined, pathToFileURL(directory + path.sep)) as unknown as RawPlugin;
+    expect(() => plugin.load("\0virtual:rigel-extensions")).toThrow(/symlink/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test.each([undefined, 100 * 1024 * 1024])("maxFileSize %s reaches shared browser/server config", maxFileSize => {
   const plugin = raw({ ...cfg, maxFileSize });
   const config = JSON.parse(plugin.load("\0virtual:rigel-config")!.slice("export default ".length, -1));

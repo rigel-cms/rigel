@@ -1,3 +1,8 @@
+declare module "virtual:rigel-extensions" {
+  const extensions: import("./extensions").RigelExtension[];
+  export default extensions;
+}
+
 declare module "virtual:rigel-i18n" {
   const dictionaries: import("./editor/i18n/format").Dictionaries;
   export default dictionaries;

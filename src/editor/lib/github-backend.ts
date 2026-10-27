@@ -1,4 +1,6 @@
 import { translate } from "../i18n";
+import extensions from "virtual:rigel-extensions";
+import { resolveExtensions, validateExtensionBlocks } from "../../extensions";
 import type { Manifest } from "../../manifest/types";
 import { serializeContentJson } from "../../json-output";
 import type { Selection } from "../../manifest/navigation";
@@ -265,7 +267,7 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     const folder = cfg.collections.find(c => c.name === selection.collection)?.folder;
     const collection = manifest.collections?.find(c => c.name === selection.collection);
     if (!folder || !collection) throw new Error(translate("connection.unknownCollection"));
-    validateBody(body,translate); validateCollectionValues(collection.fields,values,manifest.documents ?? [],translate);
+    validateBody(body,translate); validateExtensionBlocks(body, resolveExtensions(extensions).blocks); validateCollectionValues(collection.fields,values,manifest.documents ?? [],translate);
     path = filePath(ctx,manifest,folder,selection.slug,"json",POST_SLUG);
     const frontmatter = { ...values };
     if (Object.hasOwn(frontmatter, "slug")) frontmatter.slug = normalizeUrlSlug(frontmatter.slug, translate);

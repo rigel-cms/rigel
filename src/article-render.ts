@@ -11,13 +11,29 @@ function renderText(node: ArticleNode): string {
   return text;
 }
 
-export function renderArticle(body: ArticleBody, options: { preview?: boolean } = {}): string {
+export interface ArticleRenderOptions {
+  preview?: boolean;
+  renderExtension?: (name: string, data: import("./extensions").BlockData) => string;
+}
+
+export interface ArticleMarkdownOptions {
+  extensionMarkdown?: (name: string, data: import("./extensions").BlockData) => string | undefined;
+}
+
+export function renderArticle(body: ArticleBody, options: ArticleRenderOptions = {}): string {
   validateBody(body);
   function walk(node: ArticleNode): string {
     const content = () => (node.children ?? []).map(walk).join("");
     if (node.type === "text") return renderText(node);
     if (node.type === "linebreak") return "<br>";
     if (node.type === "root") return content();
+    if (node.type === "extension") {
+      const name = node.name as string;
+      const data = node.data as import("./extensions").BlockData;
+      if (options.preview) return `<figure data-rigel-extension="${escape(name)}" data-rigel-extension-data="${escape(JSON.stringify(data))}"></figure>`;
+      if (!options.renderExtension) throw new Error(`No renderer registered for extension block "${name}"`);
+      return options.renderExtension(name, data);
+    }
     if (node.type === "paragraph") return `<p>${content()}</p>`;
     if (node.type === "heading") return `<${node.tag}>${content()}</${node.tag}>`;
     if (node.type === "quote") return `<blockquote>${content()}</blockquote>`;
@@ -62,11 +78,18 @@ function plain(node: ArticleNode): string {
   return node.type === "text" ? node.text ?? "" : node.type === "linebreak" ? "\n" : (node.children ?? []).map(plain).join("");
 }
 
-export function articleMarkdown(body: ArticleBody): string {
+export function articleMarkdown(body: ArticleBody, options: ArticleMarkdownOptions = {}): string {
   validateBody(body);
   const escaped = (text: string) => text.replace(/[\\`*_[\]<>#~]/g, "\\$&");
   function walk(node: ArticleNode, depth = 0): string {
     const content = () => (node.children ?? []).map(child => walk(child, depth)).join("");
+    if (node.type === "extension") {
+      const markdown = options.extensionMarkdown?.(node.name as string, node.data as import("./extensions").BlockData);
+      if (markdown !== undefined) return markdown + "\n\n";
+      const serialized = JSON.stringify({ type: "extension", version: 1, name: node.name, data: node.data });
+      const fence = "`".repeat(Math.max(3, ...(serialized.match(/`+/g) ?? []).map(run => run.length + 1)));
+      return `${fence}rigel-extension\n${serialized}\n${fence}\n\n`;
+    }
     if (node.type === "text") {
       let text = escaped(node.text ?? "");
       const format = Number(node.format);

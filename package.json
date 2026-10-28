@@ -1,7 +1,17 @@
 {
   "name": "@rigel-cms/rigel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A CMS for Astro sites. You edit the text, Git keeps the history.",
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "astro-component",
+    "withastro",
+    "cms",
+    "git-based-cms",
+    "svelte",
+    "typescript"
+  ],
   "author": {
     "name": "FreshJuice",
     "email": "contact@freshjuice.dev",

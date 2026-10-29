@@ -60,7 +60,7 @@
     position();
     await tick();
     position();
-    menu.querySelector(`#${CSS.escape(id)}-option-${active}`)?.scrollIntoView({ block: "nearest" });
+    menu?.querySelector(`#${CSS.escape(id)}-option-${active}`)?.scrollIntoView({ block: "nearest" });
   }
 
   function choose(index: number) {
@@ -101,7 +101,7 @@
       if (match >= 0) active = match;
     } else return;
     await tick();
-    menu.querySelector(`#${CSS.escape(id)}-option-${active}`)?.scrollIntoView({ block: "nearest" });
+    menu?.querySelector(`#${CSS.escape(id)}-option-${active}`)?.scrollIntoView({ block: "nearest" });
   }
 
   $effect(() => {

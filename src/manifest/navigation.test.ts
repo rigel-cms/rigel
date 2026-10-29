@@ -66,6 +66,31 @@ describe("content navigation", () => {
     expect(links.some(node => node.target.kind === "page" && node.target.slug === "missing")).toBe(false);
   });
 
+  it("resolves both locale page collections without changing default Pages navigation", () => {
+    const source: Manifest = { pages: [], schema: { documents: [
+      { name: "pageEn", title: "Pages EN", type: "document", folder: "pages/en", fields: [] },
+      { name: "pageFr", title: "Pages FR", type: "document", folder: "pages/fr", fields: [] },
+    ], objects: [] }, documents: [] };
+    const defaults = buildSidebar(source);
+    expect(defaults.filter(node => node.kind === "link")).toEqual([
+      { kind: "link", target: { kind: "pages" }, label: "Pages" },
+      { kind: "link", target: { kind: "documents", type: "pageFr" }, label: "Pages FR" },
+      { kind: "link", target: { kind: "media" }, label: "Media" },
+    ]);
+    const english = { kind: "link" as const, target: { kind: "documents" as const, type: "pageEn" }, label: "English pages", icon: "globe" };
+    const french = { kind: "link" as const, target: { kind: "documents" as const, type: "pageFr" } };
+    expect(buildSidebar({ ...source, sidebar: [english, french, english,
+      { kind: "link", target: { kind: "documents", type: "missing" } },
+    ] })).toEqual([
+      english,
+      { ...french, label: "Pages FR" },
+      { kind: "heading", label: "More content" },
+      { kind: "link", target: { kind: "pages" }, label: "Pages" },
+      { kind: "link", target: { kind: "media" }, label: "Media" },
+    ]);
+    expect(buildSidebar({ ...source, sidebar: [] }).filter(node => node.kind === "link")).toEqual(defaults.filter(node => node.kind === "link"));
+  });
+
   it("opens shared singletons directly after Assets without a count or duplicate collection", () => {
     const settings = { name: "settings", title: "Site settings", type: "document" as const, folder: "settings", fields: [], shared: true, singleton: true };
     const source = { ...manifest, schema: { ...manifest.schema!, documents: [...manifest.schema!.documents, settings] }, documents: [...manifest.documents!, { id: "settings:site", type: "settings", slug: "site", data: {} }] };

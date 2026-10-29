@@ -8,6 +8,12 @@ import type { JsonOutput } from "./json-output";
 import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
 import { systemMessage } from "./editor/i18n/format";
 import { localeNames, type Locale } from "./editor/i18n/locales";
+import { validateContentLocales, validateContentLocale } from "./manifest/content-locales";
+
+export interface ContentLocalesConfig {
+  defaultLocale: string;
+  locales: { code: string; label: string }[];
+}
 
 export interface RigelConfig {
   copyDir: string;
@@ -18,6 +24,7 @@ export interface RigelConfig {
   jsonOutput?: JsonOutput;
   demo?: boolean;
   languages?: Locale[];
+  contentLocales?: ContentLocalesConfig;
   extensions?: string[];
   collections?: CollectionConfig[];
   menus?: { folder: string; maxDepth?: number };
@@ -34,6 +41,7 @@ export interface RigelConfig {
 
 export interface CollectionConfig {
   name: string;
+  locale?: string;
   label?: string;
   listTitle?: string;
   folder: string;
@@ -48,6 +56,12 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  if (cfg.contentLocales !== undefined) {
+    validateContentLocales(cfg.contentLocales);
+    cfg.contentLocales = { ...cfg.contentLocales, locales: cfg.contentLocales.locales.map(locale => ({ ...locale })) };
+  }
+  for (const type of cfg.schema?.documents ?? []) validateContentLocale(type.locale, cfg.contentLocales, type.name);
+  for (const collection of cfg.collections ?? []) validateContentLocale(collection.locale, cfg.contentLocales, collection.name);
   if (cfg.extensions === undefined) cfg.extensions = [];
   if (!Array.isArray(cfg.extensions) || Array.from(cfg.extensions).some(module => typeof module !== "string" || !module.startsWith("./") || !module.slice(2).split("/").every(part => /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/.test(part) && part !== "node_modules" && part !== "." && part !== "..")) || new Set(cfg.extensions).size !== cfg.extensions.length) throw new Error("rigel: extensions must be unique explicit ./module paths inside the site project");
   cfg.extensions = [...cfg.extensions];

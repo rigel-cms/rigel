@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "プライバシーポリシー",
   "shell.welcome": "ようこそ",
   "shell.content": "コンテンツ",
+  "shell.contentLanguage": "コンテンツの言語",
   "shell.publish": "公開",
   "shell.saveBeforePublishing": "公開する前に変更を保存してください",
   "shell.publishSavedChanges": "ブランチに保存済みの変更を公開",

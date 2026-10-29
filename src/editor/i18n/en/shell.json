@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "Privacy Policy",
   "shell.welcome": "Welcome",
   "shell.content": "Content",
+  "shell.contentLanguage": "Content language",
   "shell.publish": "Publish",
   "shell.saveBeforePublishing": "Save your edits before publishing",
   "shell.publishSavedChanges": "Publish saved branch changes",

@@ -3,6 +3,7 @@ import type { Manifest } from "../manifest/types";
 
 const fixture = vi.hoisted(() => ({ manifest: {
   backend: "github",
+  contentLocales: { defaultLocale: "en", locales: [{ code: "en", label: "English" }, { code: "fr", label: "Français" }] },
   pages: [{ slug: "contact", label: "Contact", groups: [], values: { intro: { heading: "private-draft-marker" } } }],
   collections: [{ name: "blog", label: "Blog", fields: [], posts: [{ slug: "unpublished", frontmatter: { title: "private-draft-marker" }, body: "private-draft-marker" }] }],
   documents: [{ id: "settings:site", type: "settings", slug: "site", data: { siteName: "private-draft-marker" } }],
@@ -21,4 +22,15 @@ test("public GitHub manifest exposes metadata, never build-time drafts or docume
   expect(manifest.documents).toEqual([]);
   expect(manifest.menus).toEqual({ maxDepth: 3, entries: [] });
   expect(fixture.manifest.documents[0].data.siteName).toBe("private-draft-marker");
+  expect(manifest.contentLocales).toEqual(fixture.manifest.contentLocales);
+});
+
+test("local manifest keeps locale metadata and values without filtering server content", async () => {
+  const previous = fixture.manifest.backend;
+  fixture.manifest.backend = "local";
+  try {
+    const manifest: Manifest = await (await GET({} as never)).json();
+    expect(manifest).toEqual(fixture.manifest);
+    expect(manifest.contentLocales).toEqual(fixture.manifest.contentLocales);
+  } finally { fixture.manifest.backend = previous; }
 });

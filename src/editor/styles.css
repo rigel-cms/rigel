@@ -1161,6 +1161,15 @@
 .rigel .schema-panel { border-left: 1px solid var(--border); overflow-y: auto; min-height: 0; padding: 1rem; background: var(--panel); }
 .rigel .schema-panel section { border: 0; padding: 0 0 1rem; }
 .rigel .custom-select { min-width: 0; max-width: 100%; }
+.rigel .content-language { position: relative; margin: -0.75rem 0.75rem 1.5rem; flex-shrink: 0; }
+.rigel .content-language .select-label { margin-top: 0; }
+.rigel .content-language .select-trigger { min-height: 36px; }
+@media (min-width: 768px) {
+  .rigel.sidebar-collapsed .content-language .select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .rigel.sidebar-collapsed .content-language .select-trigger > * { visibility: hidden; }
+  .rigel.sidebar-collapsed .content-language .select-trigger { gap: 0; padding-inline: 0; }
+  .rigel.sidebar-collapsed .content-language::after { content: attr(data-locale); position: absolute; inset: 0; overflow: hidden; line-height: 36px; text-align: center; text-transform: uppercase; font-size: 0.6875rem; pointer-events: none; }
+}
 .rigel .block-editor { position: relative; margin-top: 1rem; border: 1px solid var(--border-control); }
 .rigel .block-editor [hidden] { display: none !important; }
 .rigel.rigel-inline { display: block; position: fixed; top: 0; left: 0; width: 100%; min-height: 0; height: 0; padding: 0; background: transparent; pointer-events: none; z-index: 120; }

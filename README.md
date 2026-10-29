@@ -22,6 +22,10 @@ Use the [Astro starter](https://github.com/rigel-cms/rigel-starter), or follow t
 
 [Documentation](https://rigelcms.dev/docs/) · [Content model](https://rigelcms.dev/docs/content-model/) · [Previews](https://rigelcms.dev/docs/preview/) · [GitHub setup](https://rigelcms.dev/docs/github-publishing/)
 
+## Content languages
+
+Declare language-specific page types and article collections, then use an optional content-language selector in the editor. See [Content languages](docs/content-locales.md) for configuration. Website routing stays in your Astro templates.
+
 ## Extensions
 
 Register your own slash commands, toolbar buttons and saved article blocks with Svelte components. The [extension guide](docs/extensions.md) covers registration, editable blocks and published rendering.

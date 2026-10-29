@@ -13,6 +13,9 @@
   import ImagePicker from "./lib/ImagePicker.svelte";
   import Settings from "./lib/Settings.svelte";
   import TopBar from "./lib/TopBar.svelte";
+  import Select from "./lib/Select.svelte";
+  import { contentForLocale, selectionInContent } from "../manifest/content-locales";
+  import { validateDocumentSlugs } from "../slugs";
   import Shortcuts from "./lib/Shortcuts.svelte";
   import CollectionPanel from "./lib/CollectionPanel.svelte";
   import { emptyBody, type ArticleBody } from "../article-body";
@@ -43,6 +46,10 @@
   type Sel = Selection;
 
   let manifest = $state<Manifest>({ pages: [] });
+  let selectedContentLocale = $state<string | undefined>(undefined);
+  let localeControlRevision = $state(0);
+  const contentLocale = $derived(selectedContentLocale ?? manifest.contentLocales?.defaultLocale);
+  const visibleContent = $derived(contentForLocale(manifest, contentLocale));
   let ready = $state(false);
   let blueprint: Manifest | null = null;
   let gitContext: GitContext | null = null;
@@ -134,6 +141,7 @@
     } finally { publishBusy = false; }
   }
   let pendingNavigation = $state<(() => void) | null>(null);
+  let pendingNavigationCancel: (() => void) | null = null;
   let actionDialog = $state<{ title: string; description: string; confirmLabel: string; fieldLabel?: string; danger?: boolean; onconfirm: (value: string) => void | Promise<void> } | null>(null);
   let newEntry = $state<{ collection: string; post: CollectionPost } | null>(null);
   let newDocument = $state<{ type: string; id: string; slug: string } | null>(null);
@@ -414,7 +422,7 @@
   });
 
   function findColl(name: string): ManifestCollection | undefined {
-    return manifest.collections?.find((x) => x.name === name);
+    return visibleContent.collections?.find((x) => x.name === name);
   }
 
   function collName(s: Sel | null): string | null {
@@ -469,13 +477,13 @@
     });
   });
 
-  const sidebar = $derived(buildSidebar(manifest, $t));
+  const sidebar = $derived(buildSidebar(visibleContent, $t));
   const pageCategory = $derived(sel?.kind === "pages" ? sel.category : undefined);
   const schema = $derived<Schema | undefined>(manifest.schema);
-  const docTypes = $derived(schema?.documents ?? []);
+  const docTypes = $derived(visibleContent.schema?.documents ?? []);
 
   const pageDocType = $derived(docTypes.find((type) => !type.shared && !type.singleton));
-  const pageDocuments = $derived((manifest.documents ?? []).filter((doc) => docTypes.some(type => type.name === doc.type && !type.shared)));
+  const pageDocuments = $derived((visibleContent.documents ?? []).filter((doc) => docTypes.some(type => type.name === doc.type && !type.shared)));
   function docTypeName(s: Sel | null): string | null {
     return s && (s.kind === "document" || s.kind === "documents") ? s.type : null;
   }
@@ -493,14 +501,15 @@
   });
   function documentPreview(mode: "draft" | "website") {
     if (sel?.kind !== "document" || (mode === "draft" && newDocument?.id === sel.id)) return null;
-    return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: sel.id.slice(sel.type.length + 1), urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, mode);
+    const storedSlug = activeDocument ? effectiveSlug(activeDocument.data, activeDocument.slug) : sel.id.slice(sel.type.length + 1);
+    return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: storedSlug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, mode);
   }
   const standaloneDocument = $derived(sel?.kind === "document" && activeDocType?.shared === true);
   const visualSelection = $derived(sel?.kind === "post" || (sel?.kind === "document" && !standaloneDocument));
 
   const sortedPages = $derived.by(() => {
     const rows = [
-      ...manifest.pages.filter((p) => !p.shared && (pageCategory === undefined || p.category === pageCategory))
+      ...visibleContent.pages.filter((p) => !p.shared && (pageCategory === undefined || p.category === pageCategory))
         .map((p) => ({ slug: p.slug, title: p.label, category: p.category, draft: false, target: { kind: "page", slug: p.slug } as Sel })),
       ...(pageCategory === undefined ? pageDocuments
         .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), title: String(doc.data.title ?? doc.slug), category: undefined, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel })) : []),
@@ -511,7 +520,7 @@
   function documentCell(doc: ContentDocument, key: string): string {
     return String(key === "title" ? doc.data.title ?? doc.data.name ?? doc.slug : key === "slug" ? activeDocType?.shared ? doc.slug : effectiveSlug(doc.data, doc.slug) : doc.data[key] ?? "");
   }
-  const typeDocuments = $derived((manifest.documents ?? []).filter((doc) => doc.type === docTypeName(sel)).sort((a, b) => documentCell(a, sortBy).localeCompare(documentCell(b, sortBy)) * sortDir));
+  const typeDocuments = $derived((visibleContent.documents ?? []).filter((doc) => doc.type === docTypeName(sel)).sort((a, b) => documentCell(a, sortBy).localeCompare(documentCell(b, sortBy)) * sortDir));
 
 
   const menu = $derived.by(() => { const slug = sel?.kind === "menu" ? sel.slug : null; return manifest.menus?.entries.find((m) => m.slug === slug); });
@@ -587,22 +596,31 @@
     return false;
   }
 
-  function requestNavigation(action: () => void) {
+  function requestNavigation(action: () => void, oncancel: (() => void) | null = null) {
     if (publishOpen || publishBusy) return;
+    pendingNavigationCancel = oncancel;
     if (dirty || saveState === "saving") pendingNavigation = action;
     else action();
+  }
+
+  function cancelNavigation() {
+    pendingNavigation = null;
+    pendingNavigationCancel?.();
+    pendingNavigationCancel = null;
   }
 
   async function saveAndLeave() {
     if (!(await save())) return;
     const action = pendingNavigation;
     pendingNavigation = null;
+    pendingNavigationCancel = null;
     action?.();
   }
 
   function discardAndLeave() {
     const action = pendingNavigation;
     pendingNavigation = null;
+    pendingNavigationCancel = null;
     const fallback: Sel | null = newEntry ? { kind: "collection", name: newEntry.collection } : newDocument ? { kind: "pages" } : sel;
     newEntry = null;
     newDocument = null;
@@ -611,6 +629,7 @@
   }
 
   function select(next: Sel | null) {
+    if (manifest.contentLocales && !selectionInContent(visibleContent, next)) return;
     if (sel && next && sameSel(sel, next)) return;
     requestNavigation(() => openSelection(next));
   }
@@ -655,6 +674,21 @@
 
   }
 
+  function focusContentLocale() {
+    void tick().then(() => document.querySelector<HTMLButtonElement>(".content-language button[role=combobox]")?.focus({ preventScroll: true }));
+  }
+
+  function switchContentLocale(value: string | string[]) {
+    localeControlRevision += 1;
+    if (typeof value !== "string" || value === contentLocale || !manifest.contentLocales?.locales.some(locale => locale.code === value)) return;
+    requestNavigation(() => {
+      const destination = contentForLocale(manifest, value);
+      selectedContentLocale = value;
+      if (!selectionInContent(destination, sel)) openSelection(null);
+      focusContentLocale();
+    }, focusContentLocale);
+  }
+
   function sort(key: string) {
     if (sortBy === key) sortDir = sortDir === 1 ? -1 : 1;
     else {
@@ -697,10 +731,10 @@
       onconfirm: (title) => {
         const slug = slugify(title);
         if (!slug) throw new Error($t("shell.titleRequired"));
-        const taken = [...(manifest.documents ?? []).filter(doc => !type.shared || doc.type === type.name).flatMap((doc) => [doc.slug, ...(type.shared || docTypes.find(type => type.name === doc.type)?.shared ? [] : [effectiveSlug(doc.data, doc.slug)])]), ...(!type.shared ? manifest.pages.map((page) => page.slug) : [])];
-        if (taken.includes(slug)) throw new Error($t("shell.slugAlreadyUsed", { slug }));
+        if (manifest.documents?.some(doc => doc.type === type.name && doc.slug === slug)) throw new Error($t("shell.slugAlreadyUsed", { slug }));
         const id = `${type.name}:${slug}`;
         const data = newDocumentFromTemplate(schema, type.name, title, slug);
+        validateDocumentSlugs(schema, [...(manifest.documents ?? []), { id, type: type.name, slug, data }], manifest.preview, $t);
         newDocument = { type: type.name, id, slug };
         draft = JSON.parse(JSON.stringify(data));
         docBase = null;
@@ -821,7 +855,14 @@
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
-    <TopBar {manifest} {sel} onselect={select} />
+    <TopBar manifest={visibleContent} {sel} onselect={select} />
+    {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
+      <div class="content-language" data-locale={contentLocale}>
+        {#key localeControlRevision}
+          <Select label={$t("shell.contentLanguage")} value={contentLocale} options={manifest.contentLocales.locales.map(locale => ({ value: locale.code, label: locale.label }))} disabled={publishOpen || publishBusy} onchange={switchContentLocale} />
+        {/key}
+      </div>
+    {/if}
 
     <nav id="rigel-sidebar-navigation" class="rail-scroll" aria-label={$t("shell.content")}>
       {#each sidebar as node}
@@ -1107,7 +1148,7 @@
   <Shortcuts onclose={() => (shortcutsOpen = false)} />
 {/if}
 {#if pendingNavigation}
-  <UnsavedChanges busy={saveState === "saving"} error={saveError} onsave={saveAndLeave} ondiscard={discardAndLeave} oncancel={() => { pendingNavigation = null; }} />
+  <UnsavedChanges busy={saveState === "saving"} error={saveError} onsave={saveAndLeave} ondiscard={discardAndLeave} oncancel={cancelNavigation} />
 {/if}
 {#if actionDialog}
   <ActionDialog {...actionDialog} onclose={() => { actionDialog = null; }} />

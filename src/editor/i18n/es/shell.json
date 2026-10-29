@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "Política de privacidad",
   "shell.welcome": "Bienvenido",
   "shell.content": "Contenido",
+  "shell.contentLanguage": "Idioma del contenido",
   "shell.publish": "Publicar",
   "shell.saveBeforePublishing": "Guardar los cambios antes de publicar",
   "shell.publishSavedChanges": "Publicar los cambios guardados de la rama",

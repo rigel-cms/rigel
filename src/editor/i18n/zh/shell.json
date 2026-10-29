@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "隐私政策",
   "shell.welcome": "欢迎",
   "shell.content": "内容",
+  "shell.contentLanguage": "内容语言",
   "shell.publish": "发布",
   "shell.saveBeforePublishing": "请先保存修改，再发布",
   "shell.publishSavedChanges": "发布分支中已保存的更改",

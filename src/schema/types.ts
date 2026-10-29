@@ -35,6 +35,7 @@ export interface DocumentTemplateSection {
 
 export interface DocumentDef {
   name: string;
+  locale?: string;
   title: string;
   type: "document";
   folder: string;

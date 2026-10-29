@@ -100,6 +100,7 @@ function rebindTree(root: Element | DocumentFragment, update: (element: Element)
 }
 
 export function patchPreview(doc: Document, values: Record<string, unknown>, body: "" | import("./article-body").ArticleBody, options: PatchDocuments = {}) {
+  if (!doc.documentElement) return;
   let previews = extensionPreviews.get(doc);
   if (!previews) {
     previews = new Map();
@@ -171,6 +172,19 @@ export function patchPreview(doc: Document, values: Record<string, unknown>, bod
   for (const element of doc.querySelectorAll<HTMLElement>("[data-rigel-if]")) {
     const result = get(element, element.getAttribute("data-rigel-if")!);
     if (result.found) element.hidden = !result.value;
+  }
+  for (const el of doc.querySelectorAll<HTMLElement>("[data-rigel-tags]")) {
+    if (el.tagName !== "UL" && el.tagName !== "OL") continue;
+    const result = get(el, el.dataset.rigelTags!);
+    if (!result.found) continue;
+    const source = typeof result.value === "string" ? result.value : "";
+    if (rendered.get(el) === source) continue;
+    el.replaceChildren(...source.split(",").map(tag => tag.trim()).filter(Boolean).map(tag => {
+      const item = doc.createElement("li");
+      item.textContent = tag;
+      return item;
+    }));
+    rendered.set(el, source);
   }
   for (const el of doc.querySelectorAll<HTMLElement>("[data-rigel-text]")) {
     const result = get(el, el.dataset.rigelText!);

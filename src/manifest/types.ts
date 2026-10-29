@@ -15,6 +15,7 @@ export interface CopyGroup {
 
 export interface CopyPage {
   slug: string;
+  locale?: string;
   label: string;
   shared?: boolean;
   category?: string;
@@ -36,6 +37,7 @@ export interface GitHubBackendConfig {
 }
 
 export interface Manifest {
+  contentLocales?: import("../config").ContentLocalesConfig;
   backend?: "github";
   github?: GitHubBackendConfig;
   sidebar?: import("./navigation").SidebarEntry[];
@@ -66,6 +68,7 @@ export interface CollectionPost {
 
 export interface ManifestCollection {
   name: string;
+  locale?: string;
   label: string;
   listTitle?: string;
   fields: CollectionField[];

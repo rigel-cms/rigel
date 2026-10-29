@@ -94,7 +94,7 @@
 
   function anchorSelector(path: string) {
     const escaped = CSS.escape(path);
-    return `[data-rigel-text="${escaped}"],[data-rigel-richtext="${escaped}"],[data-rigel-image="${escaped}"],[data-rigel-alt="${escaped}"],[data-rigel-href="${escaped}"]`;
+    return `[data-rigel-tags="${escaped}"],[data-rigel-text="${escaped}"],[data-rigel-richtext="${escaped}"],[data-rigel-image="${escaped}"],[data-rigel-alt="${escaped}"],[data-rigel-href="${escaped}"]`;
   }
 
   function applySelection(scroll = false) {
@@ -166,7 +166,7 @@
   }
 
   function fieldPathFrom(element: HTMLElement): { path: string; doc: string } | null {
-    for (const attr of ["data-rigel-text", "data-rigel-richtext", "data-rigel-image", "data-rigel-alt", "data-rigel-href"]) {
+    for (const attr of ["data-rigel-tags", "data-rigel-text", "data-rigel-richtext", "data-rigel-image", "data-rigel-alt", "data-rigel-href"]) {
       const value = element.getAttribute(attr);
       if (value) return { path: value, doc: element.getAttribute("data-rigel-doc") ?? docId };
     }
@@ -264,7 +264,7 @@
     if (!target) return;
     const articleBody = target.closest<HTMLElement>('[data-rigel-richtext="$body"]');
     if (inlineBodyEnabled && articleBody) { void startBodyEdit(articleBody, event); return; }
-    const element = target.closest<HTMLElement>("[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
+    const element = target.closest<HTMLElement>("[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
     if (element) selectFromElement(element);
   }
 
@@ -315,7 +315,7 @@
     const target = eventElement(event.target);
     if (target && (editingBody?.contains(target) || bodyScope?.contains(target))) return;
     if (!target) return;
-    const element = target.closest<HTMLElement>("[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
+    const element = target.closest<HTMLElement>("[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
     if (!element || element === highlighted) return;
     if (hovered && hovered !== element) clearHover();
     hovered = element;
@@ -325,7 +325,7 @@
   function onOut(event: MouseEvent) {
     const target = eventElement(event.target);
     if (!target) return;
-    const element = target.closest<HTMLElement>("[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
+    const element = target.closest<HTMLElement>("[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
     if (element && element === hovered) clearHover();
   }
 
@@ -349,7 +349,7 @@
       doc.addEventListener("mouseout", onOut, true);
       doc.addEventListener("submit", (event) => event.preventDefault(), true);
       doc.defaultView?.addEventListener("scroll", () => closeInline(), { passive: true });
-      if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error($t("richtext.liveEditingUnavailable"));
+      if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error($t("richtext.liveEditingUnavailable"));
       loaded = true;
       bodyAvailable = !schema && !!body && !!doc.querySelector('[data-rigel-richtext="$body"]');
       patch();

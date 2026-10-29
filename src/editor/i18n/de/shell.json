@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "Datenschutzerklärung",
   "shell.welcome": "Willkommen",
   "shell.content": "Inhalte",
+  "shell.contentLanguage": "Inhaltssprache",
   "shell.publish": "Veröffentlichen",
   "shell.saveBeforePublishing": "Änderungen vor dem Veröffentlichen speichern",
   "shell.publishSavedChanges": "Gespeicherte Branch-Änderungen veröffentlichen",

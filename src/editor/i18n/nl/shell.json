@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "Privacybeleid",
   "shell.welcome": "Welkom",
   "shell.content": "Inhoud",
+  "shell.contentLanguage": "Inhoudstaal",
   "shell.publish": "Publiceren",
   "shell.saveBeforePublishing": "Sla je wijzigingen op voordat je publiceert",
   "shell.publishSavedChanges": "Opgeslagen branchwijzigingen publiceren",

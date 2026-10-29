@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "Политика конфиденциальности",
   "shell.welcome": "Добро пожаловать",
   "shell.content": "Содержимое",
+  "shell.contentLanguage": "Язык содержимого",
   "shell.publish": "Опубликовать",
   "shell.saveBeforePublishing": "Сохраните правки перед публикацией",
   "shell.publishSavedChanges": "Опубликовать сохранённые изменения ветки",

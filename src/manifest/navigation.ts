@@ -54,6 +54,10 @@ export function buildSidebar(manifest: Manifest, message: Translator = systemMes
   ];
   if (!manifest.sidebar) return defaults;
   const available = new Map(defaults.filter((node): node is SidebarLink => node.kind === "link").map(node => [navigationKey(node.target), node]));
+  for (const type of types) {
+    const target: SidebarTarget = { kind: "documents", type: type.name };
+    available.set(navigationKey(target), link(target, type.title));
+  }
   for (const page of manifest.pages) available.set(navigationKey({ kind: "page", slug: page.slug }), link({ kind: "page", slug: page.slug }, page.label));
   for (const doc of manifest.documents ?? []) {
     const target: SidebarTarget = { kind: "document", type: doc.type, id: doc.id };

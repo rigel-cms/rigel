@@ -44,6 +44,7 @@ const __rigelReservedSlugs = new Set(documents.filter((doc) => !documentTypes.fi
     .map(
       (c) => `  {
     name: ${JSON.stringify(c.name)},
+    ${c.locale !== undefined ? `locale: ${JSON.stringify(c.locale)},` : ""}
     label: ${JSON.stringify(c.label ?? c.name)},
     listTitle: ${JSON.stringify(c.listTitle)},
     fields: ${JSON.stringify(c.fields)},
@@ -167,6 +168,7 @@ export const menus = {
           jsonOutput: cfg.jsonOutput,
           demo: cfg.demo,
           languages: cfg.languages,
+          contentLocales: cfg.contentLocales,
           publicDir: publicDir?.href,
           mediaDir: cfg.mediaDir,
           maxFileSize: cfg.maxFileSize,
@@ -205,8 +207,10 @@ export function derefDocument(value) { return deref(value, __rigelIndex); }
       return `
 import { validateBody as __rigelValidateBody } from ${JSON.stringify(fileURLToPath(new URL("../article-body.ts", import.meta.url)))};
 import { validateCollectionValues as __rigelValidateCollectionValues } from ${JSON.stringify(fileURLToPath(new URL("../manifest/collections.ts", import.meta.url)))};
+import { validateContentLocale as __rigelValidateContentLocale } from ${JSON.stringify(fileURLToPath(new URL("../manifest/content-locales.ts", import.meta.url)))};
 const modules = import.meta.glob(${JSON.stringify(pattern)}, { eager: true });
 const loaded = Object.values(modules).map((m) => m.default);
+for (const page of loaded) __rigelValidateContentLocale(page.locale, ${JSON.stringify(cfg.contentLocales)}, page.slug);
 ${documentsSrc}
 export const pages = loaded.filter((page) => !__rigelReservedSlugs.has(page.slug)).sort((a, b) => a.slug.localeCompare(b.slug));
 export const collections = [
@@ -214,7 +218,7 @@ ${collectionCode}
 ];
 for (const collection of collections) __rigelAssertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })));
 ${menuCode}
-export default { pages, collections, documents${github ? ', backend: "github", github: ' + JSON.stringify(github) : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
+export default { pages, collections, documents${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
 `;
     },
   };

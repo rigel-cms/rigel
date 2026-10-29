@@ -139,6 +139,7 @@
   "shell.privacyPolicy": "Informativa sulla privacy",
   "shell.welcome": "Benvenuto",
   "shell.content": "Contenuti",
+  "shell.contentLanguage": "Lingua dei contenuti",
   "shell.publish": "Pubblica",
   "shell.saveBeforePublishing": "Salva le modifiche prima di pubblicare",
   "shell.publishSavedChanges": "Pubblica le modifiche salvate nel branch",

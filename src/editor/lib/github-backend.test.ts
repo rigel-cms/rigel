@@ -84,6 +84,27 @@ function server() {
 }
 afterEach(()=>vi.unstubAllGlobals());
 
+test("GitHub hydration preserves locale metadata across reloads without automatic writes", async () => {
+  const s = server(), original = blueprint();
+  original.contentLocales = { defaultLocale: "en", locales: [{ code: "en", label: "English" }, { code: "fr", label: "Français" }] };
+  original.pages[0].locale = "fr";
+  original.collections![0].locale = "fr";
+  original.schema!.documents[0].locale = "en";
+  const before = new Map(s.files);
+  for (let i = 0; i < 2; i++) {
+    const loaded = await loadManifestRemote(ctx, original);
+    expect(loaded.contentLocales).toEqual(original.contentLocales);
+    expect(loaded.pages[0].locale).toBe("fr");
+    expect(loaded.collections![0].locale).toBe("fr");
+    expect(loaded.schema!.documents[0].locale).toBe("en");
+    expect(loaded.pages[0].values).not.toEqual({});
+    expect(loaded.collections![0].posts).toHaveLength(1);
+    expect(loaded.documents![0].type).toBe("author");
+  }
+  expect(s.files).toEqual(before);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
 test.each([undefined, "pretty", "minified"] as const)("GitHub saves use %s JSON for posts, documents and menus only", async (jsonOutput) => {
   const s = server(), original = blueprint();
   original.github!.jsonOutput = jsonOutput;

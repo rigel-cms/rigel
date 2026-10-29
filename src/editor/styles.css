@@ -1288,7 +1288,10 @@
 .rigel .select-empty { margin: 0; padding: 0.5rem; color: var(--text-2); }
 .rigel .add-section .custom-select { flex: 1; }
 @media (max-width: 767px) { .rigel .select-option { min-height: 2.75rem; } }
-.rigel .page-properties-header { position: sticky; top: 0; z-index: 2; padding-top: 0.5rem; margin-top: -0.5rem; background: var(--panel); }
+.rigel .schema-panel:has(> .panel-tabs) { scroll-padding-top: 4rem; }
+.rigel .schema-panel .block-editor > .body-toolbar:not(.image-toolbar) { position: static; }
+.rigel .schema-panel > .panel-tabs { position: sticky; top: 0; z-index: 10; padding-top: 0.5rem; margin-top: -0.5rem; background: var(--panel); }
+.rigel .schema-panel > .panel-tabs::before { content: ""; position: absolute; inset: -1rem -1rem 0; z-index: -1; background: var(--panel); }
 .rigel .panel-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border-control); }
 .rigel .panel-tabs button { flex: 1; padding: 0.5rem 0.75rem; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-2); font: inherit; font-size: 0.8125rem; cursor: pointer; }
 .rigel .panel-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }

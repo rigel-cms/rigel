@@ -95,9 +95,9 @@
   {#if docType.shared}
     <p class="shared-badge"><Icon name="info" size={12} /> {$t(docType.demo ? "fields.demoContentNotice" : "fields.sharedContentNotice")}</p>
   {/if}
-  <div class:page-properties-header={!docType.shared}>
   {#if seoFields.length}<PropertiesTabs bind:tab />{/if}
-  <section class="document-properties" hidden={tab !== "content"}>
+  <div id="properties-content" role={seoFields.length ? "tabpanel" : undefined} aria-labelledby={seoFields.length ? "properties-tab-content" : undefined} hidden={tab !== "content"}>
+  <section class="document-properties">
     <h3>{$t(docType.shared ? "fields.content" : "fields.pageProperties")}</h3>
     {#if !docType.shared}
       <label><span>{$t("fields.urlSlug")}</span><input type="text" value={String(values.slug ?? docId.slice(docType.name.length + 1))} oninput={(event) => onchange({ ...values, slug: event.currentTarget.value })} onblur={() => { if (Object.hasOwn(values, "slug")) onchange({ ...values, slug: slugify(String(values.slug)) }); }} /></label>
@@ -109,8 +109,6 @@
       </div>
     {/each}
   </section>
-  </div>
-  <div id="properties-content" role={seoFields.length ? "tabpanel" : undefined} aria-labelledby={seoFields.length ? "properties-tab-content" : undefined} hidden={tab !== "content"}>
   {#if creating}
     <p class="panel-note">{$t("fields.newPageNotice")}</p>
   {/if}

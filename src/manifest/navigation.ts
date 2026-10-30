@@ -31,7 +31,6 @@ export function navigationKey(target: Selection): string {
 export function buildSidebar(manifest: Manifest, message: Translator = systemMessage): SidebarNode[] {
   const link = (target: SidebarTarget, label: string): SidebarLink => ({ kind: "link", target, label });
   const types = manifest.schema?.documents ?? [];
-  const pageTypes = types.filter(type => !type.shared);
   const pages = manifest.pages.filter(page => !page.shared);
   const categories = [...new Set(pages.map(page => page.category).filter((category): category is string => !!category))].sort();
   const defaults: SidebarNode[] = [
@@ -39,7 +38,6 @@ export function buildSidebar(manifest: Manifest, message: Translator = systemMes
     link({ kind: "pages" }, message("system.sidebar.pages")),
     ...(manifest.collections ?? []).map(collection => link({ kind: "collection", name: collection.name }, collection.label)),
     ...categories.map(category => link({ kind: "pages", category }, category)),
-    ...pageTypes.slice(1).map(type => link({ kind: "documents", type: type.name }, type.title)),
     { kind: "heading", label: message("system.sidebar.shared") },
     ...types.filter(type => type.shared && !type.singleton).map(type => link({ kind: "documents", type: type.name }, type.title)),
     ...manifest.pages.filter(page => page.shared).map(page => link({ kind: "page", slug: page.slug }, page.label)),

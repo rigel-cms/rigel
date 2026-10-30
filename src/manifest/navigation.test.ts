@@ -74,7 +74,6 @@ describe("content navigation", () => {
     const defaults = buildSidebar(source);
     expect(defaults.filter(node => node.kind === "link")).toEqual([
       { kind: "link", target: { kind: "pages" }, label: "Pages" },
-      { kind: "link", target: { kind: "documents", type: "pageFr" }, label: "Pages FR" },
       { kind: "link", target: { kind: "media" }, label: "Media" },
     ]);
     const english = { kind: "link" as const, target: { kind: "documents" as const, type: "pageEn" }, label: "English pages", icon: "globe" };
@@ -89,6 +88,7 @@ describe("content navigation", () => {
       { kind: "link", target: { kind: "media" }, label: "Media" },
     ]);
     expect(buildSidebar({ ...source, sidebar: [] }).filter(node => node.kind === "link")).toEqual(defaults.filter(node => node.kind === "link"));
+    expect(buildSidebar({ ...source, sidebar: [{ kind: "link", target: { kind: "pages" } }] }).filter(node => node.kind === "link")).toEqual(defaults.filter(node => node.kind === "link"));
   });
 
   it("opens shared singletons directly after Assets without a count or duplicate collection", () => {

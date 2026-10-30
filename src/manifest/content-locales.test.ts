@@ -59,7 +59,7 @@ test("filters all content discovery together, without changing documents or infe
   expect(fr.documents![0]).toBe(source.documents![2]);
   expect(source).toEqual(before);
   const links = buildSidebar(en).filter(node => node.kind === "link");
-  expect(links.map(node => node.label)).toEqual(["Pages", "Blog EN", "News", "English landing pages", "Service pages", "Shared", "Global", "Menus", "Media"]);
+  expect(links.map(node => node.label)).toEqual(["Pages", "Blog EN", "News", "Shared", "Global", "Menus", "Media"]);
   const custom = contentForLocale({ ...source, sidebar: [{ kind: "link", target: { kind: "documents", type: "pageFr" } }, { kind: "link", target: { kind: "document", type: "settingsFr", id: "settingsFr:home" } }, { kind: "link", target: { kind: "page", slug: "accueil" } }] }, "en");
   expect(buildSidebar(custom).filter(node => node.kind === "link").map(node => node.label)).toEqual(links.map(node => node.label));
 });

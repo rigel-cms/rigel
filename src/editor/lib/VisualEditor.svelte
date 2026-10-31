@@ -2,6 +2,7 @@
   import { t } from "../i18n";
   import { mount, unmount, onDestroy, tick, type Snippet } from "svelte";
   import BlockEditor from "./BlockEditor.svelte";
+  import MarkdownEditor from "./MarkdownEditor.svelte";
   import { tooltipRoot } from "./tooltip";
   import editorStyles from "../styles.css?inline";
   import type { ArticleBody } from "../../article-body";
@@ -248,11 +249,40 @@
     }
     if (editVideo) mounted.editVideoAt(blockIndex);
   }
+  function startMarkdownEdit(element: HTMLElement) {
+    const field = fieldPathFrom(element);
+    if (!field || field.doc !== docId || !schema || !docType) return false;
+    const def = fieldForPath(schema, docType, values, field.path);
+    if (def?.type !== "markdown") return false;
+    stopBodyEdit();
+    const doc = element.ownerDocument;
+    let editorStyle = doc.querySelector<HTMLStyleElement>('style[data-rigel-editor-styles]');
+    if (!editorStyle) { editorStyle = doc.createElement("style"); editorStyle.dataset.rigelEditorStyles = ""; doc.head.append(editorStyle); }
+    if (editorStyle.textContent !== editorStyles) editorStyle.textContent = editorStyles;
+    clearHover(); clearHighlight();
+    editingBody = element; bodyContents = [...element.childNodes];
+    const scope = doc.createElement("div");
+    const syncTheme = () => { scope.dataset.theme = document.documentElement.dataset.theme; scope.dataset.contrast = document.documentElement.dataset.contrast; };
+    syncTheme();
+    const host = doc.createElement("div"); host.className = "rigel rigel-inline";
+    scope.append(host); element.replaceChildren(scope); bodyScope = scope;
+    removeTooltips = tooltipRoot(host).destroy;
+    bodyEditor = mount(MarkdownEditor, { target: host, props: {
+      label: def.labelKey ? $t(def.labelKey) : def.label,
+      get value() { return String(anchorValue(values, field.path).value ?? ""); },
+      oninput: (next: string) => onchange(replaceAt(values, field.path, next)),
+    } });
+    bodyThemeObserver = new MutationObserver(syncTheme);
+    bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
+    void tick().then(() => host.querySelector<HTMLElement>('[contenteditable="true"], textarea')?.focus());
+    return true;
+  }
+
   function focusBody() {
     const target = docElement()?.querySelector<HTMLElement>('[data-rigel-richtext="$body"]');
     if (inlineBodyEnabled && target) { target.scrollIntoView({ block: "center" }); void startBodyEdit(target); }
   }
-  $effect(() => { if (!inlineBodyEnabled || mode !== "edit") stopBodyEdit(); });
+  $effect(() => { if ((!schema && !inlineBodyEnabled) || mode !== "edit") stopBodyEdit(); });
   onDestroy(stopBodyEdit);
 
   function onClick(event: MouseEvent) {
@@ -264,6 +294,9 @@
     if (!target) return;
     const articleBody = target.closest<HTMLElement>('[data-rigel-richtext="$body"]');
     if (inlineBodyEnabled && articleBody) { void startBodyEdit(articleBody, event); return; }
+    const markdown = target.closest<HTMLElement>("[data-rigel-richtext]");
+    if (markdown && startMarkdownEdit(markdown)) return;
+    stopBodyEdit();
     const element = target.closest<HTMLElement>("[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
     if (element) selectFromElement(element);
   }

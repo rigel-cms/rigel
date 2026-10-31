@@ -227,7 +227,7 @@
   <div class="image-field">
     {#if value}<img src={value} alt="" class="preview" />{:else}<div class="preview empty">{$t("media.noImage")}</div>{/if}
     <button bind:this={trigger} type="button" class="outlined" onclick={launch}>{$t("media.choose")}</button>
-    {#if value && onpick}<button type="button" class="outlined" aria-label={$t("media.removeImage")} data-tooltip={$t("media.removeImage")} onclick={() => onpick?.("", "")}><Icon name="x" size={14} /></button>{/if}
+    {#if value && onpick}<button type="button" class="outlined icon-only" aria-label={$t("media.removeImage")} data-tooltip={$t("media.removeImage")} onclick={() => onpick?.("", "")}><Icon name="x" size={14} /></button>{/if}
   </div>
 {/if}
 
@@ -235,8 +235,8 @@
   <p class="hint">{$t(writable ? "media.repositoryWritable" : "media.repositorySnapshot", { folder: folder || "…" })}</p>
   <div class="media-tools">
     <div class="media-views" role="group" aria-label={$t("media.view")}>
-      <button type="button" class="outlined" data-tooltip={$t("media.gridView")} aria-label={$t("media.gridView")} aria-pressed={view === "grid"} onclick={() => setView("grid")}><Icon name="squaresFour" size={18} /></button>
-      <button type="button" class="outlined" data-tooltip={$t("media.listView")} aria-label={$t("media.listView")} aria-pressed={view === "list"} onclick={() => setView("list")}><Icon name="listBullets" size={18} /></button>
+      <button type="button" class="outlined icon-only" data-tooltip={$t("media.gridView")} aria-label={$t("media.gridView")} aria-pressed={view === "grid"} onclick={() => setView("grid")}><Icon name="squaresFour" size={18} /></button>
+      <button type="button" class="outlined icon-only" data-tooltip={$t("media.listView")} aria-label={$t("media.listView")} aria-pressed={view === "list"} onclick={() => setView("list")}><Icon name="listBullets" size={18} /></button>
     </div>
     <div class="media-select">
       <Select ariaLabel={$t(inline ? "media.type" : kind === "video" ? "media.videoFormat" : "media.imageFormat")} value={format} onchange={next => { format = String(next); }} options={inline ? [{ value: "", label: $t("media.allItems") }, ...MEDIA_CATEGORIES.map(category => ({ value: category, label: $t(`media.category.${category}`) }))] : kind === "video" ? [{ value: "", label: $t("media.allVideos") }, { value: "video/mp4", label: "MP4" }, { value: "video/webm", label: "WebM" }, { value: "video/quicktime", label: "MOV" }] : [{ value: "", label: $t("media.allImages") }, ...["jpeg", "png", "webp", "gif", "avif"].map(format => ({ value: `image/${format}`, label: format === "jpeg" ? "JPEG" : format === "webp" ? "WebP" : format.toUpperCase() }))]} />

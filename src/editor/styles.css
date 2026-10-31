@@ -849,7 +849,8 @@
 .rigel .media-head h2 { margin: 0; font-size: 1rem; }
 .rigel .media-tools { align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--border-control); background: var(--panel); }
 .rigel .media-views { display: flex; flex-shrink: 0; margin-inline-end: 1rem; }
-.rigel .media-views button { display: inline-flex; align-items: center; justify-content: center; padding-inline: 0.5rem; }
+.rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; padding: 0; flex-shrink: 0; }
+@media (pointer: coarse) { .rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { width: 44px; height: 44px; } }
 .rigel .media-views button + button { border-left: 0; }
 .rigel .media-views button[aria-pressed=true] { background: var(--accent-soft); color: var(--on-accent-soft); }
 .rigel .media-tools .media-select { position: relative; max-width: 100%; min-width: 0; }
@@ -1305,11 +1306,18 @@
 .rigel .panel-note { margin: 0 0 0.75rem; font-size: 0.75rem; color: var(--text-3); }
 .rigel .shared-badge { display: flex; align-items: center; gap: 0.375rem; margin: 0 0 0.75rem; padding: 0.5rem; border: 1px solid var(--accent); color: var(--text-2); font-size: 0.75rem; }
 .rigel .structure-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-direction: column; gap: 0.375rem; }
-.rigel .structure-list li { display: flex; align-items: stretch; border: 1px solid var(--border); }
+.rigel .structure-list li { position: relative; display: flex; align-items: stretch; border: 1px solid var(--border); }
+.rigel .structure-list .section-drag { cursor: grab; touch-action: none; user-select: none; align-self: center; border: 0; background: transparent; }
+.rigel .structure-list .section-drag:active { cursor: grabbing; }
+.rigel .structure-list li.is-dragging { border-style: dashed; }
+.rigel .structure-list li.drop-before::before, .rigel .structure-list li.drop-after::after { content: ""; position: absolute; left: -1px; right: -1px; height: 3px; background: var(--accent); pointer-events: none; }
+.rigel .structure-list li.drop-before::before { top: -5px; }
+.rigel .structure-list li.drop-after::after { bottom: -5px; }
+.rigel .reorder-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .rigel .structure-list li.active { border-color: var(--accent); }
 .rigel .structure-row { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; border: 0; border-radius: 0; background: transparent; color: var(--text); padding: 0.5rem; text-align: left; cursor: pointer; font-size: 0.8125rem; }
 .rigel .structure-actions, .rigel .schema-item-actions { display: flex; align-items: center; }
-.rigel .structure-actions button, .rigel .schema-item-actions button { border: 0; border-left: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text-2); min-width: 26px; height: 100%; padding: 0 0.25rem; cursor: pointer; }
+.rigel .structure-actions button, .rigel .schema-item-actions button { border: 0; border-left: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text-2); cursor: pointer; }
 .rigel .structure-actions button:disabled, .rigel .schema-item-actions button:disabled { opacity: 0.35; cursor: default; }
 .rigel .add-section { display: flex; gap: 0.5rem; }
 .rigel .add-section select { flex: 1; min-width: 0; }

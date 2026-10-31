@@ -5,7 +5,7 @@
   import PropertiesTabs from "./PropertiesTabs.svelte";
   import SeoGuidance from "./SeoGuidance.svelte";
   import Select from "./Select.svelte";
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import {
     blankItem,
     duplicateItem,
@@ -89,7 +89,78 @@
   function removeSection(index: number) {
     setSections(sections.filter((_, position) => position !== index));
   }
+
+  let dragging = $state<string | null>(null);
+  let target = $state<number | null>(null);
+  let message = $state("");
+  let pointer: { key: string; docId: string; pointerId: number; x: number; y: number; handle: HTMLButtonElement } | null = null;
+
+  function cancelDrag() {
+    const active = pointer;
+    pointer = null;
+    dragging = null;
+    target = null;
+    if (active?.handle.hasPointerCapture(active.pointerId)) active.handle.releasePointerCapture(active.pointerId);
+  }
+  onDestroy(cancelDrag);
+
+  function startDrag(event: PointerEvent, key: string) {
+    if (event.button !== 0 || !event.isPrimary || pointer) return;
+    const handle = event.currentTarget as HTMLButtonElement;
+    pointer = { key, docId, pointerId: event.pointerId, x: event.clientX, y: event.clientY, handle };
+    handle.setPointerCapture(event.pointerId);
+  }
+
+  function dropAt(x: number, y: number) {
+    const list = document.elementFromPoint(x, y)?.closest('.structure-list');
+    const source = pointer?.handle.closest('li');
+    if (!list || source?.parentElement !== list || pointer?.docId !== docId) return null;
+    const rows = [...list.children];
+    const before = rows.findIndex(row => { const rect = row.getBoundingClientRect(); return y < rect.top + rect.height / 2; });
+    const insertion = before < 0 ? rows.length : before;
+    const from = sections.findIndex(section => section._key === pointer?.key);
+    return from < 0 || insertion === from || insertion === from + 1 ? null : insertion;
+  }
+
+  function dragPointer(event: PointerEvent) {
+    if (!pointer || event.pointerId !== pointer.pointerId) return;
+    if (!dragging && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) < 5) return;
+    dragging = pointer.key;
+    target = dropAt(event.clientX, event.clientY);
+  }
+
+  function finishDrag(event: PointerEvent) {
+    if (!pointer || event.pointerId !== pointer.pointerId) return;
+    const captured = pointer.handle.hasPointerCapture(event.pointerId);
+    const from = captured ? sections.findIndex(section => section._key === dragging) : -1;
+    const insertion = dropAt(event.clientX, event.clientY);
+    cancelDrag();
+    if (from < 0 || insertion === null) return;
+    const next = [...sections];
+    const [section] = next.splice(from, 1);
+    const index = insertion > from ? insertion - 1 : insertion;
+    next.splice(index, 0, section);
+    setSections(next);
+    message = $t("fields.sectionMoved", { label: sectionLabel(schema, section._type), position: index + 1, count: next.length });
+  }
+
+  async function moveWithKeyboard(event: KeyboardEvent, index: number) {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    if (pointer) return;
+    const delta = event.key === "ArrowUp" ? -1 : 1;
+    const position = index + delta;
+    if (position < 0 || position >= sections.length) return;
+    const handle = event.currentTarget as HTMLButtonElement;
+    const label = sectionLabel(schema, sections[index]._type);
+    setSections(moveItem(sections, index, delta) as Record<string, unknown>[]);
+    message = $t("fields.sectionMoved", { label, position: position + 1, count: sections.length });
+    await tick();
+    handle.focus({ preventScroll: true });
+  }
 </script>
+
+<svelte:window onpointermove={dragPointer} onpointerup={finishDrag} onpointercancel={cancelDrag} onkeydown={event => { if (event.key === 'Escape' && pointer) { event.preventDefault(); cancelDrag(); message = $t('fields.menuMoveCancelled'); } }} />
 
 <div class="schema-panel" bind:this={host}>
   {#if docType.shared}
@@ -115,16 +186,17 @@
   {#if sections.length || values.sections !== undefined}
     <section>
       <h3>{$t("fields.structure")}</h3>
+      <p id="section-reorder-hint" class="reorder-status">{$t("fields.sectionReorderHint")}</p>
+      <p class="reorder-status" role="status" aria-live="polite">{message}</p>
       <ul class="structure-list">
         {#each sections as section, index (section._key)}
-          <li class:active={selected?.sectionKey === section._key}>
+          <li class:active={selected?.sectionKey === section._key} class:is-dragging={dragging === section._key} class:drop-before={target === index} class:drop-after={target === sections.length && index === sections.length - 1} data-section-key={section._key}>
+            <button type="button" class="outlined icon-only section-drag" aria-label={$t("fields.reorderSection", { label: sectionLabel(schema, section._type) })} aria-describedby="section-reorder-hint" onpointerdown={event => startDrag(event, String(section._key))} onlostpointercapture={cancelDrag} onkeydown={event => moveWithKeyboard(event, index)}><Icon name="dotsSixVertical" /></button>
             <button type="button" class="structure-row" onclick={() => onselect({ docId, path: "", sectionKey: String(section._key) })}>
               <span>{sectionLabel(schema, section._type, $t("fields.section"))}</span>
               {#if devMode}<span class="schema-key">{section._key}</span>{/if}
             </button>
             <div class="structure-actions">
-              <button type="button" aria-label={$t("fields.moveSectionUp", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.moveUp")} disabled={index === 0} onclick={() => setSections(moveItem(sections, index, -1) as Record<string, unknown>[])}>↑</button>
-              <button type="button" aria-label={$t("fields.moveSectionDown", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.moveDown")} disabled={index === sections.length - 1} onclick={() => setSections(moveItem(sections, index, 1) as Record<string, unknown>[])}>↓</button>
               <button type="button" aria-label={$t("fields.duplicateSection", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.duplicate")} onclick={() => setSections(duplicateItem(sections, index) as Record<string, unknown>[])}>⧉</button>
               <button type="button" aria-label={$t("fields.removeSection", { label: sectionLabel(schema, section._type) })} data-tooltip={$t("fields.remove")} onclick={() => removeSection(index)}>×</button>
             </div>

@@ -12,8 +12,9 @@ import {
   type Schema,
 } from "./types";
 import { systemMessage, type Parameters, type Translator } from "../editor/i18n/format";
+import { matchesMediaAccept, safeFileUrl } from "../media-types";
 
-const SCALARS: ScalarFieldType[] = ["string", "text", "markdown", "boolean", "number", "date", "image", "url", "color", "code", "password"];
+const SCALARS: ScalarFieldType[] = ["string", "text", "markdown", "boolean", "number", "date", "image", "file", "url", "color", "code", "password"];
 const UNSAFE = new Set(["__proto__", "constructor", "prototype"]);
 const FOLDER_PART = /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/;
 
@@ -54,6 +55,7 @@ export function validateSchema(input: Schema): Schema {
     if (doc.demo !== undefined && typeof doc.demo !== "boolean") throw new SchemaError(`Document type ${doc.name}: demo must be boolean`);
     if (doc.creatable !== undefined && typeof doc.creatable !== "boolean") throw new SchemaError(`Document type ${doc.name}: creatable must be boolean`);
     if (typeof doc.title !== "string" || !doc.title.trim()) throw new SchemaError(`Document type ${doc.name} requires a title`);
+    if (doc.category !== undefined && (typeof doc.category !== "string" || !doc.category.trim())) throw new SchemaError(`Document type ${doc.name}: category must be a non-empty string`);
     const parts = String(doc.folder).split("/");
     if (!parts.length || parts.some((part) => !FOLDER_PART.test(part))) throw new SchemaError(`Document type ${doc.name} has an unsafe folder`);
     if (folders.has(doc.folder)) throw new SchemaError(`Duplicate document folder: ${doc.folder}`);
@@ -88,6 +90,7 @@ function validateFieldsShape(schema: Schema, fields: FieldDef[], scope: string) 
     if (keys.has(field.key)) throw new SchemaError(`${scope}: duplicate field key ${field.key}`);
     keys.add(field.key);
     if (typeof field.label !== "string" || !field.label.trim()) throw new SchemaError(`${scope}.${field.key}: label required`);
+    if (field.accept !== undefined && (field.type !== "file" || typeof field.accept !== "string" || !field.accept.split(",").every(token => /^(?:\.[a-z0-9]+|[a-z0-9!#$&^_.+-]+\/(?:[a-z0-9!#$&^_.+-]+|\*))$/i.test(token.trim())))) throw new SchemaError(`${scope}.${field.key}: accept must contain file extensions or MIME types`);
     if (![...SCALARS, "object", "array", "reference"].includes(field.type)) throw new SchemaError(`${scope}.${field.key}: unknown field type ${field.type}`);
     if (field.type === "object") {
       if (field.of) objectDef(schema, field.of);
@@ -130,6 +133,7 @@ function scalarOk(type: ScalarFieldType, value: unknown): boolean {
   if (type === "boolean") return typeof value === "boolean";
   if (type === "number") return typeof value === "number" && Number.isFinite(value);
   if (typeof value !== "string") return false;
+  if (type === "file") return safeFileUrl(value);
   if (type === "color") return value === "" || /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value);
   if (type === "date") return /^\d{4}-\d{2}-\d{2}$/.test(value);
   if (type === "image" || type === "url") return safeUrl(value);
@@ -138,7 +142,7 @@ function scalarOk(type: ScalarFieldType, value: unknown): boolean {
 
 function requireValue(field: FieldDef, value: unknown, path: string, message: Translator) {
   if (value === undefined || value === null) fail(path, "validation.schema.required", message);
-  if (typeof value === "string" && ["string", "text", "markdown", "image", "url"].includes(field.type) && !value.trim()) fail(path, "validation.schema.required", message);
+  if (typeof value === "string" && ["string", "text", "markdown", "image", "file", "url"].includes(field.type) && !value.trim()) fail(path, "validation.schema.required", message);
   if (field.required && Array.isArray(value) && !value.length) fail(path, "validation.schema.required", message);
 }
 
@@ -214,8 +218,9 @@ function validateFieldValue(schema: Schema, field: FieldDef, value: unknown, pat
     validateReference(schema, value, field.to ?? [], path, documents, message);
     return;
   }
-  if ((field.type === "url" || field.type === "image") && value === "" && !field.required) return;
+  if ((field.type === "url" || field.type === "image" || field.type === "file") && value === "" && !field.required) return;
   if (!scalarOk(field.type as ScalarFieldType, value)) fail(path, "validation.schema.scalar", message, { type: field.type });
+  if (field.type === "file" && !matchesMediaAccept(value as string, field.accept)) fail(path, "validation.schema.scalar", message, { type: field.accept ?? "file" });
 }
 
 type ItemDef = { type: ScalarFieldType | "object" | "reference"; name?: string; fields?: FieldDef[]; to?: string[] };

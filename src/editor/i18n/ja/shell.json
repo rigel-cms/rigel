@@ -94,6 +94,7 @@
   "shell.eraseData": "データを消去",
   "shell.eraseBrowserDataDescription": "このブラウザーからRigelの設定、APIキー、GitHubのログイン情報、未保存の下書きを削除します。リポジトリに保存済みのファイルは変更されません。エディターが再読み込みされます。",
   "shell.name": "名前",
+  "shell.path": "パス",
   "shell.slug": "スラッグ",
   "shell.title": "タイトル",
   "shell.category": "カテゴリー",

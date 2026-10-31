@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "Не удалось импортировать фотографию ({status})",
   "media.invalidImportedUrl": "Некорректный URL импортированной фотографии",
   "media.providerVideo": "Видео из сервиса {provider}",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "Выбрать файл",
+  "media.removeFile": "Убрать файл",
+  "media.noFile": "Нет файла",
+  "media.useFile": "Использовать файл",
+  "media.fileSources": "Источники файлов",
+  "media.uploadingFile": "Загрузка файла…",
+  "media.chooseAcceptedFile": "Выберите поддерживаемый файл формата: {accept}.",
+  "media.uploadFailedGeneric": "Не удалось загрузить файл"
 }

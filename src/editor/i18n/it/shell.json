@@ -94,6 +94,7 @@
   "shell.eraseData": "Cancella dati",
   "shell.eraseBrowserDataDescription": "Verranno rimossi da questo browser le impostazioni di Rigel, le chiavi API, l’accesso a GitHub e le bozze non salvate. I file salvati nel repository non verranno modificati. L’editor verrà ricaricato.",
   "shell.name": "Nome",
+  "shell.path": "Percorso",
   "shell.slug": "Slug",
   "shell.title": "Titolo",
   "shell.category": "Categoria",

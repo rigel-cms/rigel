@@ -94,6 +94,7 @@
   "shell.eraseData": "Effacer les données",
   "shell.eraseBrowserDataDescription": "Cette action supprime les paramètres Rigel, les clés API, la connexion GitHub et les brouillons non enregistrés de ce navigateur. Les fichiers enregistrés dans le dépôt ne seront pas modifiés. L’éditeur sera rechargé.",
   "shell.name": "Nom",
+  "shell.path": "Chemin",
   "shell.slug": "Identifiant d’URL",
   "shell.title": "Titre",
   "shell.category": "Catégorie",

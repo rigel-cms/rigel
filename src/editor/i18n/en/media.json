@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "Photo import failed ({status})",
   "media.invalidImportedUrl": "Invalid imported photo URL",
   "media.providerVideo": "{provider} Video",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "Choose file",
+  "media.removeFile": "Remove file",
+  "media.noFile": "No file",
+  "media.useFile": "Use file",
+  "media.fileSources": "File sources",
+  "media.uploadingFile": "Uploading file…",
+  "media.chooseAcceptedFile": "Choose a supported file matching: {accept}.",
+  "media.uploadFailedGeneric": "File upload failed"
 }

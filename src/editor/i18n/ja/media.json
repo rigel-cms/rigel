@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "写真のインポートに失敗しました（{status}）",
   "media.invalidImportedUrl": "インポートした写真のURLが無効です",
   "media.providerVideo": "{provider}の動画",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "ファイルを選択",
+  "media.removeFile": "ファイルを解除",
+  "media.noFile": "ファイルなし",
+  "media.useFile": "ファイルを使用",
+  "media.fileSources": "ファイルのソース",
+  "media.uploadingFile": "ファイルをアップロード中…",
+  "media.chooseAcceptedFile": "対応する形式のファイルを選択してください：{accept}。",
+  "media.uploadFailedGeneric": "ファイルのアップロードに失敗しました"
 }

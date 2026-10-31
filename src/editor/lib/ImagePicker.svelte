@@ -5,7 +5,7 @@
   import ActionDialog from "./ActionDialog.svelte";
   import Select from "./Select.svelte";
   import { getSettings, setSettings } from "./settings";
-  import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName } from "../../media-types";
+  import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName, matchesMediaAccept, safeFileUrl } from "../../media-types";
   import config from "virtual:rigel-config";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
   import type { EmbedData } from "../blocks/embed";
@@ -13,12 +13,13 @@
   import { filterMedia, modifiedMonth, mediaSize, mediaIcon, assetFile, type MediaAsset } from "./media-library";
   import { searchImages, importStockImage, importImageUrl, uploadMedia, safeImageUrl, STOCK_PROVIDERS, type StockResult, type StockSource } from "./images";
 
-  let { value = "", altText = "", triggerLabel, kind = "image", video, onvideo, embed, onembed, onpick, inline = false, toolbar = false, hiddenTrigger = false, onopen, onclose }: {
+  let { value = "", altText = "", triggerLabel, kind = "image", accept, video, onvideo, embed, onembed, onpick, inline = false, toolbar = false, hiddenTrigger = false, onopen, onclose }: {
     video?: VideoData;
     onvideo?: (video: VideoData) => void;
     embed?: EmbedData;
     onembed?: (embed: EmbedData) => void;
-    kind?: "image" | "video";
+    kind?: "image" | "video" | "file";
+    accept?: string;
     value?: string; onpick?: (url: string, alt: string, credit?: StockResult) => void;
     altText?: string; triggerLabel?: string;
     inline?: boolean; toolbar?: boolean; hiddenTrigger?: boolean; onopen?: () => void; onclose?: () => void;
@@ -30,7 +31,7 @@
   const providerTab = $derived(tab === "youtube" || tab === "vimeo");
   const editing = $derived(!!embed || !!value);
   const stockKeys = $derived(open ? getSettings().apiKeys : null);
-  const tabs = $derived((kind === "video" ? ["library", "upload", "url", "youtube", "vimeo"] : ["library", "upload", "url", "picsum", ...Object.keys(STOCK_PROVIDERS).filter(source => stockKeys?.[source as keyof typeof STOCK_PROVIDERS]?.trim())]) as (typeof tab)[]);
+  const tabs = $derived((kind === "file" ? ["library", "upload"] : kind === "video" ? ["library", "upload", "url", "youtube", "vimeo"] : ["library", "upload", "url", "picsum", ...Object.keys(STOCK_PROVIDERS).filter(source => stockKeys?.[source as keyof typeof STOCK_PROVIDERS]?.trim())]) as (typeof tab)[]);
   let videoTitle = $state("");
   let privacy = $state(true);
   let muted = $state(false);
@@ -73,6 +74,7 @@
   const months = $derived([...new Set(assets.map(a => modifiedMonth(a.modified)).filter(Boolean))].sort().reverse());
   function resetFilters() { filter = ""; format = ""; month = ""; }
   function selectAsset(asset: MediaAsset) {
+    if (kind === "file" && (!safeFileUrl(asset.url) || !matchesMediaAccept(asset.url, accept))) { error = $t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }); return; }
     librarySelection = asset.url; selected = {url: asset.url, asset};
     metaName = asset.name; metaTitle = asset.title ?? ""; metaDescription = asset.description ?? ""; metaAlt = asset.alt ?? "";
     alt = value ? altText : asset.alt ?? "";
@@ -117,7 +119,7 @@
     const response = await fetch("/rigel/media.json", { cache: "no-store", headers: { "Accept-Language": $locale } });
     if (!response.ok) throw new Error($t("media.listingUnavailable"));
     const data = await response.json();
-    assets = (data.assets ?? data.images).filter((asset: MediaAsset) => inline || asset.type?.startsWith(kind === "video" ? "video/" : "image/"));
+    assets = (data.assets ?? data.images).filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
     writable = data.writable === true;
     folder = data.folder;
   }
@@ -162,11 +164,13 @@
     if (!selected || picking) return;
     const request = ++requestId;
     const choice = selected;
+    if (kind === "file" && !matchesMediaAccept(choice.file?.name ?? choice.url, accept)) { error = $t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }); return; }
     const metadata = metadataImport ? { title: metaTitle.trim(), description: metaDescription.trim(), ...(imageImport ? { alt: alt.trim() } : {}) } : null;
     picking = true; error = "";
     try {
       const url = choice.file ? await uploadMedia(choice.file) : choice.stock ? await importStockImage(choice.stock) : needsImport ? await importImageUrl(choice.url) : choice.url;
       if (!safeImageUrl(url)) throw new Error($t("media.unsafeMediaUrl"));
+      if (kind === "file" && (!safeFileUrl(url) || !matchesMediaAccept(url, accept))) throw new Error($t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }));
       if (metadata) {
         const saved = await fetch("/rigel/api/local/media", { method: "PUT", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url, ...metadata }) });
         if (!saved.ok) throw new Error($t("media.uploadedMetadataFailed", { status: saved.status }));
@@ -179,15 +183,16 @@
         else onpick?.(url, alt, choice.stock);
         close();
       }
-    } catch (e) { if (request === requestId) error = e instanceof Error ? e.message : $t("media.photoImportFailed"); }
+    } catch (e) { if (request === requestId) error = e instanceof Error ? e.message : $t(kind === "file" ? "media.uploadFailedGeneric" : "media.photoImportFailed"); }
     finally { if (request === requestId) picking = false; }
   }
   function upload(file?: File) {
     if (!file || picking) return;
     error = "";
     const limit = maxFileSize;
-    if (!safeMediaName(file.name) || (!inline && mediaMetadata(file.name)?.category !== (kind === "video" ? "Video" : "Images")) || file.size > limit) {
-      error = $t(inline ? "media.chooseSupportedFile" : kind === "video" ? "media.chooseSupportedVideo" : "media.chooseSupportedImage", { limit: limit / 1024 / 1024 }); return;
+    if (kind === "file" && !matchesMediaAccept(file.name, accept)) { error = $t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }); return; }
+    if (!safeMediaName(file.name) || (!inline && kind !== "file" && mediaMetadata(file.name)?.category !== (kind === "video" ? "Video" : "Images")) || file.size > limit) {
+      error = $t(inline || kind === "file" ? "media.chooseSupportedFile" : kind === "video" ? "media.chooseSupportedVideo" : "media.chooseSupportedImage", { limit: limit / 1024 / 1024 }); return;
     }
     const type = mediaMetadata(file.name)!.type;
     releaseFile(); objectURL = URL.createObjectURL(new Blob([file], { type: type === "text/plain" ? "text/plain; charset=utf-8" : type }));
@@ -225,9 +230,11 @@
   <button bind:this={trigger} data-image-trigger={kind === "image" ? "" : undefined} type="button" aria-label={triggerLabel ?? $t("media.insertImage")} data-tooltip={triggerLabel ?? $t("media.insertImage")} hidden={hiddenTrigger} onmousedown={event => event.preventDefault()} onclick={launch}><Icon name="image" size={18} /></button>
 {:else}
   <div class="image-field">
-    {#if value}<img src={value} alt="" class="preview" />{:else}<div class="preview empty">{$t("media.noImage")}</div>{/if}
+    {#if kind === "file"}
+      {#if value && safeFileUrl(value)}<a href={value} download>{assetFile(value)}</a>{:else}<span>{$t("media.noFile")}</span>{/if}
+    {:else if value}<img src={value} alt="" class="preview" />{:else}<div class="preview empty">{$t("media.noImage")}</div>{/if}
     <button bind:this={trigger} type="button" class="outlined" onclick={launch}>{$t("media.choose")}</button>
-    {#if value && onpick}<button type="button" class="outlined icon-only" aria-label={$t("media.removeImage")} data-tooltip={$t("media.removeImage")} onclick={() => onpick?.("", "")}><Icon name="x" size={14} /></button>{/if}
+    {#if value && onpick}<button type="button" class="outlined icon-only" aria-label={$t(kind === "file" ? "media.removeFile" : "media.removeImage")} data-tooltip={$t(kind === "file" ? "media.removeFile" : "media.removeImage")} onclick={() => onpick?.("", "")}><Icon name="x" size={14} /></button>{/if}
   </div>
 {/if}
 
@@ -239,7 +246,7 @@
       <button type="button" class="outlined icon-only" data-tooltip={$t("media.listView")} aria-label={$t("media.listView")} aria-pressed={view === "list"} onclick={() => setView("list")}><Icon name="listBullets" size={18} /></button>
     </div>
     <div class="media-select">
-      <Select ariaLabel={$t(inline ? "media.type" : kind === "video" ? "media.videoFormat" : "media.imageFormat")} value={format} onchange={next => { format = String(next); }} options={inline ? [{ value: "", label: $t("media.allItems") }, ...MEDIA_CATEGORIES.map(category => ({ value: category, label: $t(`media.category.${category}`) }))] : kind === "video" ? [{ value: "", label: $t("media.allVideos") }, { value: "video/mp4", label: "MP4" }, { value: "video/webm", label: "WebM" }, { value: "video/quicktime", label: "MOV" }] : [{ value: "", label: $t("media.allImages") }, ...["jpeg", "png", "webp", "gif", "avif"].map(format => ({ value: `image/${format}`, label: format === "jpeg" ? "JPEG" : format === "webp" ? "WebP" : format.toUpperCase() }))]} />
+      <Select ariaLabel={$t(inline || kind === "file" ? "media.type" : kind === "video" ? "media.videoFormat" : "media.imageFormat")} value={format} onchange={next => { format = String(next); }} options={inline || kind === "file" ? [{ value: "", label: $t("media.allItems") }, ...MEDIA_CATEGORIES.map(category => ({ value: category, label: $t(`media.category.${category}`) }))] : kind === "video" ? [{ value: "", label: $t("media.allVideos") }, { value: "video/mp4", label: "MP4" }, { value: "video/webm", label: "WebM" }, { value: "video/quicktime", label: "MOV" }] : [{ value: "", label: $t("media.allImages") }, ...["jpeg", "png", "webp", "gif", "avif"].map(format => ({ value: `image/${format}`, label: format === "jpeg" ? "JPEG" : format === "webp" ? "WebP" : format.toUpperCase() }))]} />
     </div>
     <div class="media-select">
       <Select ariaLabel={$t("media.modifiedMonth")} data-tooltip={$t("media.modifiedMonthHint")} value={month} onchange={next => { month = String(next); }} options={[{ value: "", label: $t("media.allModifiedDates") }, ...months.map(date => ({ value: date, label: new Date(date + "-01T00:00:00Z").toLocaleDateString($locale, { month: "long", year: "numeric", timeZone: "UTC" }) }))]} />
@@ -261,9 +268,9 @@
 {/snippet}
 
 {#if open}
-  <dialog bind:this={dialog} class="rigel-modal-backdrop rigel image-dialog" class:media-insert={providerTab} aria-label={$t(providerTab ? editing ? "media.editVideo" : "media.addVideoLink" : inline ? "media.uploadMedia" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")} oncancel={e => { e.preventDefault(); if (!picking) close(); }} onclick={e => { if (e.target === dialog && !picking) close(); }}>
+  <dialog bind:this={dialog} class="rigel-modal-backdrop rigel image-dialog" class:media-insert={providerTab} aria-label={$t(providerTab ? editing ? "media.editVideo" : "media.addVideoLink" : inline ? "media.uploadMedia" : kind === "file" ? "media.chooseFile" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")} oncancel={e => { e.preventDefault(); if (!picking) close(); }} onclick={e => { if (e.target === dialog && !picking) close(); }}>
     <div class="rigel-modal image-picker">
-      <div class="media-head"><h2>{providerTab ? $t(editing ? "media.editProviderVideo" : "media.addProviderVideo", { provider: tab === "youtube" ? "YouTube" : "Vimeo" }) : $t(selected ? "media.previewMedia" : inline ? "media.uploadMedia" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")}</h2><button bind:this={cancel} type="button" class="close" aria-label={$t("media.close")} disabled={picking} onclick={close}><Icon name="x" size={14} weight="bold" /></button></div>
+      <div class="media-head"><h2>{providerTab ? $t(editing ? "media.editProviderVideo" : "media.addProviderVideo", { provider: tab === "youtube" ? "YouTube" : "Vimeo" }) : $t(selected ? "media.previewMedia" : inline ? "media.uploadMedia" : kind === "file" ? "media.chooseFile" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")}</h2><button bind:this={cancel} type="button" class="close" aria-label={$t("media.close")} disabled={picking} onclick={close}><Icon name="x" size={14} weight="bold" /></button></div>
       {#if selected}
         <div class="media-selection" class:media-editing={(inline && !!selected.asset) || metadataImport}>
           <div class="media-preview">
@@ -292,7 +299,7 @@
             <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="text" readonly value={selected.url} /></label>
           {/if}
           {#if imageImport && !selected.file}<label><span>{$t("media.imageUrl")}</span><input type="text" readonly value={selected.url} /></label>{/if}
-          {#if !inline && !imageImport}<label><span>{$t(kind === "video" ? "media.captionOptional" : "media.descriptiveAlt")}</span><input aria-label={kind === "video" ? $t("media.videoCaption") : undefined} type="text" bind:value={alt} /></label>{/if}
+          {#if !inline && kind !== "file" && !imageImport}<label><span>{$t(kind === "video" ? "media.captionOptional" : "media.descriptiveAlt")}</span><input aria-label={kind === "video" ? $t("media.videoCaption") : undefined} type="text" bind:value={alt} /></label>{/if}
           {#if kind === "video"}
             <label class="inline"><input type="checkbox" role="switch" class="switch" aria-label={$t("media.muted")} bind:checked={muted} /><span>{$t("media.muted")}</span></label>
             <label class="inline"><input type="checkbox" role="switch" class="switch" aria-label={$t("media.showControls")} bind:checked={controls} /><span>{$t("media.showControls")}</span></label>
@@ -313,12 +320,12 @@
             <button type="button" class="primary" disabled={picking || savingMeta} onclick={saveMetadata}>{$t(savingMeta ? "media.saving" : "media.save")}</button>
           {:else}
             <button type="button" class="outlined" disabled={picking} onclick={() => { selected = null; releaseFile(); }}>{$t("media.back")}</button>
-            {#if inline && tab === "library"}<button type="button" class="primary" onclick={close}>{$t("media.done")}</button>{:else}<button type="button" class="primary" disabled={picking || (needsImport && !writable)} onclick={confirm}>{$t(picking ? kind === "video" ? "media.uploadingVideo" : "media.importingPhoto" : kind === "video" ? "media.useVideo" : !inline ? "media.insertImage" : selected.file && mediaMetadata(selected.file.name)?.category !== "Images" ? "media.uploadFile" : "media.importImage")}</button>{/if}
+            {#if inline && tab === "library"}<button type="button" class="primary" onclick={close}>{$t("media.done")}</button>{:else}<button type="button" class="primary" disabled={picking || (needsImport && !writable)} onclick={confirm}>{$t(picking ? kind === "file" ? "media.uploadingFile" : kind === "video" ? "media.uploadingVideo" : "media.importingPhoto" : kind === "file" ? selected.file ? "media.uploadFile" : "media.useFile" : kind === "video" ? "media.useVideo" : !inline ? "media.insertImage" : selected.file && mediaMetadata(selected.file.name)?.category !== "Images" ? "media.uploadFile" : "media.importImage")}</button>{/if}
           {/if}</div>
           </div>
         </div>
       {:else}
-        <div class="tabs" aria-label={$t(kind === "video" ? "media.videoSources" : "media.imageSources")}>
+        <div class="tabs" aria-label={$t(kind === "file" ? "media.fileSources" : kind === "video" ? "media.videoSources" : "media.imageSources")}>
           {#each tabs.filter(source => !inline || (source !== "library" && source !== "unsplash")) as source}<button type="button" data-source={source} class:active={tab === source} aria-pressed={tab === source} disabled={picking} onclick={() => changeTab(source)}>{source === "youtube" ? "YouTube" : source === "vimeo" ? "Vimeo" : source === "library" || source === "upload" || source === "url" ? $t(`media.source.${source}`) : source}</button>{/each}
         </div>
         {#if inline}<p class="hint">{$t("media.unsplashUploadsHint")}</p>{/if}
@@ -335,7 +342,8 @@
           {@render libraryBrowser()}
         {:else if tab === "upload"}
           <p class="hint">{$t("media.localFileHint")}</p>
-          {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
+          {#if kind === "file" && accept}<p class="hint">{$t("media.chooseAcceptedFile", { accept })}</p>{/if}
+          {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
         {:else if tab === "url"}
           <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="url" bind:value={urlInput} placeholder={$t(kind === "video" ? "media.videoUrlPlaceholder" : "media.imageUrlPlaceholder")} /></label>
           <button type="button" class="primary" onclick={run}>{$t("media.useUrl")}</button>

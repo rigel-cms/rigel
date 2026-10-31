@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "Foto importeren mislukt ({status})",
   "media.invalidImportedUrl": "Ongeldige URL van de geïmporteerde foto",
   "media.providerVideo": "Video van {provider}",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "Bestand kiezen",
+  "media.removeFile": "Bestand verwijderen",
+  "media.noFile": "Geen bestand",
+  "media.useFile": "Bestand gebruiken",
+  "media.fileSources": "Bestandsbronnen",
+  "media.uploadingFile": "Bestand uploaden…",
+  "media.chooseAcceptedFile": "Kies een ondersteund bestand dat overeenkomt met: {accept}.",
+  "media.uploadFailedGeneric": "Uploaden mislukt"
 }

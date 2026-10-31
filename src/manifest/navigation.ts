@@ -32,7 +32,7 @@ export function buildSidebar(manifest: Manifest, message: Translator = systemMes
   const link = (target: SidebarTarget, label: string): SidebarLink => ({ kind: "link", target, label });
   const types = manifest.schema?.documents ?? [];
   const pages = manifest.pages.filter(page => !page.shared);
-  const categories = [...new Set(pages.map(page => page.category).filter((category): category is string => !!category))].sort();
+  const categories = [...new Set([...pages, ...types.filter(type => !type.shared)].map(entry => entry.category).filter((category): category is string => !!category))].sort();
   const defaults: SidebarNode[] = [
     { kind: "heading", label: message("system.sidebar.website") },
     link({ kind: "pages" }, message("system.sidebar.pages")),
@@ -72,7 +72,8 @@ export function buildSidebar(manifest: Manifest, message: Translator = systemMes
     used.add(key);
     nodes.push({ ...item, label: entry.label ?? item.label, ...(entry.icon ? { icon: entry.icon } : {}) });
   }
-  const remaining = defaults.filter((node): node is SidebarLink => node.kind === "link" && !used.has(navigationKey(node.target)));
+  const allPages = used.has(navigationKey({ kind: "pages" }));
+  const remaining = defaults.filter((node): node is SidebarLink => node.kind === "link" && !used.has(navigationKey(node.target)) && !(allPages && node.target.kind === "pages" && node.target.category));
   if (remaining.length) nodes.push({ kind: "heading", label: message("system.sidebar.more") }, ...remaining);
   return nodes;
 }

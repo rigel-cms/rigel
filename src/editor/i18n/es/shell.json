@@ -94,6 +94,7 @@
   "shell.eraseData": "Borrar datos",
   "shell.eraseBrowserDataDescription": "Se eliminarán de este navegador la configuración de Rigel, las claves de API, el inicio de sesión de GitHub y los borradores sin guardar. Los archivos guardados en el repositorio no cambiarán. El editor se volverá a cargar.",
   "shell.name": "Nombre",
+  "shell.path": "Ruta",
   "shell.slug": "Slug",
   "shell.title": "Título",
   "shell.category": "Categoría",

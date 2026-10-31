@@ -94,6 +94,7 @@
   "shell.eraseData": "Удалить данные",
   "shell.eraseBrowserDataDescription": "Из этого браузера будут удалены настройки Rigel, ключи API, данные входа в GitHub и несохранённые черновики. Сохранённые файлы репозитория не изменятся. Редактор перезагрузится.",
   "shell.name": "Название",
+  "shell.path": "Путь",
   "shell.slug": "Слаг",
   "shell.title": "Заголовок",
   "shell.category": "Категория",

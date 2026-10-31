@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "Fotoimport fehlgeschlagen ({status})",
   "media.invalidImportedUrl": "Ungültige URL des importierten Fotos",
   "media.providerVideo": "Video von {provider}",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "Datei auswählen",
+  "media.removeFile": "Datei entfernen",
+  "media.noFile": "Keine Datei",
+  "media.useFile": "Datei verwenden",
+  "media.fileSources": "Dateiquellen",
+  "media.uploadingFile": "Datei wird hochgeladen…",
+  "media.chooseAcceptedFile": "Wählen Sie eine unterstützte Datei passend zu: {accept}.",
+  "media.uploadFailedGeneric": "Datei-Upload fehlgeschlagen"
 }

@@ -94,6 +94,7 @@
   "shell.eraseData": "Erase data",
   "shell.eraseBrowserDataDescription": "This removes Rigel settings, API keys, GitHub login and unsaved drafts from this browser. Saved repository files will not change. The editor will reload.",
   "shell.name": "Name",
+  "shell.path": "Path",
   "shell.slug": "Slug",
   "shell.title": "Title",
   "shell.category": "Category",

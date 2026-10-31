@@ -1,4 +1,4 @@
-export type ScalarFieldType = "string" | "text" | "markdown" | "boolean" | "number" | "date" | "image" | "url" | "color" | "code" | "password";
+export type ScalarFieldType = "string" | "text" | "markdown" | "boolean" | "number" | "date" | "image" | "file" | "url" | "color" | "code" | "password";
 
 export type ArrayItem =
   | { type: "object"; name?: string; title?: string; fields?: FieldDef[] }
@@ -11,6 +11,7 @@ export interface FieldDef {
   labelKey?: string;
   type: ScalarFieldType | "object" | "array" | "reference";
   placeholder?: string;
+  accept?: string;
   required?: boolean;
   initialValue?: unknown;
   fields?: FieldDef[];
@@ -41,6 +42,7 @@ export interface DocumentDef {
   folder: string;
   fields: FieldDef[];
   columns?: string[];
+  category?: string;
   shared?: boolean;
   singleton?: boolean;
   demo?: boolean;

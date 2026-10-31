@@ -86,10 +86,10 @@
   </label>
 {:else if field.type === "markdown"}
   <MarkdownEditor label={fieldLabel} value={typeof value === "string" ? value : ""} oninput={(next) => onvalue(next)} />
-{:else if field.type === "image"}
+{:else if field.type === "image" || field.type === "file"}
   <div class="schema-field">
     <span class="schema-label">{label}</span>
-    <ImagePicker value={typeof value === "string" ? value : ""} onpick={(url) => onvalue(url)} />
+    <ImagePicker kind={field.type} accept={field.accept} value={typeof value === "string" ? value : ""} onpick={(url) => onvalue(url)} />
   </div>
 {:else if field.type === "boolean"}
   <label class="inline">

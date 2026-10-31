@@ -35,7 +35,7 @@ export function selectionInContent(manifest: Manifest, selection: Selection | nu
   if (!selection) return true;
   switch (selection.kind) {
     case "page": return manifest.pages.some(page => page.slug === selection.slug);
-    case "pages": return !selection.category || manifest.pages.some(page => !page.shared && page.category === selection.category);
+    case "pages": return !selection.category || manifest.pages.some(page => !page.shared && page.category === selection.category) || !!manifest.schema?.documents.some(type => !type.shared && type.category === selection.category);
     case "document":
     case "documents": return !!manifest.schema?.documents.some(type => type.name === selection.type);
     case "post": return !!manifest.collections?.some(collection => collection.name === selection.collection);

@@ -94,6 +94,7 @@
   "shell.eraseData": "Daten löschen",
   "shell.eraseBrowserDataDescription": "Dadurch werden Rigel-Einstellungen, API-Schlüssel, die GitHub-Anmeldung und ungespeicherte Entwürfe aus diesem Browser entfernt. Gespeicherte Repository-Dateien bleiben unverändert. Der Editor wird neu geladen.",
   "shell.name": "Name",
+  "shell.path": "Pfad",
   "shell.slug": "Slug",
   "shell.title": "Titel",
   "shell.category": "Kategorie",

@@ -32,3 +32,20 @@ export function safeMediaName(name: string) {
 export function mediaAccept(imagesOnly = false) {
   return Object.keys(MEDIA_TYPES).filter(ext => !imagesOnly || MEDIA_TYPES[ext].category === 'Images').map(ext => '.' + ext).join(',');
 }
+
+export function matchesMediaAccept(name: string, accept?: string): boolean {
+  const metadata = mediaMetadata(name);
+  if (!metadata) return false;
+  return !accept || accept.toLowerCase().split(',').some(token => {
+    const spec = token.trim();
+    return spec === '.' + metadata.extension || spec === metadata.type || (spec.endsWith('/*') && metadata.type.startsWith(spec.slice(0, -1)));
+  });
+}
+
+export function safeFileUrl(value: string): boolean {
+  if (!value.startsWith('/') || value.startsWith('//') || /[\s\u0000-\u001f\u007f\\?#]/.test(value)) return false;
+  try {
+    const parts = value.slice(1).split('/').map(part => decodeURIComponent(part));
+    return parts.every(part => !!part && part !== '.' && part !== '..' && !/[\u0000-\u001f\u007f/\\?#]/.test(part)) && !!mediaMetadata(parts.at(-1)!);
+  } catch { return false; }
+}

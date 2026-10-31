@@ -449,7 +449,7 @@
 
   const columns = $derived.by((): { key: string; label: string; image?: boolean }[] => {
     if (sel?.kind === "menus") return [{ key: "title", label: $t("shell.name") }, { key: "slug", label: $t("shell.slug") }];
-    if (sel?.kind === "pages") return [{ key: "label", label: $t("shell.title") }, { key: "slug", label: $t("shell.slug") }, { key: "category", label: $t("shell.category") }];
+    if (sel?.kind === "pages") return [{ key: "label", label: $t("shell.title") }, { key: "slug", label: $t("shell.slug") }, { key: "path", label: $t("shell.path") }, { key: "category", label: $t("shell.category") }];
     const source = sel?.kind === "documents" ? activeDocType : coll;
     if (!source) return [];
     const keys = ["title", "slug", ...(source.columns ?? (sel?.kind === "documents" ? [] : source.fields.filter(field => !isSeoField(field.key)).map(field => field.key)))];
@@ -510,11 +510,12 @@
   const sortedPages = $derived.by(() => {
     const rows = [
       ...visibleContent.pages.filter((p) => !p.shared && (pageCategory === undefined || p.category === pageCategory))
-        .map((p) => ({ slug: p.slug, title: p.label, category: p.category, draft: false, target: { kind: "page", slug: p.slug } as Sel })),
-      ...(pageCategory === undefined ? pageDocuments
-        .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), title: String(doc.data.title ?? doc.slug), category: undefined, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel })) : []),
+        .map((p) => ({ slug: p.slug, path: previewPath(manifest.preview ?? {}, { kind: "page", slug: p.slug }), title: p.label, category: p.category, draft: false, target: { kind: "page", slug: p.slug } as Sel })),
+      ...pageDocuments
+        .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), path: previewPath(manifest.preview ?? {}, { kind: "document", type: doc.type, slug: effectiveSlug(doc.data, doc.slug) }), title: String(doc.data.title ?? doc.slug), category: docTypes.find(type => type.name === doc.type)?.category, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel }))
+        .filter(doc => pageCategory === undefined || doc.category === pageCategory),
     ];
-    const key = sortBy === "slug" || sortBy === "category" ? sortBy : "title";
+    const key = sortBy === "slug" || sortBy === "category" || sortBy === "path" ? sortBy : "title";
     return rows.sort((a, b) => String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * sortDir);
   });
   function documentCell(doc: ContentDocument, key: string): string {
@@ -531,7 +532,7 @@
     : sel?.kind === "documents"
     ? typeDocuments.map((doc) => ({ slug: doc.slug, cells: Object.fromEntries(columns.map(column => [column.key, documentCell(doc, column.key)])), draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel }))
     : sel?.kind === "pages"
-    ? sortedPages.map((p) => ({ slug: p.slug, cells: { label: p.title, slug: p.slug, category: p.category ?? "—" } as Record<string, string>, draft: p.draft, target: p.target }))
+    ? sortedPages.map((p) => ({ slug: p.slug, cells: { label: p.title, slug: p.slug, path: p.path ?? "—", category: p.category ?? "—" } as Record<string, string>, draft: p.draft, target: p.target }))
     : sortedPosts.map((p) => ({ slug: p.slug, cells: Object.fromEntries(columns.map((c) => [c.key, cellValue(p, c.key)])), draft: Boolean(p.frontmatter.draft), target: { kind: "post", collection: coll!.name, slug: p.slug } as Sel })));
   const titleColumn = $derived(sel?.kind === "pages" ? "label" : "title");
 
@@ -589,9 +590,10 @@
     if (target.kind === "menus") return sel.kind === "menu";
     if (target.kind === "documents") return sel.kind === "document" && sel.type === target.type;
     if (target.kind === "pages") {
-      if (sel.kind === "page") return !page?.shared && (target.category ? page?.category === target.category : !page?.category);
-      const typeName = sel.kind === "document" ? sel.type : null;
-      return !target.category && docTypes.some(type => type.name === typeName && !type.shared);
+      const entry = sel.kind === "page" ? page : sel.kind === "document" ? docTypes.find(type => type.name === sel.type) : undefined;
+      if (!entry || entry.shared) return false;
+      const category = sidebar.some(node => node.kind === "link" && node.target.kind === "pages" && node.target.category === entry.category) ? entry.category : undefined;
+      return target.category === category;
     }
     return false;
   }

@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "Échec de l’importation de la photo ({status})",
   "media.invalidImportedUrl": "URL de la photo importée invalide",
   "media.providerVideo": "Vidéo {provider}",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "Choisir un fichier",
+  "media.removeFile": "Retirer le fichier",
+  "media.noFile": "Aucun fichier",
+  "media.useFile": "Utiliser le fichier",
+  "media.fileSources": "Sources de fichiers",
+  "media.uploadingFile": "Téléversement du fichier…",
+  "media.chooseAcceptedFile": "Choisissez un fichier pris en charge correspondant à : {accept}.",
+  "media.uploadFailedGeneric": "Échec du téléversement"
 }

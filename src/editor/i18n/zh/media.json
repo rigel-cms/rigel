@@ -162,5 +162,13 @@
   "media.photoImportFailedStatus": "照片导入失败（{status}）",
   "media.invalidImportedUrl": "导入照片的 URL 无效",
   "media.providerVideo": "{provider} 视频",
-  "media.embedCaption": "{provider} · {title}"
+  "media.embedCaption": "{provider} · {title}",
+  "media.chooseFile": "选择文件",
+  "media.removeFile": "移除文件",
+  "media.noFile": "无文件",
+  "media.useFile": "使用文件",
+  "media.fileSources": "文件来源",
+  "media.uploadingFile": "正在上传文件…",
+  "media.chooseAcceptedFile": "请选择符合以下格式的受支持文件：{accept}。",
+  "media.uploadFailedGeneric": "文件上传失败"
 }

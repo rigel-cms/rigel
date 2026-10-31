@@ -94,6 +94,7 @@
   "shell.eraseData": "清除数据",
   "shell.eraseBrowserDataDescription": "这会清除此浏览器中的 Rigel 设置、API 密钥、GitHub 登录信息和未保存的草稿。已保存的仓库文件不会改变。编辑器将重新加载。",
   "shell.name": "名称",
+  "shell.path": "路径",
   "shell.slug": "路径标识",
   "shell.title": "标题",
   "shell.category": "分类",

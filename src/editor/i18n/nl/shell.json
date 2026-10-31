@@ -94,6 +94,7 @@
   "shell.eraseData": "Gegevens wissen",
   "shell.eraseBrowserDataDescription": "Hiermee verwijder je Rigel-instellingen, API-sleutels, de GitHub-aanmelding en niet-opgeslagen concepten uit deze browser. Opgeslagen repositorybestanden blijven ongewijzigd. De editor wordt opnieuw geladen.",
   "shell.name": "Naam",
+  "shell.path": "Pad",
   "shell.slug": "Slug",
   "shell.title": "Titel",
   "shell.category": "Categorie",

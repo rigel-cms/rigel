@@ -10,7 +10,7 @@ test("comma-separated tags trim blanks, preserve literal text and follow shared 
   const element = {
     tagName: "UL",
     dataset: { rigelTags: "en.tags" },
-    getAttribute: (name: string) => name === "data-rigel-doc" ? "trainer:first" : null,
+    getAttribute: (name: string) => name === "data-rigel-doc" ? "profile:first" : null,
     replaceChildren: (...items: { textContent: string }[]) => { children = items; },
   };
   const doc = {
@@ -18,14 +18,14 @@ test("comma-separated tags trim blanks, preserve literal text and follow shared 
     querySelectorAll: (selector: string) => selector === "[data-rigel-tags]" ? [element] : [],
     createElement: () => ({ textContent: "" }),
   } as unknown as Document;
-  const documents = { "trainer:first": { en: { tags: ' Boxing, , Pilates , <img onerror="alert(1)">, ' } } };
-  patchPreview(doc, {}, "", { primary: "page-en:gym", documents });
-  expect(children.map(item => item.textContent)).toEqual(["Boxing", "Pilates", '<img onerror="alert(1)">']);
-  documents["trainer:first"].en.tags = "";
-  patchPreview(doc, {}, "", { primary: "page-en:gym", documents });
+  const documents = { "profile:first": { en: { tags: ' Design, , Research , <img onerror="alert(1)">, ' } } };
+  patchPreview(doc, {}, "", { primary: "page-en:example", documents });
+  expect(children.map(item => item.textContent)).toEqual(["Design", "Research", '<img onerror="alert(1)">']);
+  documents["profile:first"].en.tags = "";
+  patchPreview(doc, {}, "", { primary: "page-en:example", documents });
   expect(children).toEqual([]);
-  patchPreview(doc, {}, "", { primary: "page-en:gym", documents: { "trainer:first": { en: { tags: "Strength" } } } });
-  expect(children.map(item => item.textContent)).toEqual(["Strength"]);
-  patchPreview(doc, { en: { tags: "Wrong owner" } }, "", { primary: "page-en:gym", documents: {} });
-  expect(children.map(item => item.textContent)).toEqual(["Strength"]);
+  patchPreview(doc, {}, "", { primary: "page-en:example", documents: { "profile:first": { en: { tags: "Writing" } } } });
+  expect(children.map(item => item.textContent)).toEqual(["Writing"]);
+  patchPreview(doc, { en: { tags: "Wrong owner" } }, "", { primary: "page-en:example", documents: {} });
+  expect(children.map(item => item.textContent)).toEqual(["Writing"]);
 });

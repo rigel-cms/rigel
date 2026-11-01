@@ -53,8 +53,7 @@
     "src",
     "!src/**/*.test.ts",
     "README.md",
-    "docs/extensions.md",
-    "docs/content-locales.md"
+    "docs"
   ],
   "peerDependencies": {
     "astro": "^7.3.0",

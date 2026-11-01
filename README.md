@@ -18,9 +18,11 @@ Rigel edits content, not `.astro` components. Developers define the editable fie
 
 ## Get started
 
-Use the [Astro starter](https://github.com/rigel-cms/rigel-starter), or follow the [installation guide](https://rigelcms.dev/docs/getting-started/) to add Rigel to an existing site. Requires Node.js 24 and Astro 7.3 or later within Astro 7.
+Use the [Astro starter](https://github.com/rigel-cms/rigel-starter), or follow the [installation guide](docs/getting-started.md) to add Rigel to an existing site. Requires Node.js 24 and Astro 7.3 or later within Astro 7.
 
-[Documentation](https://rigelcms.dev/docs/) · [Content model](https://rigelcms.dev/docs/content-model/) · [Previews](https://rigelcms.dev/docs/preview/) · [GitHub setup](https://rigelcms.dev/docs/github-publishing/)
+[Documentation](docs/README.md) · [Content model](docs/content-model.md) · [Previews](docs/preview.md) · [GitHub setup](docs/github.md)
+
+The guides live in this repository and ship with the npm package. They describe the current source; features on `main` may not yet be in npm's `latest` release. The [documentation website](https://rigelcms.dev/docs/) is also available.
 
 ## Content languages
 

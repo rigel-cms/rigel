@@ -34,7 +34,7 @@ sidebar: [
 
 Entries appear in configured order. Use headings for labels and separators for plain dividers; these groups are flat, not nested or collapsible. A link's optional `label` overrides its content-derived label.
 
-Targets use stable identifiers rather than display labels:
+Targets use content IDs or configured names. Category targets use the exact declared category string:
 
 | Target | Opens |
 | --- | --- |

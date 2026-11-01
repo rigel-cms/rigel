@@ -68,7 +68,7 @@ const socialImage = imageUrl && ["https:", "http:"].includes(imageUrl.protocol)
 </html>
 ```
 
-Set Astro's `site` to your real public base URL so relative image paths produce production URLs; `Astro.url` is the development fallback in this example. Choose your own description fallback, title suffix and document language. The starter uses its shared Site settings for the default description and site-name suffix, rather than a fixed product name.
+Set Astro's `site` to your real public base URL so relative image paths produce production URLs; this example falls back to `Astro.url` whenever `site` is unset, including production builds. Choose your own description fallback, title suffix and document language. The starter uses its shared Site settings for the default description and site-name suffix, rather than a fixed product name.
 
 Canonical links, social title/description tags, structured data, sitemaps and language alternates remain host-template work. The example emits only the tags shown. Check the built HTML, including absolute image URLs and empty-image behavior, rather than treating the editor canvas as proof that public metadata is correct.
 

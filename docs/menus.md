@@ -90,6 +90,6 @@ The local menu endpoint supports reading and updating existing regular files. It
 
 GitHub-backed menus use the configured repository, content root and draft branch. The remote store validates the same menu shape and maximum depth, disallows menu creation, and checks the expected file state before writing. See [GitHub](github.md) for authentication, conflicts and publishing.
 
-URL validation accepts HTTP, HTTPS, mailto and tel protocols, including relative paths and fragments resolved against the site. It rejects protocol-relative URLs, backslashes, whitespace, control characters and unsafe protocols such as `javascript:`. It does not check whether the destination exists or is trustworthy. Keep the `noopener noreferrer` attributes when rendering new-tab links.
+URL validation accepts HTTP, HTTPS, mailto and tel protocols, along with relative paths and fragments whose destinations your website renderer and browser determine. It rejects protocol-relative URLs, backslashes, leading/trailing whitespace, ASCII spaces and ASCII control characters, and unsafe protocols such as `javascript:`. It does not check whether the destination exists or is trustworthy. Keep the `noopener noreferrer` attributes when rendering new-tab links.
 
 For navigation inside the CMS rather than website links, use [sidebar configuration](sidebar.md). See the [documentation index](README.md) for the other guides.

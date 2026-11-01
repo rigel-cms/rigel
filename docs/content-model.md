@@ -75,7 +75,7 @@ A schema reference declares `to: ["callout"]` and stores `{ "_ref": "callout:not
 
 Schema `markdown` fields store Markdown strings. Article collection bodies store Lexical state in `{ frontmatter, body }` JSON and have a read-only Markdown view. Keep those formats separate. Custom article blocks and widgets are covered in [Extensions](extensions.md).
 
-Markdown fields open in the article block editor when the source survives a conversion round trip. Set `sidebarOnly: true` on a `markdown` field to keep it in the properties panel even when its preview binding is available, for example a FAQ answer edited beside the question that owns it:
+In Inline preview mode, clicking an eligible bound Markdown field on a non-shared schema page opens the article block editor when the source survives a conversion round trip. Unbound fields and shared-document forms keep their properties-panel editor. Set `sidebarOnly: true` on a `markdown` field to keep it in the properties panel even when its preview binding is available, for example a FAQ answer edited beside the question that owns it:
 
 ```ts
 const faqAnswer = { key: "answer", label: "Answer", type: "markdown", sidebarOnly: true };

@@ -44,7 +44,7 @@ export default defineExtension({
       if (typeof data.label !== 'string' || !data.label.trim()) {
         throw new Error('Enter a button label.');
       }
-      if (typeof data.href !== 'string' || !/^\/[a-z0-9/-]*$/.test(data.href)) {
+      if (typeof data.href !== 'string' || !/^\/(?!\/)[a-z0-9/-]*$/.test(data.href)) {
         throw new Error('Choose a local path such as /contact/.');
       }
     },

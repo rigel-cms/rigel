@@ -82,6 +82,7 @@ try {
   await cdp('Runtime.enable'); await cdp('Page.enable'); await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await reload();
   assert.deepEqual(await rowTitles(), ['Article EN', 'Home EN', 'Legacy article', 'Legacy core', 'Locked', 'Resource EN', 'Singleton page']); checks.push('All pages initially includes every locale-eligible nonshared category');
+  const allPageTitles = await rowTitles();
   await check(`!document.querySelector('.titlebar .select-label') && document.querySelector('.titlebar button[role=combobox]').getAttribute('aria-label') === 'Category'`, 'category has accessible label without visible label');
   await check(`!document.querySelector('.pages-search button') && document.querySelector('.pages-search input').type === 'search'`, 'native search semantics with no empty clear button');
   for (const [query, expected] of [['aRtIcLe En', ['Article EN']], ['legacy-article', ['Legacy article']], ['  ReSoUrCeS  ', ['Resource EN', 'Singleton page']], ['singleton-public', ['Singleton page']], ['singleton PAGE', ['Singleton page']], ['Core', ['Home EN', 'Legacy core']], ['   ', ['Article EN', 'Home EN', 'Legacy article', 'Legacy core', 'Locked', 'Resource EN', 'Singleton page']], ['not-a-match', []]]) {
@@ -101,6 +102,21 @@ try {
   await search('  ARTICLE en '); await textClick('.table-link', 'Article EN'); await back();
   await check(`document.querySelector('.pages-search input').value === '  ARTICLE en ' && document.querySelector('.titlebar button[role=combobox]').textContent.includes('Articles')`, 'Back preserves query and selected category');
   assert.deepEqual(await rowTitles(), ['Article EN']);
+  await click('.titlebar .primary'); await wait(`!!document.querySelector('.action-dialog[open]')`); await title('Unsaved sidebar navigation');
+  await choose('.action-dialog', 'Template', 'articleEn');
+  await click('.action-dialog button[type=submit]'); await wait(`!document.querySelector('.action-dialog') && !!document.querySelector('.save-button:not(:disabled)')`);
+  await click('#nav-pages'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`);
+  await textClick('.unsaved-actions button', 'Keep editing');
+  await check(`document.querySelector('.titlebar h2').textContent === 'Unsaved sidebar navigation'`, 'cancelled sidebar navigation keeps the unsaved page');
+  await click('.back button'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Discard changes'); await wait(`!!document.querySelector('table')`);
+  await check(`document.querySelector('.pages-search input').value === '  ARTICLE en ' && document.querySelector('.titlebar button[role=combobox]').textContent.includes('Articles')`, 'cancelled sidebar navigation does not reset the Back destination filters');
+  await click('#nav-pages');
+  await check(`document.querySelector('.pages-search input').value === '' && document.querySelector('.titlebar button[role=combobox]').textContent.includes('All pages')`, 'sidebar Pages resets query and category even while already on Pages');
+  assert.deepEqual(await rowTitles(), allPageTitles);
+  await choose('.titlebar', 'Category', 'Articles'); await search('Article EN'); await textClick('.table-link', 'Article EN'); await wait(`!!document.querySelector('.back button')`);
+  await click('#nav-pages'); await wait(`!!document.querySelector('table')`);
+  await check(`document.querySelector('.pages-search input').value === '' && document.querySelector('.titlebar button[role=combobox]').textContent.includes('All pages')`, 'sidebar Pages resets filters when leaving a page editor');
+  assert.deepEqual(await rowTitles(), allPageTitles);
   await search(''); await choose('.titlebar', 'Category', 'All pages'); await search('res');
   await check(`(()=>{const heading=document.querySelector('.titlebar h2').getBoundingClientRect(), controls=document.querySelector('.pages-controls').getBoundingClientRect(), bar=document.querySelector('.titlebar').getBoundingClientRect();return controls.left > heading.right && Math.abs(controls.right-bar.right)<2 && Math.abs(controls.top-heading.top)<20})()`, 'desktop controls sit right opposite heading');
   await check(`(()=>{const rect=selector=>document.querySelector(selector).getBoundingClientRect(), heading=rect('.titlebar h2'), add=rect('.titlebar > .primary'), filter=rect('.pages-controls [role=combobox]'), search=rect('.pages-search input');const baseline=document.createElement('button');baseline.className='primary';baseline.style.position='fixed';baseline.textContent='Add new';document.querySelector('.rigel').append(baseline);const standard=baseline.getBoundingClientRect();baseline.remove();return Math.abs(add.height-standard.height)<1 && add.left>heading.right && add.right<filter.left && [add,filter,search].every(box=>Math.abs(box.top+box.height/2-heading.top-heading.height/2)<2) && [filter,search].every(box=>Math.abs(box.height-add.height)<=1)})()`, 'Add new keeps standard size beside title; compact toolbar controls stay vertically aligned');
@@ -108,6 +124,7 @@ try {
   for (const theme of ['dark', 'light']) {
     await cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
     await wait(`document.documentElement.dataset.theme === ${JSON.stringify(theme)}`);
+    await delay(200);
     await check(`(()=>{
       const luminance = color => { const rgb=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4});return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722; };
       const ratio = (a,b) => { const x=luminance(a),y=luminance(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };

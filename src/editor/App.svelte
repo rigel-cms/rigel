@@ -643,10 +643,17 @@
     action?.();
   }
 
-  function select(next: Sel | null) {
+  function select(next: Sel | null, fromSidebar = false) {
     if (manifest.contentLocales && !selectionInContent(visibleContent, next)) return;
-    if (sel && next && sameSel(sel, next)) return;
-    requestNavigation(() => openSelection(next));
+    const resetPages = fromSidebar && next?.kind === "pages";
+    if (sel && next && sameSel(sel, next) && !resetPages) return;
+    requestNavigation(() => {
+      if (resetPages) {
+        pagesFilter = next.category ?? null;
+        pagesQuery = "";
+      }
+      openSelection(next);
+    });
   }
 
   function openSelection(next: Sel | null) {
@@ -915,7 +922,7 @@
             data-tooltip={node.label}
             class:active={navActive(node.target)}
             aria-current={navActive(node.target) ? "page" : undefined}
-            onclick={() => select(node.target)}
+            onclick={() => select(node.target, true)}
           >
             <SidebarIcon name={node.icon ?? ({ pages: "files", page: "file-text", collection: "newspaper", documents: "squares-four", document: "file-text", menus: "list", media: "images" }[node.target.kind])} /><span class="sidebar-label">{node.label}</span>
           </button>

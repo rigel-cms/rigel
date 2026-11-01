@@ -6,6 +6,7 @@
   const schema = { documents: [], objects: [] };
   let value = $state('/rigel-media/original.csv');
   let saved = $state(value);
+  let showMedia = $state(false);
   let frame = $state();
   function preview() { if (frame?.contentDocument) patchPreview(frame.contentDocument, { csv: value }, ''); }
   $effect(() => { value; preview(); });
@@ -18,3 +19,5 @@
 </div>
 <div class="rigel" id="image-field"><ImagePicker /></div>
 <div class="rigel" id="video-field"><ImagePicker kind="video" /></div>
+<button id="show-media" hidden onclick={() => showMedia = true}>Show media</button>
+{#if showMedia}<div class="rigel" id="media-field"><ImagePicker inline /></div>{/if}

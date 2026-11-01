@@ -107,6 +107,26 @@ try {
   await click('dialog[open] button[aria-label="Close"]');
   await click('#video-field button');
   await wait(`!!document.querySelector('dialog[open] [data-source="youtube"]')`, 'video providers preserved');
+  await click('dialog[open] button[aria-label="Close"]');
+  const filename = url.split('/').at(-1);
+  const metadata = { url, name: `Display ${filename}`, title: `Annual ${filename}`, description: `Coastal roster ${filename}` };
+  const response = await fetch(`${origin}/rigel/api/local/media`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(metadata) });
+  assert.equal(response.status, 200);
+  assert.equal(JSON.parse(await readFile(path.join(publicDir, 'rigel-media/.rigel-media.json'), 'utf8'))[url].description, metadata.description);
+  await click('#show-media');
+  await wait(`!!document.querySelector('#media-field .media-search') && !!document.querySelector('#media-field .thumb')`, 'standalone Media library');
+  for (const view of [0, 1]) {
+    await evaluate(`document.querySelectorAll('#media-field .media-views button')[${view}].click()`);
+    for (const query of [filename, metadata.name, metadata.title, `  ${metadata.description.toUpperCase()}  `]) {
+      await evaluate(`document.querySelector('#media-field .media-search').focus(); document.querySelector('#media-field .media-search').select()`);
+      await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+      await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+      await cdp('Input.insertText', { text: query });
+      await wait(`(()=>{const items=[...document.querySelectorAll('#media-field .thumb, #media-field .media-file')]; return items.length===1 && (items[0].getAttribute('aria-label') ?? items[0].textContent.trim())===${JSON.stringify(metadata.name)};})()`, 'metadata search result');
+      checks++;
+    }
+  }
+  await check(`document.querySelector('#saved').textContent === ${JSON.stringify(url)}`, 'Media filtering never saves content');
   assert.deepEqual(exceptions, []);
   console.log(JSON.stringify({ checks, uploads, url, result: 'PASS (real media API, explicit Save fixture)' }));
 } finally { ws?.close(); chrome?.kill(); await vite?.close(); }

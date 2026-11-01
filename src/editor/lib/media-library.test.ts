@@ -31,6 +31,22 @@ test("display names never determine the media category", () => {
   }
 });
 
+test("media search matches stored filenames, display names and descriptive metadata", () => {
+  const asset = { url: "/rigel-media/unique%20filename.jpg", name: "Display label", title: "Terrace at dusk", description: "Atlantic sunset view", alt: "Ocean-facing balcony", type: "image/jpeg", modified: "2026-01-01T00:00:00Z" };
+  const plain = { url: "/rigel-media/plain.pdf", name: "Plain document" };
+  const assets = [asset, plain];
+  for (const query of ["unique filename", "display LABEL", "terrace", "  ATLANTIC SUNSET  ", "ocean-facing"]) {
+    expect(filterMedia(assets, query, "", "")).toEqual([asset]);
+  }
+  expect(filterMedia(assets, "sunset", "Images", "2026-01")).toEqual([asset]);
+  expect(filterMedia(assets, "sunset", "Documents", "2026-01")).toEqual([]);
+  expect(filterMedia(assets, "sunset", "Images", "2025-01")).toEqual([]);
+  expect(filterMedia(assets, "missing", "", "")).toEqual([]);
+  expect(filterMedia(assets, "plain", "", "")).toEqual([plain]);
+  expect(filterMedia(assets, "   ", "", "")).toEqual(assets);
+  expect(asset.name).toBe("Display label");
+});
+
 test("combines filename, format and real modified month; missing metadata is safe", () => {
   const assets = [
     {url: "/a.png", name: "A.png", type: "image/png", modified: "2024-02-15T12:00:00Z", size: 7},

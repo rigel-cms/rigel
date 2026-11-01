@@ -33,7 +33,8 @@ export function modifiedMonth(value?: string): string {
 
 const CURATED = new Set(['Images', 'Audio', 'Video', 'Documents', 'Spreadsheets', 'Archives']);
 export function filterMedia(assets: MediaAsset[], search: string, type: string, month: string): MediaAsset[] {
-  return assets.filter(asset => asset.name.toLowerCase().includes(search.trim().toLowerCase())
+  const query = search.trim().toLowerCase();
+  return assets.filter(asset => [asset.name, assetFile(asset.url), asset.title, asset.description, asset.alt].some(value => value?.toLowerCase().includes(query))
     && (!type || asset.type === type || assetCategory(asset) === type) && (!month || modifiedMonth(asset.modified) === month));
 }
 function assetCategory(asset: MediaAsset): string {

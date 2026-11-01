@@ -1316,6 +1316,7 @@
 .rigel .reorder-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .rigel .structure-list li.active { border-color: var(--accent); }
 .rigel .structure-row { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; border: 0; border-radius: 0; background: transparent; color: var(--text); padding: 0.5rem; text-align: left; cursor: pointer; font-size: 0.8125rem; }
+.rigel .structure-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rigel .structure-actions, .rigel .schema-item-actions { display: flex; align-items: center; }
 .rigel .structure-actions button, .rigel .schema-item-actions button { border: 0; border-left: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text-2); cursor: pointer; }
 .rigel .structure-actions button:disabled, .rigel .schema-item-actions button:disabled { opacity: 0.35; cursor: default; }

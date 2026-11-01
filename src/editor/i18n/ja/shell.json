@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "現在のコンテンツ言語",
   "shell.coreCategory": "基本",
   "shell.searchPages": "ページを検索",
+  "shell.searchNamedEntries": "{name}内を検索",
   "shell.template": "テンプレート",
   "shell.chooseTemplate": "テンプレートを選択",
   "shell.search": "検索",
@@ -67,6 +68,7 @@
   "shell.showKey": "{name}を表示",
   "shell.keyFormatError": "{name}の形式を確認してください。",
   "shell.editorInterfaceLanguage": "エディターの表示言語",
+
   "shell.developerMode": "開発者モード",
   "shell.enableDevMode": "開発者モードを有効にする",
   "shell.devModeHint": "現在の下書きの生のJSONと、ラベルの横にフィールドキーを表示します。",

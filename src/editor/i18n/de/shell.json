@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "Aktuelle Inhaltssprache",
   "shell.coreCategory": "Standard",
   "shell.searchPages": "Seiten suchen",
+  "shell.searchNamedEntries": "In {name} suchen",
   "shell.template": "Vorlage",
   "shell.chooseTemplate": "Vorlage auswählen",
   "shell.search": "Suchen",
@@ -67,6 +68,7 @@
   "shell.showKey": "{name} anzeigen",
   "shell.keyFormatError": "Prüfe das Format von {name}.",
   "shell.editorInterfaceLanguage": "Sprache der Editoroberfläche",
+
   "shell.developerMode": "Entwicklermodus",
   "shell.enableDevMode": "Entwicklermodus aktivieren",
   "shell.devModeHint": "Zeigt die JSON-Rohdaten des aktuellen Entwurfs sowie Feldschlüssel neben den Beschriftungen an.",

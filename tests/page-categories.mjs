@@ -18,8 +18,16 @@ const record = (type, slug, title) => ({ id: `${type}:${slug}`, type, slug, data
 let records = [record('pageEn', 'home', 'Home EN'), record('pageFr', 'home', 'Home FR'), record('articleEn', 'existing', 'Article EN'), record('articleFr', 'existing', 'Article FR'), record('resourceEn', 'existing', 'Resource EN'), record('resourceFr', 'existing', 'Resource FR'), record('locked', 'existing', 'Locked'), record('singleton', 'existing', 'Singleton page'), record('shared', 'existing', 'Shared')];
 records.find(record => record.type === 'singleton').data = { name: 'Singleton page', slug: 'singleton-public' };
 let mode = 'categories', failSave = false;
+const body = { root: { type: 'root', version: 1, children: [], direction: null, format: '', indent: 0 } };
+const collectionPost = (slug, title, extra = {}) => ({ slug, frontmatter: { ...(title ? { title } : {}), ...extra }, body });
+const collections = [
+  { name: 'blog', label: 'Blog', locale: 'en', fields: [{ key: 'title', label: 'Title', type: 'string' }, { key: 'description', label: 'Description', type: 'text' }, { key: 'tags', label: 'Tags', type: 'tags' }], posts: [collectionPost('first-story', 'Alpha story', { slug: 'public-story', description: 'Field notes', tags: ['Research'] }), collectionPost('second-story', 'Beta story'), collectionPost('untitled')] },
+  { name: 'news', label: 'News', locale: 'en', fields: [{ key: 'title', label: 'Title', type: 'string' }], posts: [collectionPost('bulletin', 'News bulletin', { description: 'Undeclared metadata' })] },
+  { name: 'journal-fr', label: 'Journal', locale: 'fr', fields: [{ key: 'title', label: 'Title', type: 'string' }], posts: [collectionPost('article', 'French journal')] },
+  { name: 'empty', label: 'Archive', fields: [], posts: [] },
+];
 const writes = [], checks = [], exceptions = [];
-const manifest = () => ({ backend: 'local', contentLocales: { defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'Français' }] }, pages: mode === 'categories' ? [{ slug: 'legacy', label: 'Legacy core', groups: [], values: {} }, { slug: 'legacy-article', label: 'Legacy article', category: 'Articles', groups: [], values: {} }] : mode === 'plain' ? [{ slug: 'legacy', label: 'Legacy core', groups: [], values: {} }] : [], schema: { objects: [], documents: mode === 'plain' ? [types[0]] : mode === 'single' ? [types[2]] : types }, documents: records, preview: { documents: Object.fromEntries(types.map(type => [type.name, { url: `/${type.name}/{slug}/` }])) }, sidebar: [{ kind: 'link', target: { kind: 'pages' } }, { kind: 'link', target: { kind: 'documents', type: 'resourceEn' } }] });
+const manifest = () => ({ backend: 'local', contentLocales: { defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'Français' }] }, pages: mode === 'categories' ? [{ slug: 'legacy', label: 'Legacy core', groups: [], values: {} }, { slug: 'legacy-article', label: 'Legacy article', category: 'Articles', groups: [], values: {} }] : mode === 'plain' ? [{ slug: 'legacy', label: 'Legacy core', groups: [], values: {} }] : [], schema: { objects: [], documents: mode === 'plain' ? [types[0]] : mode === 'single' ? [types[2]] : types }, documents: records, collections, preview: { documents: Object.fromEntries(types.map(type => [type.name, { url: `/${type.name}/{slug}/` }])) }, sidebar: [{ kind: 'link', target: { kind: 'pages' } }, { kind: 'link', target: { kind: 'documents', type: 'resourceEn' } }] });
 const dictionaries = { en: {}, fr: {} };
 for (const locale of Object.keys(dictionaries)) for (const file of await readdir(path.join(root, 'src/editor/i18n', locale))) if (file.endsWith('.json')) Object.assign(dictionaries[locale], JSON.parse(await readFile(path.join(root, 'src/editor/i18n', locale, file), 'utf8')));
 const virtual = { name: 'page-category-config', resolveId(id) { if (id.startsWith('virtual:rigel-')) return '\0' + id; }, load(id) { if (id.startsWith('\0virtual:rigel-')) return 'export default ' + JSON.stringify(id.endsWith('config') ? { backend: 'local', languages: ['en', 'fr'], defaultLanguage: 'en' } : id.endsWith('i18n') ? dictionaries : []); } };
@@ -81,6 +89,72 @@ try {
   async function reload() { await cdp('Page.navigate', { url: origin + '/?run=' + Date.now() }); await wait(`!!document.querySelector('#nav-pages')`); await click('#nav-pages'); await wait(`!!document.querySelector('table')`); }
   await cdp('Runtime.enable'); await cdp('Page.enable'); await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await reload();
+  const collectionLink = name => `aside button[data-collection="${name}"]`;
+  async function openCollection(label) {
+    await click('.search-trigger'); await cdp('Input.insertText', { text: label });
+    await wait(`!!document.querySelector('.palette [role=option]')`);
+    await click('.palette [role=option]');
+    await wait(`document.querySelector('.pages-search input')?.getAttribute('aria-label') === ${JSON.stringify('Search ' + label)}`);
+  }
+  await click(collectionLink('blog'));
+  const blogTitles = await rowTitles();
+  assert.equal(blogTitles.length, 3);
+  await check(`document.querySelector('.pages-search input').getAttribute('aria-label')==='Search Blog' && !document.querySelector('.pages-controls [role=combobox]')`, 'collection search has its own accessible label and no fake categories');
+  await check(`!document.querySelector('aside button[data-collection="journal-fr"]')`, 'collection navigation retains current locale filtering');
+  for (const [query, expected] of [['  aLpHa  ', ['Alpha story']], ['PUBLIC-story', ['Alpha story']], ['second-story', ['Beta story']], ['field NOTES', ['Alpha story']], ['ReSeArCh', ['Alpha story']], ['untitled', ['—']], ['   ', blogTitles], ['no-match', []]]) {
+    await search(query); assert.deepEqual(await rowTitles(), expected); checks.push('collection live title/slug/declared metadata search: ' + JSON.stringify(query));
+  }
+  await check(`document.querySelector('tbody').textContent.includes('No results')`, 'collection no matches explains empty results');
+  await evaluate(`document.querySelector('.pages-search input').focus()`);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab' });
+  await check(`document.activeElement===document.querySelector('.pages-search button') && getComputedStyle(document.activeElement).outlineStyle!=='none'`, 'collection keyboard clear has visible focus');
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r' });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter' });
+  await wait(`!document.querySelector('.pages-search button')`);
+  await check(`document.activeElement===document.querySelector('.pages-search input') && document.activeElement.value==='' && !document.querySelector('.pages-search button')`, 'collection clear restores focus and hides clear button');
+  assert.deepEqual(await rowTitles(), blogTitles);
+  await textClick('.table-sort', 'Title'); await textClick('.table-sort', 'Title ↑');
+  await search('story'); assert.deepEqual(await rowTitles(), ['Beta story', 'Alpha story']); checks.push('live collection filtering preserves descending table sort');
+  await search('alpha'); await textClick('.table-link', 'Alpha story'); await back();
+  await check(`document.querySelector('.pages-search input').value==='alpha'`, 'article Back preserves originating collection query');
+  await click(collectionLink('news'));
+  await check(`document.querySelector('.pages-search input').value==='' && document.querySelector('.pages-search input').getAttribute('aria-label')==='Search News'`, 'Blog query never filters News');
+  assert.deepEqual(await rowTitles(), ['News bulletin']);
+  await search('Undeclared'); assert.deepEqual(await rowTitles(), []); checks.push('collection search does not index undeclared metadata');
+  await search('bulletin'); await openCollection('Blog');
+  await check(`document.querySelector('.pages-search input').value==='alpha'`, 'non-sidebar collection navigation retains its independent query');
+  await click('#nav-pages');
+  await check(`document.querySelector('.pages-search input').value===''`, 'collection search never leaks into Pages');
+  await openCollection('News');
+  await check(`document.querySelector('.pages-search input').value==='bulletin'`, 'News query remains independent of Blog and Pages');
+  await click(collectionLink('blog')); await search('alpha');
+  await click('.titlebar .primary'); await wait(`!!document.querySelector('.action-dialog[open]')`); await title('Unsaved collection article');
+  await click('.action-dialog button[type=submit]'); await wait(`!!document.querySelector('.save-button:not(:disabled)')`);
+  await click(collectionLink('blog')); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Keep editing');
+  await check(`document.querySelector('.titlebar h2').textContent==='Unsaved collection article'`, 'cancelled collection sidebar navigation preserves unsaved article');
+  await click('.back button'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Keep editing');
+  await check(`document.querySelector('.titlebar h2').textContent==='Unsaved collection article'`, 'cancelled article Back preserves unsaved article');
+  await click('.back button'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Discard changes'); await wait(`!!document.querySelector('table')`);
+  await check(`document.querySelector('.pages-search input').value==='alpha'`, 'cancelled sidebar reset and accepted Back preserve collection query');
+  await click(collectionLink('blog'));
+  await check(`document.querySelector('.pages-search input').value===''`, 'sidebar collection resets query even while already selected');
+  await search('alpha'); await click('.titlebar .primary'); await wait(`!!document.querySelector('.action-dialog[open]')`); await title('Discard collection article');
+  await click('.action-dialog button[type=submit]'); await wait(`!!document.querySelector('.save-button:not(:disabled)')`);
+  await click(collectionLink('blog')); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Discard changes'); await wait(`!!document.querySelector('table')`);
+  await check(`document.querySelector('.pages-search input').value===''`, 'accepted unsaved sidebar navigation resets collection query');
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await check(`document.documentElement.scrollWidth<=innerWidth && document.querySelector('.pages-search input').getBoundingClientRect().right<=innerWidth`, 'collection search fits mobile viewport');
+  await search('beta'); assert.deepEqual(await rowTitles(), ['Beta story']); checks.push('mobile collection live search works');
+  await cdp('Page.captureScreenshot', { format: 'png' }).then(result => writeFile(path.join(scratch, 'mobile-collection.png'), Buffer.from(result.data, 'base64')));
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await click(collectionLink('empty'));
+  await check(`document.querySelector('tbody').textContent.includes('No entries')`, 'empty collection keeps normal empty state');
+  await search('missing'); await check(`document.querySelector('tbody').textContent.includes('No results')`, 'empty collection query uses no-results state');
+  await choose('.content-language', 'Content language', 'Français');
+  await check(`!document.querySelector('aside button[data-collection="blog"]') && !!document.querySelector('aside button[data-collection="journal-fr"]')`, 'collection locale change retains eligible sidebar entries');
+  await click(collectionLink('journal-fr')); await search('french'); assert.deepEqual(await rowTitles(), ['French journal']); checks.push('arbitrary configured collection supports live search');
+  await choose('.content-language', 'Content language', 'English'); await click('#nav-pages');
+  assert.equal(writes.length, 0); checks.push('collection search and guarded navigation never writes content');
   assert.deepEqual(await rowTitles(), ['Article EN', 'Home EN', 'Legacy article', 'Legacy core', 'Locked', 'Resource EN', 'Singleton page']); checks.push('All pages initially includes every locale-eligible nonshared category');
   const allPageTitles = await rowTitles();
   await check(`!document.querySelector('.titlebar .select-label') && document.querySelector('.titlebar button[role=combobox]').getAttribute('aria-label') === 'Category'`, 'category has accessible label without visible label');

@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "Langue actuelle du contenu",
   "shell.coreCategory": "Principales",
   "shell.searchPages": "Rechercher des pages",
+  "shell.searchNamedEntries": "Rechercher dans {name}",
   "shell.template": "Modèle",
   "shell.chooseTemplate": "Choisir un modèle",
   "shell.search": "Rechercher",
@@ -67,6 +68,7 @@
   "shell.showKey": "Afficher {name}",
   "shell.keyFormatError": "Veuillez vérifier le format de {name}.",
   "shell.editorInterfaceLanguage": "Langue de l’interface de l’éditeur",
+
   "shell.developerMode": "Mode développeur",
   "shell.enableDevMode": "Activer le mode développeur",
   "shell.devModeHint": "Affiche le JSON brut du brouillon actuel et les clés des champs à côté des libellés.",

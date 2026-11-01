@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "当前内容语言",
   "shell.coreCategory": "基础",
   "shell.searchPages": "搜索页面",
+  "shell.searchNamedEntries": "在{name}中搜索",
   "shell.template": "模板",
   "shell.chooseTemplate": "选择模板",
   "shell.search": "搜索",
@@ -67,6 +68,7 @@
   "shell.showKey": "显示 {name}",
   "shell.keyFormatError": "请检查 {name} 的格式。",
   "shell.editorInterfaceLanguage": "编辑器界面语言",
+
   "shell.developerMode": "开发者模式",
   "shell.enableDevMode": "启用开发者模式",
   "shell.devModeHint": "显示当前草稿的原始 JSON，并在标签旁显示字段键名。",

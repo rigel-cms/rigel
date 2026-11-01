@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "Huidige inhoudstaal",
   "shell.coreCategory": "Standaard",
   "shell.searchPages": "Pagina’s zoeken",
+  "shell.searchNamedEntries": "Zoeken in {name}",
   "shell.template": "Sjabloon",
   "shell.chooseTemplate": "Kies een sjabloon",
   "shell.search": "Zoeken",
@@ -67,6 +68,7 @@
   "shell.showKey": "{name} tonen",
   "shell.keyFormatError": "Controleer de indeling van {name}.",
   "shell.editorInterfaceLanguage": "Taal van de editorinterface",
+
   "shell.developerMode": "Ontwikkelaarsmodus",
   "shell.enableDevMode": "Ontwikkelaarsmodus inschakelen",
   "shell.devModeHint": "Toont de onbewerkte JSON van het huidige concept en veldsleutels naast de labels.",

@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "Current content language",
   "shell.coreCategory": "Core",
   "shell.searchPages": "Search pages",
+  "shell.searchNamedEntries": "Search {name}",
   "shell.template": "Template",
   "shell.chooseTemplate": "Choose a template",
   "shell.search": "Search",
@@ -67,6 +68,7 @@
   "shell.showKey": "Show {name}",
   "shell.keyFormatError": "Check the {name} format.",
   "shell.editorInterfaceLanguage": "Editor interface language",
+
   "shell.developerMode": "Developer Mode",
   "shell.enableDevMode": "Enable dev mode",
   "shell.devModeHint": "Shows raw JSON of the current draft + field keys next to labels.",

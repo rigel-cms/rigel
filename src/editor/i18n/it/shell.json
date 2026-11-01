@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "Lingua attuale del contenuto",
   "shell.coreCategory": "Principali",
   "shell.searchPages": "Cerca pagine",
+  "shell.searchNamedEntries": "Cerca in {name}",
   "shell.template": "Modello",
   "shell.chooseTemplate": "Scegli un modello",
   "shell.search": "Cerca",
@@ -67,6 +68,7 @@
   "shell.showKey": "Mostra {name}",
   "shell.keyFormatError": "Controlla il formato di {name}.",
   "shell.editorInterfaceLanguage": "Lingua dell’interfaccia dell’editor",
+
   "shell.developerMode": "Modalità sviluppatore",
   "shell.enableDevMode": "Attiva modalità sviluppatore",
   "shell.devModeHint": "Mostra il JSON grezzo della bozza corrente e le chiavi dei campi accanto alle etichette.",

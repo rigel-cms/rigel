@@ -471,7 +471,9 @@
 
   const sortedPosts = $derived.by(() => {
     if (!coll) return [];
-    const posts = [...coll.posts];
+    const query = (Object.hasOwn(collectionQueries, coll.name) ? collectionQueries[coll.name] : "").trim().toLocaleLowerCase();
+    const fields = coll.fields.filter(field => (field.key === "description" && (field.type === "string" || field.type === "text")) || (field.key === "tags" && field.type === "tags"));
+    const posts = coll.posts.filter(post => !query || [post.frontmatter.title, effectiveSlug(post.frontmatter, post.slug), ...fields.flatMap(field => post.frontmatter[field.key] ?? [])].some(value => typeof value === "string" && value.toLocaleLowerCase().includes(query)));
     if (!sortBy) return posts;
     return posts.sort((a, b) => {
       const va = cellValue(a, sortBy);
@@ -483,6 +485,13 @@
   const sidebar = $derived(buildSidebar(visibleContent, $t));
   let pagesFilter = $state<string | null>(null);
   let pagesQuery = $state("");
+  let collectionQueries = $state<Record<string, string>>({});
+  const tableQuery = $derived(sel?.kind === "collection" ? Object.hasOwn(collectionQueries, sel.name) ? collectionQueries[sel.name] : "" : pagesQuery);
+  const searchLabel = $derived(sel?.kind === "collection" && coll ? $t("shell.searchNamedEntries", { name: coll.label }) : $t("shell.searchPages"));
+  function setTableQuery(value: string) {
+    if (sel?.kind === "collection") collectionQueries[sel.name] = value;
+    else pagesQuery = value;
+  }
   let pagesSearch: HTMLInputElement;
   let entryList = $state<Sel | null>(null);
   const categories = $derived(pageCategories(visibleContent));
@@ -646,12 +655,14 @@
   function select(next: Sel | null, fromSidebar = false) {
     if (manifest.contentLocales && !selectionInContent(visibleContent, next)) return;
     const resetPages = fromSidebar && next?.kind === "pages";
-    if (sel && next && sameSel(sel, next) && !resetPages) return;
+    const resetCollection = fromSidebar && next?.kind === "collection";
+    if (sel && next && sameSel(sel, next) && !resetPages && !resetCollection) return;
     requestNavigation(() => {
       if (resetPages) {
         pagesFilter = next.category ?? null;
         pagesQuery = "";
       }
+      if (resetCollection) collectionQueries[next.name] = "";
       openSelection(next);
     });
   }
@@ -1016,21 +1027,23 @@
           {#if templates.length}
             <button class="primary" onclick={() => newPage(pageDocType, true)}>{$t("shell.addNew")}</button>
           {/if}
+        {/if}
+        {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
+          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
+        {/if}
+        {#if sel.kind === "pages" || (sel.kind === "collection" && coll)}
           <div class="pages-controls">
-          {#if categories.length}
+          {#if sel.kind === "pages" && categories.length}
             <Select ariaLabel={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); select({ kind: "pages" }); } }} />
           {/if}
             <div class="pages-search">
               <Icon name="magnifier" size={18} />
-              <input type="search" aria-label={$t("shell.searchPages")} placeholder={$t("shell.searchPages")} bind:value={pagesQuery} bind:this={pagesSearch} />
-              {#if pagesQuery}
-                <button type="button" class="icon-btn" aria-label={$t("fields.clear")} onclick={() => { pagesQuery = ""; pagesSearch.focus(); }}><Icon name="x" size={16} /></button>
+              <input type="search" aria-label={searchLabel} placeholder={searchLabel} value={tableQuery} oninput={(event) => setTableQuery(event.currentTarget.value)} bind:this={pagesSearch} />
+              {#if tableQuery}
+                <button type="button" class="icon-btn" aria-label={$t("fields.clear")} onclick={() => { setTableQuery(""); pagesSearch.focus(); }}><Icon name="x" size={16} /></button>
               {/if}
             </div>
           </div>
-        {/if}
-        {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
-          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType, sel?.kind === "pages"))}>{$t("shell.addNew")}</button>
         {/if}
         {#if sel?.kind === "post" && post}
           <button class="icon-btn" aria-label={$t("shell.deletePost")} data-tooltip={$t("shell.deletePost")} disabled={saveState === "saving"} onclick={deletePost}>
@@ -1093,7 +1106,7 @@
                   {/each}
                 </tr>
               {:else}
-                <tr><td colspan={columns.length}>{$t(sel?.kind === "pages" && pagesQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
+                <tr><td colspan={columns.length}>{$t((sel?.kind === "pages" || sel?.kind === "collection") && tableQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
               {/each}
             </tbody>
           </table>

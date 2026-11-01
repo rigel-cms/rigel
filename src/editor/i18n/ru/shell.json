@@ -5,6 +5,7 @@
   "shell.searchScopeCurrent": "Текущий язык содержимого",
   "shell.coreCategory": "Основные",
   "shell.searchPages": "Поиск страниц",
+  "shell.searchNamedEntries": "Поиск в {name}",
   "shell.template": "Шаблон",
   "shell.chooseTemplate": "Выберите шаблон",
   "shell.search": "Поиск",
@@ -67,6 +68,7 @@
   "shell.showKey": "Показать {name}",
   "shell.keyFormatError": "Проверьте формат: {name}.",
   "shell.editorInterfaceLanguage": "Язык интерфейса редактора",
+
   "shell.developerMode": "Режим разработчика",
   "shell.enableDevMode": "Включить режим разработчика",
   "shell.devModeHint": "Показывает исходный JSON текущего черновика и ключи полей рядом с подписями.",

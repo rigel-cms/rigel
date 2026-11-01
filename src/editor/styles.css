@@ -1183,6 +1183,9 @@
 .rigel.rigel-inline .markdown-link, .rigel .block-editor .markdown-link { position: fixed; inset: auto; width: 340px; max-width: calc(100vw - 16px); z-index: 121; }
 .rigel.rigel-inline .block-markdown-view { position: fixed; inset: 12px; max-height: calc(100vh - 24px); overflow: auto; padding: 0.5rem; border: 1px solid var(--border-control); background: var(--panel); }
 .rigel-article-content:focus { outline: 0; }
+.rigel.rigel-inline .markdown-inline { position: fixed; top: 8px; left: 8px; width: max-content; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; background: var(--panel); border: 1px solid var(--border-control); box-shadow: var(--shadow-lg); pointer-events: auto; }
+.rigel .markdown-editor [hidden] { display: none !important; }
+.rigel-markdown-content { white-space: pre-wrap; overflow-wrap: anywhere; }
 :is(.rigel .block-content, .rigel-article-content)::highlight(rigel-link-selection), :is(.rigel .block-content, .rigel-article-content) ::highlight(rigel-link-selection) { background-color: Highlight; color: HighlightText; }
 .rigel-article-content:focus-visible > [data-rigel-active-block] { outline: 3px solid Highlight; outline-offset: 3px; }
 .rigel-article-content .block-bold { font-weight: 700; }

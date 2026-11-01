@@ -52,7 +52,7 @@
   let bodyScope: HTMLElement | null = null;
   let removeTooltips: (() => void) | undefined;
   let mode = $state<"browse" | "edit">("edit");
-  let panelOpen = $state(true);
+  let panelOpen = $state(false);
   let editorWidth = $state(0);
   let requestedWidth = $state(340);
   let resizing = $state(false);
@@ -262,19 +262,21 @@
     clearHover(); clearHighlight();
     editingBody = element; bodyContents = [...element.childNodes];
     const scope = doc.createElement("div");
+    bodyAttributes = ["class", "style", "role", "aria-label", "aria-multiline", "contenteditable", "tabindex", "translate"].map(name => [name, element.getAttribute(name)]);
     const syncTheme = () => { scope.dataset.theme = document.documentElement.dataset.theme; scope.dataset.contrast = document.documentElement.dataset.contrast; };
     syncTheme();
     const host = doc.createElement("div"); host.className = "rigel rigel-inline";
-    scope.append(host); element.replaceChildren(scope); bodyScope = scope;
+    scope.append(host); doc.body.append(scope); bodyScope = scope;
     removeTooltips = tooltipRoot(host).destroy;
     bodyEditor = mount(MarkdownEditor, { target: host, props: {
+      editableRoot: element,
       label: def.labelKey ? $t(def.labelKey) : def.label,
       get value() { return String(anchorValue(values, field.path).value ?? ""); },
       oninput: (next: string) => onchange(replaceAt(values, field.path, next)),
     } });
     bodyThemeObserver = new MutationObserver(syncTheme);
     bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
-    void tick().then(() => host.querySelector<HTMLElement>('[contenteditable="true"], textarea')?.focus());
+    void tick().then(() => (element.isContentEditable ? element : host.querySelector<HTMLTextAreaElement>("textarea"))?.focus());
     return true;
   }
 
@@ -393,7 +395,7 @@
 
   function setMode(next: "browse" | "edit") {
     mode = next;
-    panelOpen = next === "edit";
+    panelOpen = false;
     if (next === "browse") {
       clearHighlight();
       clearHover();

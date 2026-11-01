@@ -14,7 +14,7 @@
   import type { SelectionBookmark } from "prosemirror-state";
   import { parseVisualMarkdown, serializeMarkdown, safeMarkdownUrl, schema } from "./rich-markdown";
 
-  let { value, label, oninput }: { value: string; label: string; oninput: (value: string) => void } = $props();
+  let { value, label, oninput, editableRoot }: { value: string; label: string; oninput: (value: string) => void; editableRoot?: HTMLElement } = $props();
   const id = $props.id();
   let host: HTMLDivElement;
   let mode = $state<"visual" | "source">("visual");
@@ -66,9 +66,10 @@
   }
 
   $effect(() => {
-    if (!host) return;
+    if (!editableRoot && !host) return;
     if (!view) {
-      view = new EditorView(host, {
+      if (editableRoot) editableRoot.classList.add("rigel-markdown-content");
+      view = new EditorView(editableRoot ? { mount: editableRoot } : host, {
         state: EditorState.create({ schema }),
         attributes: { role: "textbox", "aria-label": label, "aria-multiline": "true" },
         dispatchTransaction(transaction) {
@@ -92,6 +93,7 @@
       load(value);
     }
   });
+  $effect(() => { const editable = mode === "visual"; view?.setProps({ editable: () => editable }); });
   onDestroy(() => view?.destroy());
 
   function activeMark(type: string) {
@@ -162,7 +164,7 @@
 
 <svelte:window onpointerdown={event => { if (linkOpen && !document.getElementById(`${id}-link`)?.contains(event.target as Node) && !linkButton?.contains(event.target as Node)) linkOpen = false; }} />
 
-<div class="markdown-editor body-editor">
+<div class="markdown-editor body-editor" class:markdown-inline={!!editableRoot}>
   <div class="markdown-heading">
     <div class="field-label" id={`${id}-label`}>{label}</div>
     <div class="markdown-modes" role="group" aria-label={$t("richtext.editingMode", { label })}>
@@ -199,7 +201,7 @@
         {#if linkError}<p id={`${id}-error`} role="alert">{linkError}</p>{/if}
       </div>
     {/if}
-    <div class="md-preview rich-text" bind:this={host}></div>
+    {#if !editableRoot}<div class="md-preview rich-text" bind:this={host}></div>{/if}
   </div>
   {#if mode === "source"}
     <textarea class="mono" rows="14" aria-label={$t("richtext.markdownSource", { label })} value={value} oninput={(event) => { warning = ""; emit(event.currentTarget.value); }}></textarea>

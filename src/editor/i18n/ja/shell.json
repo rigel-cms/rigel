@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "基本",
+  "shell.template": "テンプレート",
+  "shell.chooseTemplate": "テンプレートを選択",
   "shell.search": "検索",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "ダイアログを閉じる",

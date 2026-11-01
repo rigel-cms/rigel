@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "Standaard",
+  "shell.template": "Sjabloon",
+  "shell.chooseTemplate": "Kies een sjabloon",
   "shell.search": "Zoeken",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "Dialoogvenster sluiten",

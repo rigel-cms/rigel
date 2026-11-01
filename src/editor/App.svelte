@@ -15,6 +15,7 @@
   import TopBar from "./lib/TopBar.svelte";
   import Select from "./lib/Select.svelte";
   import { contentForLocale, selectionInContent } from "../manifest/content-locales";
+  import { pageCategories, pageTemplates, inPageCategory, defaultPageCategory } from "../manifest/pages";
   import { validateDocumentSlugs } from "../slugs";
   import Shortcuts from "./lib/Shortcuts.svelte";
   import CollectionPanel from "./lib/CollectionPanel.svelte";
@@ -38,7 +39,7 @@
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
   import { previewUrl, previewPath } from "../preview";
-  import type { ContentDocument, Schema } from "../schema/types";
+  import type { ContentDocument, DocumentDef, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
   import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
@@ -142,7 +143,7 @@
   }
   let pendingNavigation = $state<(() => void) | null>(null);
   let pendingNavigationCancel: (() => void) | null = null;
-  let actionDialog = $state<{ title: string; description: string; confirmLabel: string; fieldLabel?: string; danger?: boolean; onconfirm: (value: string) => void | Promise<void> } | null>(null);
+  let actionDialog = $state<{ title: string; description: string; confirmLabel: string; fieldLabel?: string; danger?: boolean; templates?: DocumentDef[]; templateCategory?: string; onconfirm: (value: string, type?: string) => void | Promise<void> } | null>(null);
   let newEntry = $state<{ collection: string; post: CollectionPost } | null>(null);
   let newDocument = $state<{ type: string; id: string; slug: string } | null>(null);
   let docBase = $state<Record<string, unknown> | null>(null);
@@ -159,6 +160,7 @@
       if (!Array.isArray(data.pages) || (data.backend === "github" && !data.github)) throw new Error($t("shell.configurationIncomplete"));
       blueprint = data;
       manifest = data;
+      pagesFilter = defaultPageCategory(contentForLocale(data, data.contentLocales?.defaultLocale));
       ready = true;
       if (data.backend === "github" && data.github) {
         const session = readSession(data.github);
@@ -478,11 +480,18 @@
   });
 
   const sidebar = $derived(buildSidebar(visibleContent, $t));
-  const pageCategory = $derived(sel?.kind === "pages" ? sel.category : undefined);
+  let pagesFilter = $state<string | null>("");
+  let entryList = $state<Sel | null>(null);
+  const categories = $derived(pageCategories(visibleContent));
+  const pageCategory = $derived(sel?.kind === "pages" && sel.category !== undefined ? sel.category : pagesFilter);
   const schema = $derived<Schema | undefined>(manifest.schema);
   const docTypes = $derived(visibleContent.schema?.documents ?? []);
 
   const pageDocType = $derived(docTypes.find((type) => !type.shared && !type.singleton));
+  const templates = $derived(pageTemplates(visibleContent));
+  const pageBack = $derived<Extract<Sel, { kind: "pages" }>>(entryList?.kind === "pages" ? entryList : { kind: "pages" });
+  const documentBack = $derived<Sel | null>(entryList?.kind === "documents" && entryList.type === activeDocType?.name ? entryList : !activeDocType?.shared ? pageBack : activeDocType.singleton ? null : { kind: "documents", type: activeDocType.name });
+  const pageBackLabel = $derived((pageBack.category ?? pagesFilter) || (pagesFilter === "" && categories.length ? $t("shell.coreCategory") : $t("shell.pages")));
   const pageDocuments = $derived((visibleContent.documents ?? []).filter((doc) => docTypes.some(type => type.name === doc.type && !type.shared)));
   function docTypeName(s: Sel | null): string | null {
     return s && (s.kind === "document" || s.kind === "documents") ? s.type : null;
@@ -509,11 +518,11 @@
 
   const sortedPages = $derived.by(() => {
     const rows = [
-      ...visibleContent.pages.filter((p) => !p.shared && (pageCategory === undefined || p.category === pageCategory))
+      ...visibleContent.pages.filter((p) => !p.shared && inPageCategory(p.category, pageCategory))
         .map((p) => ({ slug: p.slug, path: previewPath(manifest.preview ?? {}, { kind: "page", slug: p.slug }), title: p.label, category: p.category, draft: false, target: { kind: "page", slug: p.slug } as Sel })),
       ...pageDocuments
         .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), path: previewPath(manifest.preview ?? {}, { kind: "document", type: doc.type, slug: effectiveSlug(doc.data, doc.slug) }), title: String(doc.data.title ?? doc.slug), category: docTypes.find(type => type.name === doc.type)?.category, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel }))
-        .filter(doc => pageCategory === undefined || doc.category === pageCategory),
+        .filter(doc => inPageCategory(doc.category, pageCategory)),
     ];
     const key = sortBy === "slug" || sortBy === "category" || sortBy === "path" ? sortBy : "title";
     return rows.sort((a, b) => String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * sortDir);
@@ -526,13 +535,13 @@
 
   const menu = $derived.by(() => { const slug = sel?.kind === "menu" ? sel.slug : null; return manifest.menus?.entries.find((m) => m.slug === slug); });
   const sortedMenus = $derived([...(manifest.menus?.entries ?? [])].sort((a, b) => (sortBy === "slug" ? a.slug.localeCompare(b.slug) : a.title.localeCompare(b.title)) * sortDir));
-  const listTitle = $derived(sel?.kind === "menus" ? $t("shell.allMenus") : sel?.kind === "documents" ? activeDocType?.title ?? $t("shell.documents") : sel?.kind === "pages" ? pageCategory !== undefined ? $t("shell.allNamedEntries", { name: pageCategory }) : $t("shell.allPages") : coll?.listTitle?.trim() || (coll?.label !== undefined ? $t("shell.allNamedEntries", { name: coll.label }) : $t("shell.allEntries")));
+  const listTitle = $derived(sel?.kind === "menus" ? $t("shell.allMenus") : sel?.kind === "documents" ? activeDocType?.title ?? $t("shell.documents") : sel?.kind === "pages" ? pageCategory !== null && categories.length ? $t("shell.allNamedEntries", { name: pageCategory || $t("shell.coreCategory") }) : $t("shell.allPages") : coll?.listTitle?.trim() || (coll?.label !== undefined ? $t("shell.allNamedEntries", { name: coll.label }) : $t("shell.allEntries")));
   const listRows = $derived(sel?.kind === "menus"
     ? sortedMenus.map((m) => ({ slug: m.slug, cells: { slug: m.slug, title: m.title } as Record<string, string>, draft: false, target: { kind: "menu", slug: m.slug } as Sel }))
     : sel?.kind === "documents"
     ? typeDocuments.map((doc) => ({ slug: doc.slug, cells: Object.fromEntries(columns.map(column => [column.key, documentCell(doc, column.key)])), draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel }))
     : sel?.kind === "pages"
-    ? sortedPages.map((p) => ({ slug: p.slug, cells: { label: p.title, slug: p.slug, path: p.path ?? "—", category: p.category ?? "—" } as Record<string, string>, draft: p.draft, target: p.target }))
+    ? sortedPages.map((p) => ({ slug: p.slug, cells: { label: p.title, slug: p.slug, path: p.path ?? "—", category: p.category ?? (categories.length ? $t("shell.coreCategory") : "—") } as Record<string, string>, draft: p.draft, target: p.target }))
     : sortedPosts.map((p) => ({ slug: p.slug, cells: Object.fromEntries(columns.map((c) => [c.key, cellValue(p, c.key)])), draft: Boolean(p.frontmatter.draft), target: { kind: "post", collection: coll!.name, slug: p.slug } as Sel })));
   const titleColumn = $derived(sel?.kind === "pages" ? "label" : "title");
 
@@ -637,6 +646,11 @@
   }
 
   function openSelection(next: Sel | null) {
+    if (next?.kind === "page" || next?.kind === "document") {
+      if (sel?.kind === "pages" || sel?.kind === "documents") entryList = sel;
+      else if (sel?.kind !== "page" && sel?.kind !== "document") entryList = null;
+    }
+    if (next?.kind === "pages" && next.category !== undefined) pagesFilter = next.category;
     sel = next;
     saveError = "";
     sortBy = "";
@@ -686,6 +700,8 @@
     requestNavigation(() => {
       const destination = contentForLocale(manifest, value);
       selectedContentLocale = value;
+      if (pagesFilter && !pageCategories(destination).includes(pagesFilter)) pagesFilter = defaultPageCategory(destination);
+      if (!selectionInContent(destination, entryList)) entryList = null;
       if (!selectionInContent(destination, sel)) openSelection(null);
       focusContentLocale();
     }, focusContentLocale);
@@ -726,21 +742,25 @@
     return String(v);
   }
 
-  function newPage(type = pageDocType) {
+  function newPage(type = pageDocType, chooseTemplate = false) {
+    if (chooseTemplate) type = templates.find(type => inPageCategory(type.category, pageCategory)) ?? templates[0];
     if (!type || !schema || type.creatable === false || type.singleton) return;
     actionDialog = {
-      title: $t("shell.addDocument", { name: type.title }), description: $t("shell.newDocumentDescription"), fieldLabel: type.shared ? $t("shell.name") : $t("shell.pageName"), confirmLabel: $t("shell.createDraft"),
-      onconfirm: (title) => {
+      title: $t("shell.addDocument", { name: chooseTemplate ? $t("shell.pages") : type.title }), description: $t("shell.newDocumentDescription"), fieldLabel: type.shared ? $t("shell.name") : $t("shell.pageName"), confirmLabel: $t("shell.createDraft"),
+      ...(chooseTemplate ? { templates, templateCategory: type.category ?? "" } : {}),
+      onconfirm: (title, selectedType) => {
+        const selected = chooseTemplate ? templates.find(entry => entry.name === selectedType) : type;
+        if (!selected) throw new Error($t("shell.chooseTemplate"));
         const slug = slugify(title);
         if (!slug) throw new Error($t("shell.titleRequired"));
-        if (manifest.documents?.some(doc => doc.type === type.name && doc.slug === slug)) throw new Error($t("shell.slugAlreadyUsed", { slug }));
-        const id = `${type.name}:${slug}`;
-        const data = newDocumentFromTemplate(schema, type.name, title, slug);
-        validateDocumentSlugs(schema, [...(manifest.documents ?? []), { id, type: type.name, slug, data }], manifest.preview, $t);
-        newDocument = { type: type.name, id, slug };
+        if (manifest.documents?.some(doc => doc.type === selected.name && doc.slug === slug)) throw new Error($t("shell.slugAlreadyUsed", { slug }));
+        const id = `${selected.name}:${slug}`;
+        const data = newDocumentFromTemplate(schema, selected.name, title, slug);
+        validateDocumentSlugs(schema, [...(manifest.documents ?? []), { id, type: selected.name, slug, data }], manifest.preview, $t);
+        newDocument = { type: selected.name, id, slug };
         draft = JSON.parse(JSON.stringify(data));
         docBase = null;
-        openSelection({ kind: "document", type: type.name, id });
+        openSelection({ kind: "document", type: selected.name, id });
       },
     };
   }
@@ -957,10 +977,9 @@
         {#if sel.kind === "page" || sel.kind === "post" || sel.kind === "menu" || sel.kind === "document"}
         <div class="editor-actions">
         {#if sel.kind === "page" && page}
-          <p class="back"><button onclick={() => select(page.shared ? null : { kind: "pages", category: page.category })}>{$t("shell.backTo", { name: page.shared ? $t("shell.welcome") : page.category ?? $t("shell.pages") })}</button></p>
+          <p class="back"><button onclick={() => select(page.shared ? null : pageBack)}>{$t("shell.backTo", { name: page.shared ? $t("shell.welcome") : pageBackLabel })}</button></p>
         {:else if sel.kind === "document"}
-          {@const backSel: Sel | null = activeDocType?.singleton ? null : sel.type === pageDocType?.name ? { kind: "pages" } : { kind: "documents", type: sel.type }}
-          <p class="back"><button onclick={() => select(backSel)}>{$t("shell.backTo", { name: activeDocType?.singleton ? $t("shell.welcome") : sel.type === pageDocType?.name ? $t("shell.pages") : activeDocType?.title ?? $t("shell.documents") })}</button></p>
+          <p class="back"><button onclick={() => select(documentBack)}>{$t("shell.backTo", { name: !documentBack ? $t("shell.welcome") : documentBack.kind === "pages" ? pageBackLabel : activeDocType?.title ?? $t("shell.documents") })}</button></p>
         {:else if sel.kind === "post" && coll}
           <p class="back"><button onclick={() => select({ kind: "collection", name: coll.name })}>{$t("shell.backTo", { name: coll.label })}</button></p>
         {:else if sel.kind === "menu"}
@@ -976,8 +995,11 @@
         {/if}
         <div class="titlebar">
           <h2>{sel.kind === "page" ? page?.label : sel.kind === "menu" ? String(draft.title || menu?.slug || "") : sel.kind === "post" ? String(draft.title || post?.slug || "") : sel.kind === "document" ? activeDocType?.singleton ? activeDocType.title : String(draft.title || draft.name || activeDocument?.slug || sel.id) : listTitle}</h2>
-        {#if (sel?.kind === "collection" && coll) || (sel?.kind === "pages" && pageDocType?.creatable !== false && pageDocType) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
-          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType))}>{$t("shell.addNew")}</button>
+        {#if sel.kind === "pages" && categories.length}
+          <Select label={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); select({ kind: "pages" }); } }} />
+        {/if}
+        {#if (sel?.kind === "collection" && coll) || (sel?.kind === "pages" && templates.length) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
+          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType, sel?.kind === "pages"))}>{$t("shell.addNew")}</button>
         {/if}
         {#if sel?.kind === "post" && post}
           <button class="icon-btn" aria-label={$t("shell.deletePost")} data-tooltip={$t("shell.deletePost")} disabled={saveState === "saving"} onclick={deletePost}>

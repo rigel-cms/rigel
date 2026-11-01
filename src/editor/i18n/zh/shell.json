@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "基础",
+  "shell.template": "模板",
+  "shell.chooseTemplate": "选择模板",
   "shell.search": "搜索",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "关闭对话框",

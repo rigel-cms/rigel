@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "Principales",
+  "shell.template": "Plantilla",
+  "shell.chooseTemplate": "Elige una plantilla",
   "shell.search": "Buscar",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "Cerrar diálogo",

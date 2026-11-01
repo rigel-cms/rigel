@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { transpileModule } from "typescript";
 import { compile } from "svelte/compiler";
 import { contentForLocale, selectionInContent } from "../manifest/content-locales";
+import { pageCategories, defaultPageCategory } from "../manifest/pages";
 import type { Manifest } from "../manifest/types";
 import { slugify, validateDocumentSlugs } from "../slugs";
 import { newDocumentFromTemplate } from "../schema/paths";
@@ -16,8 +17,9 @@ function editor(manifest: Manifest, selection: unknown, dirty = true) {
     return source.slice(start, source.indexOf("\n  }", start) + 4);
   }).join("\n");
   const code = transpileModule(functions, { compilerOptions: { target: 99 } }).outputText;
-  return new Function("manifest", "sel", "dirty", "contentForLocale", "selectionInContent", "slugify", "validateDocumentSlugs", "newDocumentFromTemplate", "$t", `
+  return new Function("manifest", "sel", "dirty", "contentForLocale", "selectionInContent", "slugify", "validateDocumentSlugs", "newDocumentFromTemplate", "$t", "pageCategories", "defaultPageCategory", `
     let contentLocale = 'en', selectedContentLocale = 'en', localeControlRevision = 0;
+    let pagesFilter = '', entryList = null;
     let pendingNavigation = null, pendingNavigationCancel = null, publishOpen = false, publishBusy = false, saveState = 'idle';
     let newEntry = null, newDocument = null, succeeds = true, saves = 0;
     let draft = { title: 'Unsaved edits' }, docBase = null, actionDialog = null;
@@ -35,7 +37,7 @@ function editor(manifest: Manifest, selection: unknown, dirty = true) {
       created() { return newDocument; },
       state() { return { locale: selectedContentLocale, sel, dirty, pending: !!pendingNavigation, saves, draft }; }
     };
-  `)(manifest, selection, dirty, contentForLocale, selectionInContent, slugify, validateDocumentSlugs, newDocumentFromTemplate, systemMessage);
+  `)(manifest, selection, dirty, contentForLocale, selectionInContent, slugify, validateDocumentSlugs, newDocumentFromTemplate, systemMessage, pageCategories, defaultPageCategory);
 }
 const manifest: Manifest = {
   contentLocales: { defaultLocale: "en", locales: [{ code: "en", label: "English" }, { code: "fr", label: "Français" }] },

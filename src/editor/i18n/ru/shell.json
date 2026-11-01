@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "Основные",
+  "shell.template": "Шаблон",
+  "shell.chooseTemplate": "Выберите шаблон",
   "shell.search": "Поиск",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "Закрыть диалог",

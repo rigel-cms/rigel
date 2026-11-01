@@ -8,6 +8,7 @@ import { validateSchema } from "../schema/validate";
 import type { DocumentDef } from "../schema/types";
 import { effectiveSlug } from "../slugs";
 import { previewPath } from "../preview";
+import { pageCategories, pageTemplates, inPageCategory, defaultPageCategory } from "../manifest/pages";
 
 const fields = [{ key: "title", label: "Title", type: "string" as const }];
 const types: DocumentDef[] = [
@@ -29,19 +30,19 @@ const manifest: Manifest = {
   documents: types.map(type => ({ id: `${type.name}:stored`, type: type.name, slug: "stored", data: { title: type.title, slug: `${type.name.toLowerCase()}-url`, draft: type.name === "articleFr", category: "Ignored data" } })),
 };
 const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");
-function list(locale: string, category?: string, sortBy = "", sortDir = 1, manifestSource = manifest) {
+function list(locale: string, category: string | null = null, sortBy = "", sortDir = 1, manifestSource = manifest) {
   const visibleContent = contentForLocale(manifestSource, locale);
   const start = source.indexOf("  const sortedPages = $derived.by(() => {");
   const end = source.indexOf("\n  function documentCell", start);
   expect(start).toBeGreaterThan(0);
   const code = transpileModule(source.slice(start, end).replace("$derived.by", "run"), { compilerOptions: { target: 99 } }).outputText;
-  return new Function("visibleContent", "pageCategory", "sortBy", "sortDir", "effectiveSlug", "manifest", "previewPath", `
+  return new Function("visibleContent", "pageCategory", "sortBy", "sortDir", "effectiveSlug", "manifest", "previewPath", "inPageCategory", `
     const docTypes = visibleContent.schema.documents;
     const pageDocuments = visibleContent.documents.filter(doc => docTypes.some(type => type.name === doc.type && !type.shared));
     const run = fn => fn();
     ${code}
     return sortedPages;
-  `)(visibleContent, category, sortBy, sortDir, effectiveSlug, manifestSource, previewPath) as { path: string | null; slug: string; title: string; category?: string; draft: boolean; target: Selection }[];
+  `)(visibleContent, category, sortBy, sortDir, effectiveSlug, manifestSource, previewPath, inPageCategory) as { path: string | null; slug: string; title: string; category?: string; draft: boolean; target: Selection }[];
 }
 
 test("Pages derive sortable public paths from locale mappings, not preview templates or filenames", () => {
@@ -63,6 +64,24 @@ test("Pages derive sortable public paths from locale mappings, not preview templ
     expect(paths).toEqual([...paths].sort((a, b) => a.localeCompare(b)));
     expect(list(locale, undefined, "path", -1, configured).map(row => row.path ?? "")).toEqual([...paths].reverse());
   }
+});
+
+test("Core filters uncategorized native and legacy pages without changing their metadata", () => {
+  expect(list("en", "").map(row => row.title)).toEqual(["Home", "Pages"]);
+  expect(list("en", null)).toHaveLength(4);
+  expect(manifest.schema!.documents.find(type => type.name === "page")!.category).toBeUndefined();
+  expect(pageCategories(contentForLocale(manifest, "en"))).toEqual(["Articles"]);
+  expect(pageCategories(contentForLocale(manifest, "fr"))).toEqual(["Announcements", "Articles"]);
+  expect(defaultPageCategory(manifest)).toBe("");
+  expect(defaultPageCategory({ pages: [], schema: { objects: [], documents: [types[0]] } })).toBeNull();
+});
+
+test("creation templates are actual locale-eligible, creatable, nonshared nonsingleton document definitions", () => {
+  const source = { ...manifest, schema: { ...manifest.schema!, documents: [...types, { ...types[0], name: "locked", creatable: false }, { ...types[0], name: "singleton", singleton: true }] } };
+  expect(pageTemplates(contentForLocale(source, "en")).map(type => type.name)).toEqual(["articleEn", "page"]);
+  expect(pageTemplates(contentForLocale(source, "fr")).map(type => type.name)).toEqual(["articleFr", "announcement", "page"]);
+  expect(pageTemplates({ pages: [] })).toEqual([]);
+  expect(pageCategories({ pages: [] })).toEqual([]);
 });
 
 test("document categories are optional fixed non-empty strings without normalization", () => {

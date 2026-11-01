@@ -1,9 +1,13 @@
 <script lang="ts">
   import { t } from "../i18n";
   import Icon from "./Icon.svelte";
-  let { title, description, confirmLabel, fieldLabel, danger = false, onconfirm, onclose }: {
+  import Select from "./Select.svelte";
+  import { untrack } from "svelte";
+  import type { DocumentDef } from "../../schema/types";
+  let { title, description, confirmLabel, fieldLabel, danger = false, templates, templateCategory, onconfirm, onclose }: {
     title: string; description: string; confirmLabel: string; fieldLabel?: string; danger?: boolean;
-    onconfirm: (value: string) => void | Promise<void>; onclose: () => void;
+    templates?: DocumentDef[]; templateCategory?: string;
+    onconfirm: (value: string, type?: string) => void | Promise<void>; onclose: () => void;
   } = $props();
   let dialog: HTMLDialogElement;
   let cancel: HTMLButtonElement;
@@ -11,6 +15,11 @@
   let value = $state("");
   let busy = $state(false);
   let error = $state("");
+  let category = $state(untrack(() => templateCategory ?? ""));
+  let selectedTemplate = $state("");
+  const categories = $derived([...new Set((templates ?? []).map(type => type.category ?? ""))].sort());
+  const candidates = $derived((templates ?? []).filter(type => (type.category ?? "") === category));
+  const template = $derived(candidates.length === 1 ? candidates[0].name : selectedTemplate);
   $effect(() => {
     dialog.showModal();
     (fieldLabel ? input : cancel).focus();
@@ -20,7 +29,10 @@
     if (busy) return;
     busy = true;
     error = "";
-    try { await onconfirm(value.trim()); onclose(); }
+    try {
+      if (templates && !candidates.some(type => type.name === template)) throw new Error($t("shell.chooseTemplate"));
+      await onconfirm(value.trim(), template); onclose();
+    }
     catch (cause) { error = cause instanceof Error ? cause.message : $t("connection.actionFailed"); }
     finally { busy = false; }
   }
@@ -31,6 +43,14 @@
     <div class="action-head"><h2 id="action-title">{title}</h2><button type="button" class="icon-btn" aria-label={$t("connection.cancel")} disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
     <p id="action-description">{description}</p>
     {#if fieldLabel}<label><span>{fieldLabel}</span><input type="text" bind:this={input} bind:value required disabled={busy} /></label>{/if}
+    {#if templates}
+      {#if categories.some(category => category !== "")}
+        <Select label={$t("shell.category")} value={category} options={categories.map(value => ({ value, label: value || $t("shell.coreCategory") }))} disabled={busy} onchange={(value) => { if (typeof value === "string") { category = value; selectedTemplate = ""; error = ""; } }} />
+      {/if}
+      {#if candidates.length > 1}
+        <Select label={$t("shell.template")} value={selectedTemplate} options={[{ value: "", label: $t("shell.chooseTemplate"), disabled: true }, ...candidates.map(type => ({ value: type.name, label: type.title }))]} disabled={busy} onchange={(value) => { if (typeof value === "string") selectedTemplate = value; }} />
+      {/if}
+    {/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="action-actions">
       <button type="button" bind:this={cancel} disabled={busy} onclick={onclose}>{$t("connection.cancel")}</button>

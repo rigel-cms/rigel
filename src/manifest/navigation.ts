@@ -1,4 +1,5 @@
 import type { Manifest } from "./types";
+import { pageCategories } from "./pages";
 import { systemMessage, type Translator } from "../editor/i18n/format";
 
 export type Selection =
@@ -31,8 +32,7 @@ export function navigationKey(target: Selection): string {
 export function buildSidebar(manifest: Manifest, message: Translator = systemMessage): SidebarNode[] {
   const link = (target: SidebarTarget, label: string): SidebarLink => ({ kind: "link", target, label });
   const types = manifest.schema?.documents ?? [];
-  const pages = manifest.pages.filter(page => !page.shared);
-  const categories = [...new Set([...pages, ...types.filter(type => !type.shared)].map(entry => entry.category).filter((category): category is string => !!category))].sort();
+  const categories = pageCategories(manifest);
   const defaults: SidebarNode[] = [
     { kind: "heading", label: message("system.sidebar.website") },
     link({ kind: "pages" }, message("system.sidebar.pages")),

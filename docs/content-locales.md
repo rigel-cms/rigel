@@ -51,3 +51,11 @@ Content without a `locale` remains visible in every language. Use this for commo
 Without `contentLocales`, the editor keeps its existing navigation and shows no content-language dropdown. A single configured locale also needs no dropdown.
 
 Your Astro routes and templates still own website localization, including public language links, HTML `lang`, translated navigation and fallback behavior. Rigel does not translate text, pair translated entries or generate localized routes. Keep each type's URL mapping consistent with the website routes, and prepare its preview bindings as usual.
+
+## Page categories and templates
+
+Set `category` on a nonshared document definition to group its pages, for example `category: "Articles"`. This is schema metadata, not an editable field in stored documents. Uncategorised native documents and legacy copy pages remain in **Core** without a migration. When categories exist, the Pages table offers Core, All pages and each category visible in the selected content language. Core is the initial filter when uncategorised pages or types exist; category-only sites initially show All pages. Back returns to the originating table/filter, not a filter inferred from the opened page.
+
+Add new asks for a page name and a category from the locale-eligible, creatable document types. When a category contains multiple types, the editor also requires a Template choice using each definition's title. Shared, singleton and `creatable: false` types are not creation choices. A single uncategorised type keeps the name-only dialog. Creation uses the selected type's identity, initial values and section template; nothing is written until Save.
+
+A visual variant can be another document definition with its own category, defaults and template—for example a Resources category with a dark-theme initial value. Its native type, folder, preview mapping and host renderer must be configured normally. A category does not change the editor theme, rewrite existing document types or generate website routes.

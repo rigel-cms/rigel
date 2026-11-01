@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "Standard",
+  "shell.template": "Vorlage",
+  "shell.chooseTemplate": "Vorlage auswählen",
   "shell.search": "Suchen",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "Dialog schließen",

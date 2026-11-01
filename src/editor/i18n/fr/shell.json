@@ -1,4 +1,7 @@
 {
+  "shell.coreCategory": "Principales",
+  "shell.template": "Modèle",
+  "shell.chooseTemplate": "Choisir un modèle",
   "shell.search": "Rechercher",
   "shell.searchShortcut": "⌘/Ctrl + K",
   "shell.closeDialog": "Fermer la boîte de dialogue",

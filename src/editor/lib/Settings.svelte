@@ -5,9 +5,13 @@
   import type { Manifest } from "../../manifest/types";
   import type { GitHubAccess } from "./github-auth";
   import Icon from "./Icon.svelte";
+  import Select from "./Select.svelte";
+  import { effectiveSearchScope } from "../../manifest/search";
 
-  let { s = $bindable(), github, user, error, saving, onerase, onclose }: {
+  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose }: {
     s: RigelSettings;
+    search?: Manifest["search"];
+    contentLocales?: Manifest["contentLocales"];
     github?: Manifest["github"];
     user?: GitHubAccess["user"];
     error: string;
@@ -16,8 +20,8 @@
     onclose: () => void;
   } = $props();
 
-  type PaneId = "appearance" | "editor" | "connection" | "media" | "language" | "advanced";
-  let active: PaneId = $state("appearance");
+  type PaneId = "interface" | "content" | "connection" | "media" | "advanced";
+  let active: PaneId = $state("interface");
 
   const providerIds = Object.keys(STOCK_PROVIDERS) as (keyof typeof STOCK_PROVIDERS)[];
   let keys = $state(getKeys());
@@ -26,20 +30,20 @@
   let eraseError = $state("");
 
   const panes: { id: PaneId; label: string }[] = $derived([
-    { id: "appearance", label: $t("shell.appearance") },
-    { id: "editor", label: $t("shell.editor") },
+    { id: "interface", label: $t("shell.interface") },
+    { id: "content", label: $t("shell.content") },
     { id: "connection", label: $t("shell.connection") },
     { id: "media", label: $t("shell.media") },
-    { id: "language", label: $t("shell.language") },
+
     { id: "advanced", label: $t("shell.advanced") },
   ]);
 
   const PANE_ICONS = {
-    appearance: "palette",
-    editor: "textB",
+    interface: "palette",
+    content: "fileText",
     connection: "user",
     media: "image",
-    language: "translate",
+
     advanced: "wrench",
   } as const;
 
@@ -71,6 +75,7 @@
         {#each panes as p (p.id)}
           <button
             class:active={active === p.id}
+            aria-current={active === p.id ? "true" : undefined}
             onclick={() => (active = p.id)}
           >
             <span class="pico"><Icon name={PANE_ICONS[p.id]} size={24} /></span>
@@ -79,9 +84,9 @@
         {/each}
       </nav>
 
-      <div class="settings-pane">
-        {#if active === "appearance"}
-          <h3>{$t("shell.appearance")}</h3>
+      <div class="settings-pane" role="region" aria-label={panes.find(p => p.id === active)?.label}>
+        {#if active === "interface"}
+
           <fieldset>
             <legend>{$t("shell.theme")}</legend>
             <div class="theme-options">
@@ -101,17 +106,30 @@
             </label>
             <p class="hint" id="high-contrast-hint">{$t("shell.highContrastHint")}</p>
           </fieldset>
-
-        {:else if active === "editor"}
-          <h3>{$t("shell.editorExperience")}</h3>
           <fieldset>
-            <legend>{$t("shell.articleBodyEditing")}</legend>
-            <label class="radio"><input type="radio" bind:group={s.userPref.editorExperience} value="sidebar" /><span>{$t("shell.sidebar")}</span></label>
-            <label class="radio"><input type="radio" bind:group={s.userPref.editorExperience} value="inline" /><span>{$t("shell.inlinePreview")}</span></label>
+            <legend>{$t("shell.editorInterfaceLanguage")}</legend>
+            {#each availableLocales as lang}
+              <label class="radio">
+                <input type="radio" bind:group={s.language} value={lang} />
+                <span>{localeNames[lang]}</span>
+              </label>
+            {/each}
           </fieldset>
+
+        {:else if active === "content"}
+
+          <Select label={$t("shell.articleBodyEditing")} value={s.userPref.editorExperience ?? "inline"} options={[
+            { value: "sidebar", label: $t("shell.sidebar") },
+            { value: "inline", label: $t("shell.inlinePreview") },
+          ]} onchange={value => s.userPref.editorExperience = value === "sidebar" ? "sidebar" : "inline"} />
           <p class="hint">{$t("shell.editorExperienceHint")}</p>
+          <Select label={$t("shell.searchScope")} value={s.userPref.searchScope ?? "inherit"} options={[
+            { value: "inherit", label: $t("shell.searchScopeDefault", { scope: $t(effectiveSearchScope(search, undefined) === "all" ? "shell.searchScopeAll" : "shell.searchScopeCurrent") }) },
+            { value: "all", label: $t("shell.searchScopeAll") },
+            { value: "currentLocale", label: $t("shell.searchScopeCurrent"), disabled: !contentLocales || contentLocales.locales.length < 2 },
+          ]} onchange={value => s.userPref.searchScope = value === "all" || value === "currentLocale" ? value : undefined} />
         {:else if active === "connection"}
-          <h3>{$t("shell.connection")}</h3>
+
           {#if github}
             <dl class="connection-details">
               <dt>{$t("shell.githubAccount")}</dt>
@@ -165,17 +183,6 @@
 
           </section>
 
-        {:else if active === "language"}
-          <h3>{$t("shell.language")}</h3>
-          <fieldset>
-            <legend>{$t("shell.editorInterfaceLanguage")}</legend>
-            {#each availableLocales as lang}
-              <label class="radio">
-                <input type="radio" bind:group={s.language} value={lang} />
-                <span>{localeNames[lang]}</span>
-              </label>
-            {/each}
-          </fieldset>
 
         {:else}
           <h3>{$t("shell.developerMode")}</h3>

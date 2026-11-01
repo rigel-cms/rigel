@@ -38,6 +38,7 @@ export interface GitHubBackendConfig {
 
 export interface Manifest {
   contentLocales?: import("../config").ContentLocalesConfig;
+  search?: { scope: import("../config").SearchScope };
   backend?: "github";
   github?: GitHubBackendConfig;
   sidebar?: import("./navigation").SidebarEntry[];

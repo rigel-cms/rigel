@@ -169,6 +169,7 @@ export const menus = {
           demo: cfg.demo,
           languages: cfg.languages,
           contentLocales: cfg.contentLocales,
+          search: cfg.search,
           publicDir: publicDir?.href,
           mediaDir: cfg.mediaDir,
           maxFileSize: cfg.maxFileSize,
@@ -218,7 +219,7 @@ ${collectionCode}
 ];
 for (const collection of collections) __rigelAssertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })));
 ${menuCode}
-export default { pages, collections, documents${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
+export default { pages, collections, documents, search: ${JSON.stringify(cfg.search)}${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
 `;
     },
   };

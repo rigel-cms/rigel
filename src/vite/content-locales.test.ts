@@ -27,6 +27,8 @@ test("generated local and GitHub manifests transport identical content metadata 
     };
     const local = await bundle(cfg), github = await bundle({ ...cfg, backend: "github", repo: "owner/site" });
     expect(local.contentLocales).toEqual(contentLocales);
+    expect(local.search).toEqual({ scope: "all" });
+    expect((await bundle({ ...cfg, search: { scope: "currentLocale" } })).search).toEqual({ scope: "currentLocale" });
     expect(local.pages[0].locale).toBe("fr");
     expect(local.collections![0].locale).toBe("fr");
     expect(local.schema!.documents[0].locale).toBe("en");

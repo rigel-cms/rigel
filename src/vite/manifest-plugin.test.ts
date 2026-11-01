@@ -189,7 +189,7 @@ test("load emits a HOST-side glob over the configured copyDir, sorted by slug", 
   expect(code).toContain('import.meta.glob("/src/content/copy/**/*.ts"');
   expect(code).toContain("eager: true");
   expect(code).toContain("localeCompare");
-  expect(code).toContain("export default { pages, collections, documents }");
+  expect(code).toContain('export default { pages, collections, documents, search: {"scope":"all"} }');
 });
 
 test("glob pattern follows config copyDir", () => {

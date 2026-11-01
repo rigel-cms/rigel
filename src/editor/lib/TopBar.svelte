@@ -4,6 +4,8 @@
   import SidebarIcon from "./SidebarIcon.svelte";
   import { tick } from "svelte";
   import type { Manifest } from "../../manifest/types";
+  import { searchIndex, type SearchHit } from "../../manifest/search";
+  import type { SearchScope } from "../../config";
 
   type Sel =
     | { kind: "media" }
@@ -20,10 +22,14 @@
     manifest,
     sel,
     onselect,
+    scope = "all",
+    contentLocale,
   }: {
     manifest: Manifest;
     sel: Sel | null;
-    onselect: (s: Sel) => void;
+    onselect: (s: Sel, locale?: string) => void;
+    scope?: SearchScope;
+    contentLocale?: string;
   } = $props();
 
   let open = $state(false);
@@ -35,53 +41,11 @@
     if (open) inputEl?.focus();
   });
 
-  interface Hit {
-    label: string;
-    hint: string;
-    action: () => void;
-  }
+  const index = $derived(searchIndex(manifest, scope, contentLocale, $t));
+  const hits = $derived(index.filter(hit => [hit.label, hit.hint, hit.language ?? ""].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 12));
 
-  const hits = $derived.by((): Hit[] => {
-    const q = query.trim().toLowerCase();
-    const all: Hit[] = [];
-    for (const p of manifest.pages) {
-      all.push({
-        label: p.label,
-        hint: $t("shell.page"),
-        action: () => onselect({ kind: "page", slug: p.slug }),
-      });
-    }
-    for (const doc of manifest.documents ?? []) {
-      all.push({
-        label: String(doc.data.title ?? doc.data.name ?? doc.slug),
-        hint: $t("shell.searchItemHint", { name: doc.type, slug: doc.slug }),
-        action: () => onselect({ kind: "document", type: doc.type, id: doc.id }),
-      });
-    }
-    for (const c of manifest.collections ?? []) {
-      all.push({
-        label: c.label,
-        hint: $t("shell.collection"),
-        action: () => onselect({ kind: "collection", name: c.name }),
-      });
-      for (const po of c.posts) {
-        all.push({
-          label: String(po.frontmatter.title ?? po.slug),
-          hint: $t("shell.searchItemHint", { name: c.label, slug: po.slug }),
-          action: () => onselect({ kind: "post", collection: c.name, slug: po.slug }),
-        });
-      }
-    }
-    if (manifest.menus) {
-      all.push({ label: $t("shell.menus"), hint: $t("shell.collection"), action: () => onselect({ kind: "menus" }) });
-      for (const m of manifest.menus.entries) all.push({ label: m.title, hint: $t("shell.searchMenuHint", { slug: m.slug }), action: () => onselect({ kind: "menu", slug: m.slug }) });
-    }
-    if (!q) return all.slice(0, 12);
-    return all.filter((h) => h.label.toLowerCase().includes(q) || h.hint.toLowerCase().includes(q)).slice(0, 12);
-  });
-
-  function trigger(h: Hit) {
-    h.action();
+  function trigger(h: SearchHit) {
+    onselect(h.selection, h.locale);
     open = false;
     query = "";
     active = -1;
@@ -145,10 +109,10 @@
         <kbd>{$t("shell.escapeKeyLowercase")}</kbd>
       </div>
       <ul id="rigel-search-results" role="listbox" aria-label={$t("shell.searchResults")}>
-        {#each hits as h, i (h.hint + h.label)}
+        {#each hits as h, i (h.id)}
           <li role="presentation">
             <button id={`rigel-search-hit-${i}`} role="option" aria-selected={active === i} onfocus={() => active = i} onclick={() => trigger(h)}>
-              <span>{h.label}</span>
+              <span>{h.label}{#if h.language}<span class="badge search-language" title={h.language} aria-label={h.language}>{h.locale?.slice(0, 2).toUpperCase()}</span>{/if}</span>
               <span class="hint">{h.hint}</span>
             </button>
           </li>

@@ -9,11 +9,14 @@ import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
 import { systemMessage } from "./editor/i18n/format";
 import { localeNames, type Locale } from "./editor/i18n/locales";
 import { validateContentLocales, validateContentLocale } from "./manifest/content-locales";
+import { effectiveSearchScope } from "./manifest/search";
 
 export interface ContentLocalesConfig {
   defaultLocale: string;
   locales: { code: string; label: string }[];
 }
+
+export type SearchScope = "all" | "currentLocale";
 
 export interface RigelConfig {
   copyDir: string;
@@ -25,6 +28,7 @@ export interface RigelConfig {
   demo?: boolean;
   languages?: Locale[];
   contentLocales?: ContentLocalesConfig;
+  search?: { scope: SearchScope };
   extensions?: string[];
   collections?: CollectionConfig[];
   menus?: { folder: string; maxDepth?: number };
@@ -56,6 +60,7 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  cfg.search = { scope: effectiveSearchScope(cfg.search, undefined) };
   if (cfg.contentLocales !== undefined) {
     validateContentLocales(cfg.contentLocales);
     cfg.contentLocales = { ...cfg.contentLocales, locales: cfg.contentLocales.locales.map(locale => ({ ...locale })) };

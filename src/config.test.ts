@@ -5,6 +5,7 @@ test("defaults to local backend + src/content/copy", () => {
   expect(parseConfig()).toEqual({
     copyDir: "src/content/copy",
     backend: "local",
+    search: { scope: "all" },
     jsonOutput: "pretty",
     demo: true,
     languages: ["en", "fr"],

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { transpileModule } from "typescript";
 import { compile } from "svelte/compiler";
 import { contentForLocale, selectionInContent } from "../manifest/content-locales";
-import { pageCategories, defaultPageCategory } from "../manifest/pages";
+import { pageCategories } from "../manifest/pages";
 import type { Manifest } from "../manifest/types";
 import { slugify, validateDocumentSlugs } from "../slugs";
 import { newDocumentFromTemplate } from "../schema/paths";
@@ -17,9 +17,9 @@ function editor(manifest: Manifest, selection: unknown, dirty = true) {
     return source.slice(start, source.indexOf("\n  }", start) + 4);
   }).join("\n");
   const code = transpileModule(functions, { compilerOptions: { target: 99 } }).outputText;
-  return new Function("manifest", "sel", "dirty", "contentForLocale", "selectionInContent", "slugify", "validateDocumentSlugs", "newDocumentFromTemplate", "$t", "pageCategories", "defaultPageCategory", `
+  return new Function("manifest", "sel", "dirty", "contentForLocale", "selectionInContent", "slugify", "validateDocumentSlugs", "newDocumentFromTemplate", "$t", "pageCategories", `
     let contentLocale = 'en', selectedContentLocale = 'en', localeControlRevision = 0;
-    let pagesFilter = '', entryList = null;
+    let pagesFilter = null, entryList = null;
     let pendingNavigation = null, pendingNavigationCancel = null, publishOpen = false, publishBusy = false, saveState = 'idle';
     let newEntry = null, newDocument = null, succeeds = true, saves = 0;
     let draft = { title: 'Unsaved edits' }, docBase = null, actionDialog = null;
@@ -37,17 +37,18 @@ function editor(manifest: Manifest, selection: unknown, dirty = true) {
       created() { return newDocument; },
       state() { return { locale: selectedContentLocale, sel, dirty, pending: !!pendingNavigation, saves, draft }; }
     };
-  `)(manifest, selection, dirty, contentForLocale, selectionInContent, slugify, validateDocumentSlugs, newDocumentFromTemplate, systemMessage, pageCategories, defaultPageCategory);
+  `)(manifest, selection, dirty, contentForLocale, selectionInContent, slugify, validateDocumentSlugs, newDocumentFromTemplate, systemMessage, pageCategories);
 }
 const manifest: Manifest = {
   contentLocales: { defaultLocale: "en", locales: [{ code: "en", label: "English" }, { code: "fr", label: "Français" }] },
   pages: [{ slug: "home", label: "Home", locale: "en", groups: [], values: {} }, { slug: "shared", label: "Shared", groups: [], values: {} }],
 };
 
-test("selector compiles, only appears when opted in, and search uses the same filtered content", () => {
+test("selector compiles, only appears when opted in, and global search receives all content with an independent scope", () => {
   expect(() => compile(source, { filename: "App.svelte", generate: "client" })).not.toThrow();
   expect(source).toContain('manifest.contentLocales && manifest.contentLocales.locales.length > 1');
-  expect(source).toContain('<TopBar manifest={visibleContent}');
+  expect(source).toContain('<TopBar {manifest}');
+  expect(source).toContain('scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)}');
   expect(source).toContain('label={$t("shell.contentLanguage")}');
   expect(source).toContain('value={contentLocale}');
   expect(source).toContain('{#key localeControlRevision}');
@@ -66,6 +67,35 @@ test("cancel keeps locale, selection and edits with no writes and restores the r
   const dialog = readFileSync(new URL("./lib/UnsavedChanges.svelte", import.meta.url), "utf8");
   expect(dialog.match(/onclick=\{oncancel\}/g)).toHaveLength(2);
   expect(dialog).toContain('if (!busy) oncancel();');
+});
+
+test.each(["document", "page", "post", "collection"])("foreign search target %s navigates only after the existing locale guard", kind => {
+  const target = kind === "document" ? { kind, type: "fr", id: "fr:home" } : kind === "page" ? { kind, slug: "fr-home" } : kind === "post" ? { kind, collection: "fr", slug: "home" } : { kind, name: "fr" };
+  const content: Manifest = { ...manifest, pages: [...manifest.pages, { slug: "fr-home", label: "Home", locale: "fr", groups: [], values: {} }], schema: { objects: [], documents: [{ name: "fr", title: "Pages", type: "document", locale: "fr", folder: "fr", fields: [] }] }, collections: [{ name: "fr", label: "Blog", locale: "fr", fields: [], posts: [] }] };
+  const cancelled = editor(content, { kind: "page", slug: "home" });
+  const before = cancelled.state();
+  cancelled.switchContentLocale("fr", target);
+  cancelled.cancel();
+  expect(cancelled.state()).toEqual(before);
+  const discarded = editor(content, { kind: "page", slug: "home" });
+  discarded.switchContentLocale("fr", target);
+  discarded.discardAndLeave();
+  expect(discarded.state()).toMatchObject({ locale: "fr", sel: target, saves: 0 });
+});
+
+test("foreign search target waits for successful Save and leave and never saves twice", async () => {
+  const target = { kind: "page", slug: "fr-home" };
+  const content = { ...manifest, pages: [...manifest.pages, { slug: "fr-home", label: "Home", locale: "fr", groups: [], values: {} }] };
+  const failed = editor(content, { kind: "page", slug: "home" });
+  failed.switchContentLocale("fr", target);
+  failed.failSave();
+  await failed.saveAndLeave();
+  expect(failed.state()).toMatchObject({ locale: "en", sel: { kind: "page", slug: "home" }, dirty: true, saves: 1 });
+  const saved = editor(content, { kind: "page", slug: "home" });
+  saved.switchContentLocale("fr", target);
+  expect(saved.state().saves).toBe(0);
+  await saved.saveAndLeave();
+  expect(saved.state()).toMatchObject({ locale: "fr", sel: target, dirty: false, saves: 1 });
 });
 
 test("cancelling other navigation never redirects focus to the language selector", async () => {

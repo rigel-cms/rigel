@@ -3,6 +3,7 @@ import type { StockKeys } from "./images";
 import { availableLocales, setLocale, type Locale } from "../i18n";
 
 export interface RigelUserPref {
+  searchScope?: "all" | "currentLocale";
   sidebarCollapsed?: boolean;
   editorExperience?: "sidebar" | "inline";
   previewSplit: number;
@@ -46,6 +47,7 @@ export function getSettings(): RigelSettings {
       highContrast: typeof saved?.highContrast === "boolean" ? saved.highContrast : DEFAULTS.highContrast,
       apiKeys: mergedKeys,
       userPref: {
+        searchScope: saved?.userPref?.searchScope === "all" || saved?.userPref?.searchScope === "currentLocale" ? saved.userPref.searchScope : undefined,
         sidebarCollapsed: saved?.userPref?.sidebarCollapsed === true,
         editorExperience: saved?.userPref?.editorExperience === "sidebar" ? "sidebar" : DEFAULTS.userPref.editorExperience,
         previewSplit: typeof saved?.userPref?.previewSplit === "number" && Number.isFinite(saved.userPref.previewSplit) && saved.userPref.previewSplit >= 0.2 && saved.userPref.previewSplit <= 0.8

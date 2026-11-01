@@ -12,10 +12,11 @@
   import SitePreview from "./lib/SitePreview.svelte";
   import ImagePicker from "./lib/ImagePicker.svelte";
   import Settings from "./lib/Settings.svelte";
+  import { effectiveSearchScope } from "../manifest/search";
   import TopBar from "./lib/TopBar.svelte";
   import Select from "./lib/Select.svelte";
   import { contentForLocale, selectionInContent } from "../manifest/content-locales";
-  import { pageCategories, pageTemplates, inPageCategory, defaultPageCategory } from "../manifest/pages";
+  import { pageCategories, pageTemplates, inPageCategory } from "../manifest/pages";
   import { validateDocumentSlugs } from "../slugs";
   import Shortcuts from "./lib/Shortcuts.svelte";
   import CollectionPanel from "./lib/CollectionPanel.svelte";
@@ -160,7 +161,7 @@
       if (!Array.isArray(data.pages) || (data.backend === "github" && !data.github)) throw new Error($t("shell.configurationIncomplete"));
       blueprint = data;
       manifest = data;
-      pagesFilter = defaultPageCategory(contentForLocale(data, data.contentLocales?.defaultLocale));
+      pagesFilter = null;
       ready = true;
       if (data.backend === "github" && data.github) {
         const session = readSession(data.github);
@@ -480,7 +481,9 @@
   });
 
   const sidebar = $derived(buildSidebar(visibleContent, $t));
-  let pagesFilter = $state<string | null>("");
+  let pagesFilter = $state<string | null>(null);
+  let pagesQuery = $state("");
+  let pagesSearch: HTMLInputElement;
   let entryList = $state<Sel | null>(null);
   const categories = $derived(pageCategories(visibleContent));
   const pageCategory = $derived(sel?.kind === "pages" && sel.category !== undefined ? sel.category : pagesFilter);
@@ -521,11 +524,12 @@
       ...visibleContent.pages.filter((p) => !p.shared && inPageCategory(p.category, pageCategory))
         .map((p) => ({ slug: p.slug, path: previewPath(manifest.preview ?? {}, { kind: "page", slug: p.slug }), title: p.label, category: p.category, draft: false, target: { kind: "page", slug: p.slug } as Sel })),
       ...pageDocuments
-        .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), path: previewPath(manifest.preview ?? {}, { kind: "document", type: doc.type, slug: effectiveSlug(doc.data, doc.slug) }), title: String(doc.data.title ?? doc.slug), category: docTypes.find(type => type.name === doc.type)?.category, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel }))
+        .map((doc) => ({ slug: effectiveSlug(doc.data, doc.slug), path: previewPath(manifest.preview ?? {}, { kind: "document", type: doc.type, slug: effectiveSlug(doc.data, doc.slug) }), title: String(doc.data.title ?? doc.data.name ?? doc.slug), category: docTypes.find(type => type.name === doc.type)?.category, draft: doc.data.draft === true, target: { kind: "document", type: doc.type, id: doc.id } as Sel }))
         .filter(doc => inPageCategory(doc.category, pageCategory)),
     ];
     const key = sortBy === "slug" || sortBy === "category" || sortBy === "path" ? sortBy : "title";
-    return rows.sort((a, b) => String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * sortDir);
+    const query = pagesQuery.trim().toLocaleLowerCase();
+    return rows.filter(row => !query || [row.title, row.slug, row.category ?? (categories.length ? $t("shell.coreCategory") : "")].some(value => value.toLocaleLowerCase().includes(query))).sort((a, b) => String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * sortDir);
   });
   function documentCell(doc: ContentDocument, key: string): string {
     return String(key === "title" ? doc.data.title ?? doc.data.name ?? doc.slug : key === "slug" ? activeDocType?.shared ? doc.slug : effectiveSlug(doc.data, doc.slug) : doc.data[key] ?? "");
@@ -694,17 +698,23 @@
     void tick().then(() => document.querySelector<HTMLButtonElement>(".content-language button[role=combobox]")?.focus({ preventScroll: true }));
   }
 
-  function switchContentLocale(value: string | string[]) {
+  function switchContentLocale(value: string | string[], target?: Sel) {
     localeControlRevision += 1;
     if (typeof value !== "string" || value === contentLocale || !manifest.contentLocales?.locales.some(locale => locale.code === value)) return;
     requestNavigation(() => {
       const destination = contentForLocale(manifest, value);
       selectedContentLocale = value;
-      if (pagesFilter && !pageCategories(destination).includes(pagesFilter)) pagesFilter = defaultPageCategory(destination);
+      if (pagesFilter && !pageCategories(destination).includes(pagesFilter)) pagesFilter = null;
       if (!selectionInContent(destination, entryList)) entryList = null;
       if (!selectionInContent(destination, sel)) openSelection(null);
+      if (target && selectionInContent(destination, target)) openSelection(target);
       focusContentLocale();
     }, focusContentLocale);
+  }
+
+  function selectSearch(next: Sel, locale?: string) {
+    if (locale && locale !== contentLocale && manifest.contentLocales?.locales.some(entry => entry.code === locale)) switchContentLocale(locale, next);
+    else select(next);
   }
 
   function sort(key: string) {
@@ -877,7 +887,7 @@
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
-    <TopBar manifest={visibleContent} {sel} onselect={select} />
+    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>
         {#key localeControlRevision}
@@ -995,10 +1005,24 @@
         {/if}
         <div class="titlebar">
           <h2>{sel.kind === "page" ? page?.label : sel.kind === "menu" ? String(draft.title || menu?.slug || "") : sel.kind === "post" ? String(draft.title || post?.slug || "") : sel.kind === "document" ? activeDocType?.singleton ? activeDocType.title : String(draft.title || draft.name || activeDocument?.slug || sel.id) : listTitle}</h2>
-        {#if sel.kind === "pages" && categories.length}
-          <Select label={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); select({ kind: "pages" }); } }} />
+        {#if sel.kind === "pages"}
+          {#if templates.length}
+            <button class="primary" onclick={() => newPage(pageDocType, true)}>{$t("shell.addNew")}</button>
+          {/if}
+          <div class="pages-controls">
+          {#if categories.length}
+            <Select ariaLabel={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); select({ kind: "pages" }); } }} />
+          {/if}
+            <div class="pages-search">
+              <Icon name="magnifier" size={18} />
+              <input type="search" aria-label={$t("shell.searchPages")} placeholder={$t("shell.searchPages")} bind:value={pagesQuery} bind:this={pagesSearch} />
+              {#if pagesQuery}
+                <button type="button" class="icon-btn" aria-label={$t("fields.clear")} onclick={() => { pagesQuery = ""; pagesSearch.focus(); }}><Icon name="x" size={16} /></button>
+              {/if}
+            </div>
+          </div>
         {/if}
-        {#if (sel?.kind === "collection" && coll) || (sel?.kind === "pages" && templates.length) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
+        {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
           <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(sel?.kind === "documents" ? activeDocType : pageDocType, sel?.kind === "pages"))}>{$t("shell.addNew")}</button>
         {/if}
         {#if sel?.kind === "post" && post}
@@ -1025,6 +1049,7 @@
       {:else if sel?.kind === "media"}
         <ImagePicker inline />
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
+
         <div class="table-card">
           <table>
             <thead>
@@ -1061,7 +1086,7 @@
                   {/each}
                 </tr>
               {:else}
-                <tr><td colspan={columns.length}>{$t("shell.noEntries")}</td></tr>
+                <tr><td colspan={columns.length}>{$t(sel?.kind === "pages" && pagesQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
               {/each}
             </tbody>
           </table>
@@ -1166,7 +1191,7 @@
 {/if}
 
 {#if settingsOpen}
-  <Settings bind:s={settings} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} />
+  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} />
 {/if}
 {#if shortcutsOpen}
   <Shortcuts onclose={() => (shortcutsOpen = false)} />

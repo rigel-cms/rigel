@@ -16,6 +16,7 @@ const type = (name, category, locale, extra = {}) => ({ name, title: name, type:
 const types = [type('pageEn', undefined, 'en'), type('pageFr', undefined, 'fr'), type('articleEn', 'Articles', 'en'), type('articleFr', 'Articles', 'fr'), type('profileEn', 'Articles', 'en'), type('resourceEn', 'Resources', 'en'), type('resourceFr', 'Resources', 'fr'), type('frOnly', 'French only', 'fr'), type('locked', 'Read only', undefined, { creatable: false }), type('singleton', 'Resources', undefined, { singleton: true }), type('shared', 'Globals', undefined, { shared: true })];
 const record = (type, slug, title) => ({ id: `${type}:${slug}`, type, slug, data: { _id: `${type}:${slug}`, _type: type, slug, title } });
 let records = [record('pageEn', 'home', 'Home EN'), record('pageFr', 'home', 'Home FR'), record('articleEn', 'existing', 'Article EN'), record('articleFr', 'existing', 'Article FR'), record('resourceEn', 'existing', 'Resource EN'), record('resourceFr', 'existing', 'Resource FR'), record('locked', 'existing', 'Locked'), record('singleton', 'existing', 'Singleton page'), record('shared', 'existing', 'Shared')];
+records.find(record => record.type === 'singleton').data = { name: 'Singleton page', slug: 'singleton-public' };
 let mode = 'categories', failSave = false;
 const writes = [], checks = [], exceptions = [];
 const manifest = () => ({ backend: 'local', contentLocales: { defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'Français' }] }, pages: mode === 'categories' ? [{ slug: 'legacy', label: 'Legacy core', groups: [], values: {} }, { slug: 'legacy-article', label: 'Legacy article', category: 'Articles', groups: [], values: {} }] : mode === 'plain' ? [{ slug: 'legacy', label: 'Legacy core', groups: [], values: {} }] : [], schema: { objects: [], documents: mode === 'plain' ? [types[0]] : mode === 'single' ? [types[2]] : types }, documents: records, preview: { documents: Object.fromEntries(types.map(type => [type.name, { url: `/${type.name}/{slug}/` }])) }, sidebar: [{ kind: 'link', target: { kind: 'pages' } }, { kind: 'link', target: { kind: 'documents', type: 'resourceEn' } }] });
@@ -66,13 +67,64 @@ try {
   }
   async function check(expression, label) { assert.equal(await evaluate(expression), true, label); checks.push(label); }
   const rowTitles = () => evaluate(`[...document.querySelectorAll('.table-link')].map(node=>node.textContent)`);
+  async function search(text) {
+    await evaluate(`document.querySelector('.pages-search input').focus(); document.querySelector('.pages-search input').select()`);
+    await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+    await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+    if (text) await cdp('Input.insertText', { text });
+    await wait(`document.querySelector('.pages-search input').value === ${JSON.stringify(text)}`);
+    await delay(50);
+    await check(`!document.querySelector('.pages-count')`, 'live filtering does not show a redundant result count');
+  }
   const title = text => evaluate(`(()=>{const input=document.querySelector('.action-dialog input');input.value=${JSON.stringify(text)};input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   async function back() { await click('.back button'); await wait(`!!document.querySelector('table')`); }
   async function reload() { await cdp('Page.navigate', { url: origin + '/?run=' + Date.now() }); await wait(`!!document.querySelector('#nav-pages')`); await click('#nav-pages'); await wait(`!!document.querySelector('table')`); }
   await cdp('Runtime.enable'); await cdp('Page.enable'); await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await reload();
-  assert.deepEqual(await rowTitles(), ['Home EN', 'Legacy core']); checks.push('Core initially includes uncategorized native and legacy pages only');
-  await choose('.titlebar', 'Category', 'All pages');
+  assert.deepEqual(await rowTitles(), ['Article EN', 'Home EN', 'Legacy article', 'Legacy core', 'Locked', 'Resource EN', 'Singleton page']); checks.push('All pages initially includes every locale-eligible nonshared category');
+  await check(`!document.querySelector('.titlebar .select-label') && document.querySelector('.titlebar button[role=combobox]').getAttribute('aria-label') === 'Category'`, 'category has accessible label without visible label');
+  await check(`!document.querySelector('.pages-search button') && document.querySelector('.pages-search input').type === 'search'`, 'native search semantics with no empty clear button');
+  for (const [query, expected] of [['aRtIcLe En', ['Article EN']], ['legacy-article', ['Legacy article']], ['  ReSoUrCeS  ', ['Resource EN', 'Singleton page']], ['singleton-public', ['Singleton page']], ['singleton PAGE', ['Singleton page']], ['Core', ['Home EN', 'Legacy core']], ['   ', ['Article EN', 'Home EN', 'Legacy article', 'Legacy core', 'Locked', 'Resource EN', 'Singleton page']], ['not-a-match', []]]) {
+    await search(query); assert.deepEqual(await rowTitles(), expected); checks.push('live title/name/slug/category substring search: ' + JSON.stringify(query));
+  }
+  await check(`document.querySelector('tbody').textContent.includes('No results')`, 'zero matches explains empty table');
+  await evaluate(`document.querySelector('.pages-search input').focus()`);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab' });
+  await check(`document.activeElement === document.querySelector('.pages-search button')`, 'Tab reaches in-field clear button');
+  await check(`getComputedStyle(document.activeElement).outlineStyle !== 'none'`, 'keyboard clear button has visible focus outline');
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r' });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter' });
+  await wait(`!document.querySelector('.pages-search button')`);
+  await check(`document.activeElement === document.querySelector('.pages-search input') && document.activeElement.value === ''`, 'keyboard clear empties query and returns input focus');
+  await choose('.titlebar', 'Category', 'Articles'); await search('resource');
+  assert.deepEqual(await rowTitles(), []); checks.push('search combines with selected category');
+  await search('  ARTICLE en '); await textClick('.table-link', 'Article EN'); await back();
+  await check(`document.querySelector('.pages-search input').value === '  ARTICLE en ' && document.querySelector('.titlebar button[role=combobox]').textContent.includes('Articles')`, 'Back preserves query and selected category');
+  assert.deepEqual(await rowTitles(), ['Article EN']);
+  await search(''); await choose('.titlebar', 'Category', 'All pages'); await search('res');
+  await check(`(()=>{const heading=document.querySelector('.titlebar h2').getBoundingClientRect(), controls=document.querySelector('.pages-controls').getBoundingClientRect(), bar=document.querySelector('.titlebar').getBoundingClientRect();return controls.left > heading.right && Math.abs(controls.right-bar.right)<2 && Math.abs(controls.top-heading.top)<20})()`, 'desktop controls sit right opposite heading');
+  await check(`(()=>{const rect=selector=>document.querySelector(selector).getBoundingClientRect(), heading=rect('.titlebar h2'), add=rect('.titlebar > .primary'), filter=rect('.pages-controls [role=combobox]'), search=rect('.pages-search input');const baseline=document.createElement('button');baseline.className='primary';baseline.style.position='fixed';baseline.textContent='Add new';document.querySelector('.rigel').append(baseline);const standard=baseline.getBoundingClientRect();baseline.remove();return Math.abs(add.height-standard.height)<1 && add.left>heading.right && add.right<filter.left && [add,filter,search].every(box=>Math.abs(box.top+box.height/2-heading.top-heading.height/2)<2) && [filter,search].every(box=>Math.abs(box.height-add.height)<=1)})()`, 'Add new keeps standard size beside title; compact toolbar controls stay vertically aligned');
+  await cdp('Page.captureScreenshot', { format: 'png' }).then(result => writeFile(path.join(scratch, 'desktop.png'), Buffer.from(result.data, 'base64')));
+  for (const theme of ['dark', 'light']) {
+    await cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+    await wait(`document.documentElement.dataset.theme === ${JSON.stringify(theme)}`);
+    await check(`(()=>{
+      const luminance = color => { const rgb=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4});return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722; };
+      const ratio = (a,b) => { const x=luminance(a),y=luminance(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+      const input=document.querySelector('.pages-search input'), style=getComputedStyle(input), placeholder=getComputedStyle(input,'::placeholder');
+      return ratio(style.color,style.backgroundColor)>=4.5 && ratio(placeholder.color,style.backgroundColor)>=4.5 && ratio(style.borderTopColor,style.backgroundColor)>=3;
+    })()`, theme + ' search text, placeholder and control boundary meet AA contrast');
+    if (theme === 'light') await cdp('Page.captureScreenshot', { format: 'png' }).then(result => writeFile(path.join(scratch, 'desktop-light.png'), Buffer.from(result.data, 'base64')));
+  }
+  await cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  await wait(`document.documentElement.dataset.theme === 'dark'`);
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await check(`document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('.pages-controls button, .pages-search input')].every(node=>{const r=node.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth})`, 'mobile category, search and Add new fit without horizontal overflow');
+  await cdp('Page.captureScreenshot', { format: 'png' }).then(result => writeFile(path.join(scratch, 'mobile.png'), Buffer.from(result.data, 'base64')));
+  await search('home'); assert.deepEqual(await rowTitles(), ['Home EN']); checks.push('mobile live search remains usable');
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await search('');
+  assert.equal(writes.length, 0); checks.push('search/filter/navigation never writes data');
   await check(`document.querySelector('table').textContent.includes('Article EN') && !document.querySelector('table').textContent.includes('Article FR') && !document.querySelector('table').textContent.includes('Shared')`, 'All pages respects locale and excludes shared records');
   for (const name of ['Article EN', 'Resource EN', 'Legacy article', 'Singleton page']) {
     await textClick('.table-link', name); await wait(`!!document.querySelector('.back button')`);
@@ -114,7 +166,10 @@ try {
   await click('.titlebar .primary'); await wait(`!!document.querySelector('.action-dialog[open]')`);
   await check(`document.querySelector('.action-dialog button[role=combobox]').textContent.includes('Resources')`, 'new page defaults to table category');
   await click('.action-dialog .action-head button');
+  await search('resource');
   await choose('.content-language', 'Content language', 'Français'); await wait(`!document.querySelector('table')?.textContent.includes('Resource EN')`);
+  await check(`document.querySelector('.pages-search input').value === 'resource' && document.querySelector('table').textContent.includes('Resource FR')`, 'content language preserves query and available category');
+  await search('');
   await choose('.titlebar', 'Category', 'Core'); await click('.titlebar .primary'); await wait(`!!document.querySelector('.action-dialog[open]')`); await title('French browser draft');
   await choose('.action-dialog', 'Category', 'Articles');
   await check(`![...document.querySelectorAll('.action-dialog .select-label')].some(node=>node.textContent==='Template')`, 'French category excludes both English templates');
@@ -131,7 +186,7 @@ try {
   await choose('.content-language', 'Content language', 'English'); await wait(`document.querySelector('.content-language button').textContent.includes('English')`);
   await check(`!document.querySelector('table') || !document.querySelector('table').textContent.includes('French browser draft')`, 'locale-only category safely leaves unavailable selection');
   await click('#nav-pages');
-  await check(`document.querySelector('.titlebar button[role=combobox]').textContent.includes('Core')`, 'unavailable locale category resets safely to Core');
+  await check(`document.querySelector('.titlebar button[role=combobox]').textContent.includes('All pages')`, 'unavailable locale category resets safely to All pages');
   await choose('.titlebar', 'Category', 'All pages'); await textClick('.table-link', 'Article EN'); await back();
   await evaluate(`[...document.querySelectorAll('aside button')].find(node=>node.textContent.trim()==='resourceEn').click()`); await wait(`document.querySelector('.titlebar h2')?.textContent==='resourceEn'`);
   await textClick('.table-link', 'Resource EN'); await back();
@@ -146,7 +201,7 @@ try {
   await check(`document.querySelector('.action-dialog button[role=combobox]').textContent.includes('Articles')`, 'single categorized template remains creatable');
   await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await check(`document.querySelector('.rigel-modal').scrollWidth <= document.querySelector('.rigel-modal').clientWidth + 1`, 'creation modal fits mobile width');
-  await cdp('Page.captureScreenshot', { format: 'png' }).then(result => writeFile(path.join(scratch, 'mobile.png'), Buffer.from(result.data, 'base64')));
+  await cdp('Page.captureScreenshot', { format: 'png' }).then(result => writeFile(path.join(scratch, 'mobile-creation.png'), Buffer.from(result.data, 'base64')));
   assert.deepEqual(exceptions, []);
   const report = { passed: true, checks: checks.length, results: checks, writes: writes.map(entry => entry.id), coverage: 'Production-built full App in real Chrome; isolated fixture HTTP backend writes scratch JSON only; no host/remote writes.' };
   await writeFile(path.join(scratch, 'results.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));

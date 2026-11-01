@@ -58,6 +58,27 @@ test("article editing experience defaults to inline and preserves an explicit si
   expect(getSettings().userPref.editorExperience).toBe("inline");
 });
 
+test("search scope persists, inherits and resets in the existing settings store", () => {
+  expect(getSettings().userPref.searchScope).toBeUndefined();
+  for (const searchScope of ["all", "currentLocale"] as const) {
+    setSettings({ userPref: { ...getSettings().userPref, searchScope } });
+    setSettings({ theme: "dark" });
+    expect(getSettings().userPref.searchScope).toBe(searchScope);
+    expect([...entries.keys()]).toEqual(["rigelcms.settings"]);
+  }
+  setSettings({ userPref: { ...getSettings().userPref, searchScope: undefined } });
+  expect(JSON.parse(entries.get("rigelcms.settings")!).userPref).not.toHaveProperty("searchScope");
+  for (const searchScope of ["inherit", "invalid", true, 1, {}, null]) {
+    entries.set("rigelcms.settings", JSON.stringify({ userPref: { searchScope } }));
+    expect(getSettings().userPref.searchScope).toBeUndefined();
+  }
+  entries.set("rigelcms.settings", "broken JSON");
+  expect(getSettings().userPref.searchScope).toBeUndefined();
+  setSettings({ userPref: { ...getSettings().userPref, searchScope: "currentLocale" } });
+  eraseData();
+  expect(getSettings().userPref.searchScope).toBeUndefined();
+});
+
 test("preview split validates stored proportions and safely falls back", () => {
   for (const previewSplit of [0.2, 0.5, 0.8]) {
     setSettings({ userPref: { previewSplit, mediaView: "grid" } });

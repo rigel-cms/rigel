@@ -8,7 +8,7 @@ import { validateSchema } from "../schema/validate";
 import type { DocumentDef } from "../schema/types";
 import { effectiveSlug } from "../slugs";
 import { previewPath } from "../preview";
-import { pageCategories, pageTemplates, inPageCategory, defaultPageCategory } from "../manifest/pages";
+import { pageCategories, pageTemplates, inPageCategory } from "../manifest/pages";
 
 const fields = [{ key: "title", label: "Title", type: "string" as const }];
 const types: DocumentDef[] = [
@@ -30,19 +30,19 @@ const manifest: Manifest = {
   documents: types.map(type => ({ id: `${type.name}:stored`, type: type.name, slug: "stored", data: { title: type.title, slug: `${type.name.toLowerCase()}-url`, draft: type.name === "articleFr", category: "Ignored data" } })),
 };
 const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");
-function list(locale: string, category: string | null = null, sortBy = "", sortDir = 1, manifestSource = manifest) {
+function list(locale: string, category: string | null = null, sortBy = "", sortDir = 1, manifestSource = manifest, pagesQuery = "") {
   const visibleContent = contentForLocale(manifestSource, locale);
   const start = source.indexOf("  const sortedPages = $derived.by(() => {");
   const end = source.indexOf("\n  function documentCell", start);
   expect(start).toBeGreaterThan(0);
   const code = transpileModule(source.slice(start, end).replace("$derived.by", "run"), { compilerOptions: { target: 99 } }).outputText;
-  return new Function("visibleContent", "pageCategory", "sortBy", "sortDir", "effectiveSlug", "manifest", "previewPath", "inPageCategory", `
+  return new Function("visibleContent", "pageCategory", "sortBy", "sortDir", "effectiveSlug", "manifest", "previewPath", "inPageCategory", "pagesQuery", "categories", "$t", `
     const docTypes = visibleContent.schema.documents;
     const pageDocuments = visibleContent.documents.filter(doc => docTypes.some(type => type.name === doc.type && !type.shared));
     const run = fn => fn();
     ${code}
     return sortedPages;
-  `)(visibleContent, category, sortBy, sortDir, effectiveSlug, manifestSource, previewPath, inPageCategory) as { path: string | null; slug: string; title: string; category?: string; draft: boolean; target: Selection }[];
+  `)(visibleContent, category, sortBy, sortDir, effectiveSlug, manifestSource, previewPath, inPageCategory, pagesQuery, pageCategories(visibleContent), () => "Core") as { path: string | null; slug: string; title: string; category?: string; draft: boolean; target: Selection }[];
 }
 
 test("Pages derive sortable public paths from locale mappings, not preview templates or filenames", () => {
@@ -72,8 +72,23 @@ test("Core filters uncategorized native and legacy pages without changing their 
   expect(manifest.schema!.documents.find(type => type.name === "page")!.category).toBeUndefined();
   expect(pageCategories(contentForLocale(manifest, "en"))).toEqual(["Articles"]);
   expect(pageCategories(contentForLocale(manifest, "fr"))).toEqual(["Announcements", "Articles"]);
-  expect(defaultPageCategory(manifest)).toBe("");
-  expect(defaultPageCategory({ pages: [], schema: { objects: [], documents: [types[0]] } })).toBeNull();
+  expect(source).toContain('let pagesFilter = $state<string | null>(null)');
+});
+
+test("Pages search matches rendered titles, name fallbacks, effective slugs and schema categories without changing ordering or data", () => {
+  const custom: Manifest = { ...manifest, schema: { objects: [], documents: [...types, { name: "singleton", title: "Singleton", type: "document", folder: "singleton", singleton: true, category: "Articles", fields }] }, documents: [...manifest.documents!, { id: "singleton:one", type: "singleton", slug: "stored", data: { name: "Named singleton", slug: "public-url" } }] };
+  const before = JSON.stringify(custom);
+  const search = (query: string, category: string | null = null) => list("en", category, "", 1, custom, query);
+  expect(search("  aRtIcLeS en  ").map(row => row.title)).toEqual(["Articles EN"]);
+  expect(search("ARTICLEEN-url").map(row => row.title)).toEqual(["Articles EN"]);
+  expect(search("named SINGLETON").map(row => row.title)).toEqual(["Named singleton"]);
+  expect(search("public-url").map(row => row.title)).toEqual(["Named singleton"]);
+  expect(search("articles")).toEqual(list("en", "Articles", "", 1, custom));
+  expect(search("Core").map(row => row.title)).toEqual(["Home", "Pages"]);
+  expect(search("article", "")).toEqual([]);
+  expect(search("not found")).toEqual([]);
+  expect(search("   ")).toEqual(search(""));
+  expect(JSON.stringify(custom)).toBe(before);
 });
 
 test("creation templates are actual locale-eligible, creatable, nonshared nonsingleton document definitions", () => {

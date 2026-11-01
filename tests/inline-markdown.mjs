@@ -151,6 +151,13 @@ try {
   await delay(300);
   await clickAt(await hostAt('.visual-actions button[aria-pressed]'));
   await wait(`!!document.querySelector('.schema-panel')`, 'properties panel');
+  const fieldGap = (before, after) => `(()=>{const a=document.querySelector(${JSON.stringify(before)}).getBoundingClientRect(), b=document.querySelector(${JSON.stringify(after)}).getBoundingClientRect(); return b.top-a.bottom >= 15.5 && b.top-a.bottom <= 16.5;})()`;
+  for (const width of [1280, 600]) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await check(fieldGap('[data-schema-path="draft"]', '[data-schema-path="copy"]'), `native toggle has a 1rem gap before the next field at ${width}px`);
+    await check(fieldGap('[data-schema-path="contact.enabled"]', '[data-schema-path="contact.blurb"]'), `nested toggle has a 1rem gap before the next field at ${width}px`);
+  }
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await check(`!document.querySelector('[data-schema-path="copy"] .markdown-editor') && !document.querySelector('[data-schema-path="copy"] [contenteditable="true"]')`, 'sidebar does not duplicate the inline editor');
   await check(`document.querySelector('[data-schema-path="copy"] button')?.textContent.trim() === 'Edit in preview'`, 'sidebar offers an edit-in-preview action instead');
   await check(`document.querySelector('[data-schema-path="contact.blurb"] button')?.textContent.trim() === 'Edit in preview'`, 'nested inline field also hands off to the preview');
@@ -204,6 +211,13 @@ try {
   await check(`${frame}.querySelector('#contact').textContent.includes('Sidebar only.')`, 'reopened inline editor keeps the newer sidebar content');
   await clickAt(await hostAt('.mode-toggle button:first-child'));
   assert.deepEqual(exceptions, [], 'no page exceptions');
+  await evaluate(`document.querySelector('#collection-spacing').hidden = false`);
+  for (const width of [1280, 600]) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await check(fieldGap('#collection-spacing [data-collection-field="draft"]', '#collection-spacing [data-collection-field="summary"]'), `article toggle has a 1rem gap before the next field at ${width}px`);
+    await delay(100);
+  }
+  assert.deepEqual(exceptions, [], 'no page exceptions after sidebar spacing');
   console.log(`PASS ${checks} inline rich-text checks`);
 } finally {
   ws?.close();

@@ -1171,6 +1171,7 @@
 .rigel .visual-error { margin: 1.5rem; font-size: 0.875rem; color: var(--text-2); max-width: 44ch; }
 .rigel .schema-panel { border-left: 1px solid var(--border); overflow-y: auto; min-height: 0; padding: 1rem; background: var(--panel); }
 .rigel .schema-panel section { border: 0; padding: 0 0 1rem; }
+.rigel .schema-panel :is([data-schema-path], [data-collection-field]) + :is([data-schema-path], [data-collection-field]) { margin-top: 1rem; }
 .rigel .custom-select { min-width: 0; max-width: 100%; }
 .rigel .content-language { position: relative; margin: -0.75rem 0.75rem 1.5rem; flex-shrink: 0; }
 .rigel .content-language .select-label { margin-top: 0; }

@@ -1,5 +1,6 @@
 <script>
   import VisualEditor from '../../src/editor/lib/VisualEditor.svelte';
+  import CollectionPanel from '../../src/editor/lib/CollectionPanel.svelte';
   const docType = {
     name: 'page',
     title: 'Page',
@@ -7,11 +8,13 @@
     folder: 'pages',
     fields: [
       { key: 'title', label: 'Title', type: 'string' },
+      { key: 'draft', label: 'Draft', type: 'boolean' },
       { key: 'copy', label: 'Copy', type: 'markdown' },
       { key: 'notice', label: 'Notice', type: 'markdown' },
       { key: 'legacy', label: 'Legacy', type: 'markdown' },
       {
         key: 'contact', label: 'Contact', type: 'object', fields: [
+          { key: 'enabled', label: 'Enabled', type: 'boolean' },
           { key: 'blurb', label: 'Blurb', type: 'markdown' },
         ],
       },
@@ -43,4 +46,7 @@
   <output id="draft" hidden>{JSON.stringify(values)}</output><output id="saved" hidden>{saved}</output>
   <button id="toggle-inline" hidden onclick={() => bodyInline = !bodyInline}>Toggle inline editing</button>
   <VisualEditor docId="page:sample" {schema} {docType} {values} previewPath="/preview.html" {bodyInline} creating={false} devMode={false} onchange={next => values = next} />
+  <div id="collection-spacing" hidden>
+    <CollectionPanel fields={[{ key: 'draft', label: 'Draft', type: 'boolean' }, { key: 'summary', label: 'Summary', type: 'markdown' }]} values={{ draft: true, summary: 'Article summary.' }} storageSlug="sample" body={{ root: { type: 'root', version: 1, children: [], direction: null, format: '', indent: 0 } }} selected={null} focusToken={0} devMode={false} bodyInline inlineFields={['summary']} onchange={() => {}} onbody={() => {}} />
+  </div>
 </div>

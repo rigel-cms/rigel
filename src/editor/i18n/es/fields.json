@@ -50,6 +50,8 @@
   "fields.editArticleBody": "Editar el cuerpo del artículo en la vista previa",
   "fields.loadingPreview": "Cargando vista previa…",
   "fields.editArticleBodyHint": "Haz clic en el cuerpo del artículo en la vista previa para editarlo. Los cambios en el contenido requieren pulsar Guardar.",
+  "fields.editRichText": "Editar en la vista previa",
+  "fields.editRichTextHint": "Haz clic en este texto de la vista previa para editarlo. Los cambios requieren pulsar Guardar.",
   "fields.seoNotSet": "Sin definir",
   "fields.seoTooShort": "Demasiado corto",
   "fields.seoTooLong": "Demasiado largo",

@@ -23,7 +23,7 @@
   import { slugify } from "../../slugs";
 
   let {
-    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, onchange, onselect, oneditdocument,
+    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
   }: {
     schema: Schema;
     docType: DocumentDef;
@@ -35,6 +35,8 @@
     documents: ContentDocument[];
     focusToken: number;
     devMode: boolean;
+    inlineFields?: string[];
+    oneditfield?: (path: string) => void;
     onchange: (next: Record<string, unknown>) => void;
     onselect: (next: SelectedField | null) => void;
     oneditdocument: (id: string) => void;
@@ -176,7 +178,7 @@
     {/if}
     {#each docFields.filter(field => docType.shared || !isSeoField(field.key)) as field (field.key)}
       <div data-schema-path={field.key}>
-        <SchemaField {schema} {documents} {devMode} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
+        <SchemaField {schema} {documents} {devMode} {inlineFields} {oneditfield} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
       </div>
     {/each}
   </section>
@@ -223,6 +225,8 @@
             {schema}
             {documents}
             {devMode}
+            {inlineFields}
+            {oneditfield}
             {field}
             base={`sections.${selected.sectionKey}.${field.key}`}
             value={sections.find((section) => section._key === selected?.sectionKey)?.[field.key]}
@@ -239,6 +243,8 @@
         {schema}
         {documents}
         {devMode}
+        {inlineFields}
+        {oneditfield}
         field={selectedField}
         base={selected.path}
         value={selectedValue}
@@ -255,7 +261,7 @@
       <h3>{$t("fields.seo")}</h3>
       {#each seoFields as field (field.key)}
         <div data-schema-path={field.key}>
-          <SchemaField {schema} {documents} {devMode} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
+          <SchemaField {schema} {documents} {devMode} {inlineFields} {oneditfield} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
           <SeoGuidance field={field.key} value={values[field.key]} />
         </div>
       {/each}

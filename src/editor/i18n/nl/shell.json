@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "Artikeltekst bewerken",
   "shell.sidebar": "Zijbalk",
   "shell.inlinePreview": "Inline voorbeeld",
-  "shell.editorExperienceHint": "Met het inline voorbeeld kun je op een artikeltekst klikken en direct op de pagina schrijven. Andere velden blijven in de zijbalk. Deze voorkeur wordt in deze browser opgeslagen; inhoud moet je nog steeds opslaan met Opslaan.",
+  "shell.editorExperienceHint": "Met het inline voorbeeld kun je op gekoppelde rich text klikken en direct op de pagina schrijven. Velden zonder koppeling met het voorbeeld blijven in de zijbalk. Deze voorkeur wordt in deze browser opgeslagen; inhoud moet je nog steeds opslaan met Opslaan.",
   "shell.githubAccount": "GitHub-account",
   "shell.noGithubAccount": "Er is geen GitHub-account gekoppeld.",
   "shell.repository": "Repository",
@@ -67,7 +67,6 @@
   "shell.showKey": "{name} tonen",
   "shell.keyFormatError": "Controleer de indeling van {name}.",
   "shell.editorInterfaceLanguage": "Taal van de editorinterface",
-
   "shell.developerMode": "Ontwikkelaarsmodus",
   "shell.enableDevMode": "Ontwikkelaarsmodus inschakelen",
   "shell.devModeHint": "Toont de onbewerkte JSON van het huidige concept en veldsleutels naast de labels.",

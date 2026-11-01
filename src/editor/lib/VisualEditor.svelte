@@ -3,6 +3,8 @@
   import { mount, unmount, onDestroy, tick, type Snippet } from "svelte";
   import BlockEditor from "./BlockEditor.svelte";
   import MarkdownEditor from "./MarkdownEditor.svelte";
+  import { markdownToBody } from "./markdown-blocks";
+  import { articleMarkdown } from "../../article-render";
   import { tooltipRoot } from "./tooltip";
   import editorStyles from "../styles.css?inline";
   import type { ArticleBody } from "../../article-body";
@@ -27,7 +29,7 @@
     previewPath: string | null;
     websitePath?: string | null;
     body?: "" | import("../../article-body").ArticleBody;
-    properties?: Snippet<[SelectedField | null, number, boolean, () => void, boolean]>;
+    properties?: Snippet<[SelectedField | null, number, boolean, () => void, boolean, string[], (path: string) => void]>;
     bodyInline?: boolean;
     onbody?: (body: ArticleBody) => void;
     creating: boolean;
@@ -65,6 +67,7 @@
   let highlighted: HTMLElement | null = null;
   let hovered: HTMLElement | null = null;
   let structureSignature = "";
+  let richtextPaths = $state<string[]>([]);
   let inline = $state<{ path: string; value: string; original: string; left: number; top: number; width: number; height: number; fontSize: string } | null>(null);
   let inlineInput: HTMLInputElement | undefined = $state();
   const documentList = $derived(Object.entries(documents).map(([id, data]) => ({
@@ -164,6 +167,21 @@
       applyStructure();
     }
     applySelection();
+    syncInlineRichText();
+  }
+
+  function inlineMarkdownPath(path: string) {
+    const def = schema && docType ? fieldForPath(schema, docType, values, path) : null;
+    return def?.type === "markdown" && !def.sidebarOnly;
+  }
+
+  function syncInlineRichText() {
+    const doc = docElement();
+    const paths = !bodyInline || !doc || !schema || !docType || mode !== "edit" ? [] : [...new Set([...doc.querySelectorAll<HTMLElement>("[data-rigel-richtext]")]
+      .filter(element => (element.getAttribute("data-rigel-doc") ?? docId) === docId)
+      .map(element => element.getAttribute("data-rigel-richtext")!)
+      .filter(path => path !== "$body" && inlineMarkdownPath(path)))];
+    if (paths.length !== richtextPaths.length || paths.some((path, index) => path !== richtextPaths[index])) richtextPaths = paths;
   }
 
   function fieldPathFrom(element: HTMLElement): { path: string; doc: string } | null {
@@ -201,6 +219,7 @@
     editingBody = null; bodyContents = [];
     patch();
   }
+  const regionAttributes = ["class", "style", "role", "aria-label", "aria-multiline", "aria-keyshortcuts", "contenteditable", "data-lexical-editor", "spellcheck", "tabindex", "translate"];
   async function startBodyEdit(element: HTMLElement, event?: MouseEvent) {
     if (!body) return;
     if (bodyEditor) { element.focus(); return; }
@@ -217,7 +236,7 @@
     if (editorStyle.textContent !== editorStyles) editorStyle.textContent = editorStyles;
     clearHover(); clearHighlight();
     editingBody = element; bodyContents = [...element.childNodes];
-    bodyAttributes = ["class", "style", "role", "aria-label", "aria-multiline", "aria-keyshortcuts", "contenteditable", "data-lexical-editor", "spellcheck"].map(name => [name, element.getAttribute(name)]);
+    bodyAttributes = regionAttributes.map(name => [name, element.getAttribute(name)]);
     const pre = doc.createElement("pre"), code = doc.createElement("code");
     pre.append(code); pre.style.cssText = "position:absolute;visibility:hidden"; element.append(pre);
     for (const [sample, properties] of [[pre, ["background-color", "padding", "margin", "border", "border-radius"]], [code, ["color", "font-family", "font-size", "font-weight", "line-height", "letter-spacing"]]] as const) {
@@ -251,9 +270,9 @@
   }
   function startMarkdownEdit(element: HTMLElement) {
     const field = fieldPathFrom(element);
-    if (!field || field.doc !== docId || !schema || !docType) return false;
+    if (!bodyInline || !field || field.doc !== docId || !schema || !docType) return false;
     const def = fieldForPath(schema, docType, values, field.path);
-    if (def?.type !== "markdown") return false;
+    if (def?.type !== "markdown" || def.sidebarOnly) return false;
     stopBodyEdit();
     const doc = element.ownerDocument;
     let editorStyle = doc.querySelector<HTMLStyleElement>('style[data-rigel-editor-styles]');
@@ -262,29 +281,59 @@
     clearHover(); clearHighlight();
     editingBody = element; bodyContents = [...element.childNodes];
     const scope = doc.createElement("div");
-    bodyAttributes = ["class", "style", "role", "aria-label", "aria-multiline", "contenteditable", "tabindex", "translate"].map(name => [name, element.getAttribute(name)]);
+    bodyAttributes = regionAttributes.map(name => [name, element.getAttribute(name)]);
     const syncTheme = () => { scope.dataset.theme = document.documentElement.dataset.theme; scope.dataset.contrast = document.documentElement.dataset.contrast; };
     syncTheme();
     const host = doc.createElement("div"); host.className = "rigel rigel-inline";
     scope.append(host); doc.body.append(scope); bodyScope = scope;
     removeTooltips = tooltipRoot(host).destroy;
-    bodyEditor = mount(MarkdownEditor, { target: host, props: {
-      editableRoot: element,
-      label: def.labelKey ? $t(def.labelKey) : def.label,
-      get value() { return String(anchorValue(values, field.path).value ?? ""); },
-      oninput: (next: string) => onchange(replaceAt(values, field.path, next)),
-    } });
+    const label = def.labelKey ? $t(def.labelKey) : def.label;
+    const source = String(anchorValue(values, field.path).value ?? "");
+    const blocks = markdownToBody(source);
+    if (blocks) {
+      const editor = { body: blocks, markdown: source };
+      bodyEditor = mount(BlockEditor, { target: host, props: {
+        editableRoot: element,
+        label,
+        get value() { return editor.body as ArticleBody; },
+        oninput: (next: ArticleBody) => {
+          editor.body = next;
+          const markdown = articleMarkdown(next);
+          if (markdown === editor.markdown) return;
+          editor.markdown = markdown;
+          onchange(replaceAt(values, field.path, markdown));
+        },
+      } });
+    } else {
+      bodyEditor = mount(MarkdownEditor, { target: host, props: {
+        editableRoot: element,
+        label,
+        get value() { return String(anchorValue(values, field.path).value ?? ""); },
+        oninput: (next: string) => onchange(replaceAt(values, field.path, next)),
+      } });
+    }
     bodyThemeObserver = new MutationObserver(syncTheme);
     bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
     void tick().then(() => (element.isContentEditable ? element : host.querySelector<HTMLTextAreaElement>("textarea"))?.focus());
     return true;
   }
 
+  function editField(path: string) {
+    const doc = docElement();
+    if (!doc) return;
+    const element = [...doc.querySelectorAll<HTMLElement>(anchorSelector(path))]
+      .find(node => (node.getAttribute("data-rigel-doc") ?? docId) === docId && node.hasAttribute("data-rigel-richtext"));
+    if (!element) return;
+    element.scrollIntoView({ block: "center" });
+    if (editingBody === element) { element.focus(); return; }
+    startMarkdownEdit(element);
+  }
+
   function focusBody() {
     const target = docElement()?.querySelector<HTMLElement>('[data-rigel-richtext="$body"]');
     if (inlineBodyEnabled && target) { target.scrollIntoView({ block: "center" }); void startBodyEdit(target); }
   }
-  $effect(() => { if ((!schema && !inlineBodyEnabled) || mode !== "edit") stopBodyEdit(); });
+  $effect(() => { if (!bodyInline || (!schema && !inlineBodyEnabled) || mode !== "edit") stopBodyEdit(); });
   onDestroy(stopBodyEdit);
 
   function onClick(event: MouseEvent) {
@@ -516,7 +565,7 @@
     <div class="properties-divider" role="separator" tabindex="0" aria-label={$t("richtext.propertiesPanelWidth")} aria-orientation="vertical" aria-valuemin="280" aria-valuemax={panelMax} aria-valuenow={panelWidth} aria-valuetext={$t("richtext.panelPixels", { width: Math.round(panelWidth) })} onpointerdown={startResize} onpointermove={moveResize} onpointerup={endResize} onpointercancel={endResize} onlostpointercapture={endResize} onkeydown={keyResize}></div>
   {/if}
   {#if panelOpen && properties}
-    {@render properties(selected, focusToken, inlineBodyEnabled || inlineBodyLoading, focusBody, inlineBodyLoading)}
+    {@render properties(selected, focusToken, inlineBodyEnabled || inlineBodyLoading, focusBody, inlineBodyLoading, richtextPaths, editField)}
   {:else if panelOpen && schema && docType}
     <SchemaPanel
       {schema}
@@ -529,6 +578,8 @@
       {focusToken}
       {devMode}
       documents={documentList}
+      inlineFields={richtextPaths}
+      oneditfield={editField}
       onchange={onchange}
       {oneditdocument}
       onselect={async (next) => { selected = next; focusToken++; await tick(); if (selected?.docId === next?.docId && selected?.sectionKey === next?.sectionKey) applySelection(true); }}

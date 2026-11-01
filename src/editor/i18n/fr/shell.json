@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "Édition du corps des articles",
   "shell.sidebar": "Barre latérale",
   "shell.inlinePreview": "Aperçu avec édition intégrée",
-  "shell.editorExperienceHint": "L’aperçu avec édition intégrée permet de cliquer sur le corps d’un article pour écrire directement sur la page. Les autres champs restent dans la barre latérale. Cette préférence est enregistrée dans ce navigateur ; le contenu nécessite toujours un clic sur Enregistrer.",
+  "shell.editorExperienceHint": "L’aperçu avec édition intégrée permet de cliquer sur les textes enrichis liés pour écrire directement sur la page. Les champs sans liaison d’aperçu restent dans la barre latérale. Cette préférence est enregistrée dans ce navigateur ; le contenu nécessite toujours un clic sur Enregistrer.",
   "shell.githubAccount": "Compte GitHub",
   "shell.noGithubAccount": "Aucun compte GitHub connecté.",
   "shell.repository": "Dépôt",
@@ -67,7 +67,6 @@
   "shell.showKey": "Afficher {name}",
   "shell.keyFormatError": "Veuillez vérifier le format de {name}.",
   "shell.editorInterfaceLanguage": "Langue de l’interface de l’éditeur",
-
   "shell.developerMode": "Mode développeur",
   "shell.enableDevMode": "Activer le mode développeur",
   "shell.devModeHint": "Affiche le JSON brut du brouillon actuel et les clés des champs à côté des libellés.",

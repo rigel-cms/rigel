@@ -1106,6 +1106,7 @@
           documents={draftDocuments}
           previewPath={documentPreview("draft")}
           websitePath={documentPreview("website")}
+          bodyInline={settings.userPref.editorExperience === "inline"}
           creating={newDocument?.id === sel.id}
           devMode={settings.devMode}
           reloadToken={documentReload}
@@ -1161,8 +1162,8 @@
             devMode={settings.devMode}
             onchange={(next) => { draft = next; touch(); }}
           >
-            {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading)}
-              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {oneditbody} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
+            {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading, inlineFields, oneditfield)}
+              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
             {/snippet}
           </VisualEditor>
         {/key}

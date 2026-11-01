@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
 import { createEditor } from "lexical";
+import { defaultMarkdownParser } from "prosemirror-markdown";
+import MarkdownIt from "markdown-it";
+import { markdownToBody } from "./editor/lib/markdown-blocks";
 import { blockNodes, blockTypes } from "./editor/blocks";
 import { emptyBody, validateBody, type ArticleBody, type ArticleNode } from "./article-body";
 import { renderArticle, articleMarkdown } from "./article-render";
@@ -8,6 +11,66 @@ import { renderArticle, articleMarkdown } from "./article-render";
 const text = (value: string, format = 0) => ({ type: "text", version: 1, text: value, format, detail: 0, mode: "normal", style: "" });
 const block = (type: string, children: unknown[] = [], extra = {}) => ({ type, version: 1, children, direction: null, format: "", indent: 0, ...extra });
 const body = (children: unknown[]) => ({ root: block("root", children) }) as ArticleBody;
+
+test("edited paragraph text cannot become structural Markdown on persistence", () => {
+  const renderer = new MarkdownIt({ html: true });
+  for (const value of ["- hello", "+ hello", "* hello", "1. hello", "42) hello", "# hello", "> hello", "```", "~~~", "---", "- - -", "***", "___", "===", "hello\n---", "hello\n==="]) {
+    const edited = markdownToBody("Plain paragraph.")!;
+    (edited.root.children[0] as ArticleNode).children = [text(value.slice(0, 1)), text(value.slice(1))];
+    const markdown = articleMarkdown(edited);
+    expect(renderer.render(markdown).trimEnd(), value).toBe(renderArticle(edited));
+    const reopened = defaultMarkdownParser.parse(markdown);
+    expect(reopened.childCount, value).toBe(1);
+    expect(reopened.firstChild!.type.name, value).toBe("paragraph");
+    expect(reopened.textContent, value).toBe(value.replace(/\n/g, " "));
+  }
+});
+
+test("edited hard breaks persist through Markdown rendering and reopening", () => {
+  const renderer = new MarkdownIt({ html: true });
+  for (const source of ["First line.", "> First line.", "- First line.", "1. First line."]) {
+    const edited = markdownToBody(source)!;
+    let paragraph = edited.root.children[0] as ArticleNode;
+    while (paragraph.type !== "paragraph") paragraph = paragraph.children![0];
+    paragraph.children!.push({ type: "linebreak", version: 1 }, text("Second line."));
+    const markdown = articleMarkdown(edited);
+    expect(renderer.render(markdown), source).toContain("First line.<br>\nSecond line.");
+    const reopened = markdownToBody(markdown);
+    expect(reopened, source).not.toBeNull();
+    expect(renderArticle(reopened!), source).toBe(renderArticle(edited));
+    paragraph.children!.push({ type: "linebreak", version: 1 });
+    expect(renderer.render(articleMarkdown(edited)), source).toContain("Second line.<br>");
+  }
+});
+
+test("Markdown persistence retains edited headings, nested lists, quotes, links and code", () => {
+  const renderer = new MarkdownIt({ html: true });
+  const prose = "An opt-in sentence. Version 1.2 (stable), x+y=z.";
+  expect(articleMarkdown(markdownToBody(prose)!)).toBe(prose + "\n");
+  for (const source of ["## Heading", "- Outer\n\n  - Inner", "> - Quoted item", "3. Number", "[Link](/about/) and `code`", "```\nconst x = 1;\n```", "---"]) {
+    const edited = markdownToBody(source)!;
+    expect(edited, source).not.toBeNull();
+    let node = edited.root.children[0] as ArticleNode;
+    while (node.children?.length) node = node.children[0];
+    if (node.type === "text") node.text += " edited";
+    const markdown = articleMarkdown(edited);
+    const reopened = markdownToBody(markdown);
+    expect(reopened, source).not.toBeNull();
+    expect(renderArticle(reopened!), source).toBe(renderArticle(edited));
+    expect(renderer.render(articleMarkdown(reopened!)), source).toBe(renderer.render(markdown));
+  }
+});
+
+test("edited emphasis keeps boundary whitespace outside Markdown delimiters", () => {
+  const renderer = new MarkdownIt();
+  for (const [format, formatted] of [[1, "<strong>Bold</strong>"], [2, "<em>Bold</em>"], [3, "<em><strong>Bold</strong></em>"], [4, "<s>Bold</s>"]] as const) {
+    const edited = body([block("paragraph", [text("Before"), text(" Bold ", format), text("after.")])]);
+    const markdown = articleMarkdown(edited);
+    expect(renderer.render(markdown), String(format)).toBe(`<p>Before ${formatted} after.</p>\n`);
+    if (format !== 4) expect(defaultMarkdownParser.parse(markdown).textContent).toBe("Before Bold after.");
+  }
+  expect(renderer.render(articleMarkdown(body([block("paragraph", [text("Before"), text(" ", 1), text("after.")])])))).toBe("<p>Before after.</p>\n");
+});
 
 test("one allowlisted renderer covers every v1 block and escapes text and attributes", () => {
   const state = body([
@@ -100,6 +163,9 @@ test("tables preserve cells, headers and formatting through Lexical, HTML and re
   expect(renderArticle(state)).toContain('<td><p>&lt;script&gt; | item</p></td>');
   expect(articleMarkdown(state)).toContain('| Product | Price |\n| --- | --- |');
   expect(articleMarkdown(state)).toContain('\\<script\\> \\| item');
+  const brokenCell = cell("First", 1);
+  (brokenCell.children[0] as ArticleNode).children!.push({ type: "linebreak", version: 1 }, text("Second"));
+  expect(articleMarkdown(body([block("table", [block("tablerow", [brokenCell])])]))).toContain("| First<br>Second |");
   const malformed = structuredClone(state) as unknown as { root: { children: ReturnType<typeof block>[] } };
   malformed.root.children[0].children[1] = block("tablerow", [cell("uneven")]);
   expect(() => validateBody(malformed)).toThrow(/rectangular/);

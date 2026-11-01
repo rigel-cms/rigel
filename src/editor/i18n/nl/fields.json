@@ -50,6 +50,8 @@
   "fields.editArticleBody": "Artikeltekst in het voorbeeld bewerken",
   "fields.loadingPreview": "Voorbeeld laden…",
   "fields.editArticleBodyHint": "Klik op de artikeltekst in het voorbeeld om deze te bewerken. Wijzigingen in de inhoud moeten worden opgeslagen.",
+  "fields.editRichText": "Bewerken in het voorbeeld",
+  "fields.editRichTextHint": "Klik op deze tekst in het voorbeeld om deze te bewerken. Wijzigingen moeten worden opgeslagen.",
   "fields.seoNotSet": "Niet ingesteld",
   "fields.seoTooShort": "Te kort",
   "fields.seoTooLong": "Te lang",

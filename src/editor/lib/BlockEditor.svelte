@@ -25,8 +25,9 @@
   import { articleMarkdown } from "../../article-render";
   import Icon from "./Icon.svelte";
   import Select from "./Select.svelte";
-  let { value, oninput, editableRoot }: { value: ArticleBody; oninput: (value: ArticleBody) => void; editableRoot?: HTMLElement } = $props();
+  let { value, oninput, editableRoot, label }: { value: ArticleBody; oninput: (value: ArticleBody) => void; editableRoot?: HTMLElement; label?: string } = $props();
   const inline = $derived(!!editableRoot);
+  const regionLabel = $derived(label ?? $t("richtext.body"));
   let root: HTMLElement;
   let surface: HTMLDivElement;
   let menu: HTMLDivElement;
@@ -203,7 +204,7 @@
   onMount(() => {
     if (editableRoot) {
       root = editableRoot; root.classList.add("block-content", "rigel-article-content"); root.contentEditable = "true";
-      root.setAttribute("role", "textbox"); root.setAttribute("aria-label", $t("richtext.body")); root.setAttribute("aria-multiline", "true");
+      root.setAttribute("role", "textbox"); root.setAttribute("aria-label", regionLabel); root.setAttribute("aria-multiline", "true");
       root.setAttribute("aria-keyshortcuts", "Alt+F10");
     }
     view = root.ownerDocument.defaultView!;
@@ -278,7 +279,7 @@
     };
   });
 
-  $effect(() => { if (editableRoot) editableRoot.setAttribute("aria-label", $t("richtext.body")); });
+  $effect(() => { if (editableRoot) editableRoot.setAttribute("aria-label", regionLabel); });
 
   $effect(() => { if (!linkOpen) view?.CSS.highlights?.delete("rigel-link-selection"); });
 

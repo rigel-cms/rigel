@@ -28,6 +28,28 @@
   let view: EditorView | undefined;
   let lastValue: string | undefined;
   let imageSelection: SelectionBookmark | undefined;
+  let toolbar: HTMLDivElement | undefined;
+  let floating = $state("");
+  let linkPosition = $state("");
+  let releaseFloating: (() => void) | undefined;
+  const inline = $derived(!!editableRoot);
+  function positionFloating() {
+    if (!inline || !editableRoot || !view || mode !== "visual") { floating = ""; linkPosition = ""; return; }
+    const owner = editableRoot.ownerDocument;
+    const active = owner.activeElement;
+    if (!editableRoot.contains(active) && !toolbar?.contains(active)) { floating = ""; linkPosition = ""; return; }
+    const anchor = view.state.selection.$from;
+    const block = anchor.depth > 0 ? view.nodeDOM(anchor.before(1)) : null;
+    const rect = block instanceof HTMLElement ? block.getBoundingClientRect() : editableRoot.getBoundingClientRect();
+    const { innerWidth, innerHeight } = owner.defaultView!;
+    if (rect.bottom < 0 || rect.top > innerHeight) { floating = ""; linkPosition = ""; return; }
+    const size = toolbar?.getBoundingClientRect();
+    const height = size?.height || 44, width = size?.width || 360;
+    const top = Math.max(8, Math.min(rect.top >= height + 12 ? rect.top - height - 8 : rect.bottom + 8, innerHeight - height - 8));
+    const left = Math.max(8, Math.min(rect.left, innerWidth - width - 8));
+    floating = `left:${left}px;top:${top}px`;
+    linkPosition = `left:${Math.max(8, Math.min(left, innerWidth - 356))}px;top:${Math.max(8, Math.min(top + height + 4, innerHeight - 128))}px`;
+  }
   function insertImage(url: string, alt: string, credit?: StockResult) {
     if (!view || !imageSelection || !safeImageUrl(url)) return;
     let tr = view.state.tr.setSelection(imageSelection.resolve(view.state.doc));
@@ -76,6 +98,7 @@
           state = view!.state.apply(transaction);
           view!.updateState(state);
           if (transaction.docChanged) emit(serializeMarkdown(state.doc));
+          positionFloating();
         },
         handlePaste(editor, event) {
           event.preventDefault();
@@ -85,8 +108,14 @@
         },
         handleDrop(_editor, _event, _slice, moved) { return !moved; },
         handleClickOn(_editor, _pos, node) { return node.type.name === "image"; },
-        handleDOMEvents: { click: (_editor, event) => { if ((event.target as Element).closest("a")) { event.preventDefault(); return true; } return false; } },
+        handleDOMEvents: { click: (_editor, event) => { if ((event.target as Element).closest("a")) { event.preventDefault(); return true; } return false; }, focus: () => { positionFloating(); return false; }, blur: () => { setTimeout(positionFloating); return false; } },
       });
+      const target = editableRoot ?? host;
+      const owner = target.ownerDocument;
+      const reposition = () => positionFloating();
+      owner.defaultView?.addEventListener("scroll", reposition, true);
+      owner.defaultView?.addEventListener("resize", reposition);
+      releaseFloating = () => { owner.defaultView?.removeEventListener("scroll", reposition, true); owner.defaultView?.removeEventListener("resize", reposition); };
     }
     if (value !== lastValue) {
       lastValue = value;
@@ -94,7 +123,8 @@
     }
   });
   $effect(() => { const editable = mode === "visual"; view?.setProps({ editable: () => editable }); });
-  onDestroy(() => view?.destroy());
+  $effect(() => { void mode; void inline; positionFloating(); });
+  onDestroy(() => { releaseFloating?.(); view?.destroy(); });
 
   function activeMark(type: string) {
     if (!state) return false;
@@ -164,7 +194,8 @@
 
 <svelte:window onpointerdown={event => { if (linkOpen && !document.getElementById(`${id}-link`)?.contains(event.target as Node) && !linkButton?.contains(event.target as Node)) linkOpen = false; }} />
 
-<div class="markdown-editor body-editor" class:markdown-inline={!!editableRoot}>
+<div class="markdown-editor body-editor" class:markdown-inline={inline} class:markdown-floating={inline && mode === "visual"}>
+  {#if !inline || mode === "source"}
   <div class="markdown-heading">
     <div class="field-label" id={`${id}-label`}>{label}</div>
     <div class="markdown-modes" role="group" aria-label={$t("richtext.editingMode", { label })}>
@@ -172,9 +203,10 @@
       <button type="button" aria-pressed={mode === "source"} onclick={() => { mode = "source"; linkOpen = false; }}>{$t("richtext.markdown")}</button>
     </div>
   </div>
+  {/if}
   {#if warning}<p class="markdown-warning" role="status">{warning}</p>{/if}
   <div class="markdown-visual" hidden={mode !== "visual"}>
-    <div class="body-toolbar formatting-toolbar" role="group" aria-label={$t("richtext.formatting", { label })}>
+    <div class="body-toolbar formatting-toolbar" bind:this={toolbar} role="group" aria-label={$t("richtext.formatting", { label })} style={inline ? floating : undefined} hidden={inline && !floating}>
       <Select ariaLabel={$t("richtext.textStyle")} data-tooltip={$t("richtext.textStyle")} value={format} options={[{ value: "paragraph", label: $t("richtext.paragraph") }, ...[1, 2, 3, 4, 5, 6].map(level => ({ value: `h${level}`, label: $t("richtext.heading", { level }) })), { value: "code_block", label: $t("richtext.codeBlock") }].map(option => ({ ...option, disabled: !!state && format !== option.value && !formatCommand(option.value)(state) }))} onchange={next => command(formatCommand(String(next)))} />
       <div class="format-group" role="group" aria-label={$t("richtext.textFormatting")}>
         {#each marks as item}
@@ -188,9 +220,10 @@
       </div>
       <button bind:this={linkButton} type="button" aria-label={$t("richtext.link")} data-tooltip={$t("richtext.link")} aria-pressed={activeMark("link")} aria-expanded={linkOpen} aria-controls={`${id}-link`} disabled={!state || !toggleMark(schema.marks.link)(state)} onmousedown={event => event.preventDefault()} onclick={openLink}><Icon name="link" size={18} /></button>
       <ImagePicker toolbar onopen={() => { imageSelection = view?.state.selection.getBookmark(); linkOpen = false; }} onpick={insertImage} onclose={() => { imageSelection = undefined; }} />
+      {#if inline}<button type="button" class="markdown-toggle" aria-label={$t("richtext.markdown")} data-tooltip={$t("richtext.markdown")} onmousedown={event => event.preventDefault()} onclick={() => { mode = "source"; linkOpen = false; }}>{$t("richtext.markdown")}</button>{/if}
     </div>
     {#if linkOpen}
-      <div class="markdown-link" id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; linkButton.focus(); } if (event.key === "Enter") { event.preventDefault(); link(); } }}>
+      <div class="markdown-link" id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} style={inline ? linkPosition : undefined} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; linkButton.focus(); } if (event.key === "Enter") { event.preventDefault(); link(); } }}>
         <label for={`${id}-url`}>{$t("richtext.linkUrl")}</label>
         <div class="markdown-link-controls">
           <input id={`${id}-url`} type="text" placeholder="https://…" bind:this={linkInput} bind:value={linkUrl} aria-invalid={!!linkError} aria-describedby={linkError ? `${id}-error` : undefined} />

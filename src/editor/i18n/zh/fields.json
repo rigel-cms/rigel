@@ -50,6 +50,8 @@
   "fields.editArticleBody": "在预览中编辑文章正文",
   "fields.loadingPreview": "正在加载预览…",
   "fields.editArticleBodyHint": "点击预览中的文章正文即可编辑。内容更改后需保存。",
+  "fields.editRichText": "在预览中编辑",
+  "fields.editRichTextHint": "点击预览中的这段文字即可编辑。更改后需保存。",
   "fields.seoNotSet": "未设置",
   "fields.seoTooShort": "过短",
   "fields.seoTooLong": "过长",

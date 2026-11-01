@@ -16,14 +16,16 @@
   import type { ContentDocument } from "../../schema/types";
   import { slugify } from "../../slugs";
 
-  let { fields, values, storageSlug, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, oneditbody = () => {}, onchange, onbody }: {
+  let { fields, values, storageSlug, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, inlineFields = [], oneditbody = () => {}, oneditfield = () => {}, onchange, onbody }: {
     fields: CollectionField[];
     values: Record<string, unknown>;
     storageSlug: string;
     body: ArticleBody;
     bodyInline?: boolean;
     bodyLoading?: boolean;
+    inlineFields?: string[];
     oneditbody?: () => void;
+    oneditfield?: (path: string) => void;
     selected: SelectedField | null;
     focusToken: number;
     devMode: boolean;
@@ -66,7 +68,13 @@
             <span>{label}{devMode ? ` (${field.key})` : ""}</span>
           </label>
         {:else if field.type === "markdown"}
-          <MarkdownEditor {label} value={String(values[field.key] ?? "")} oninput={(value) => onchange(field.key, value)} />
+          {#if inlineFields.includes(field.key)}
+            <span class="schema-label">{label}{devMode ? ` (${field.key})` : ""}</span>
+            <button type="button" class="outlined" onclick={() => oneditfield(field.key)}>{$t("fields.editRichText")}</button>
+            <p class="hint">{$t("fields.editRichTextHint")}</p>
+          {:else}
+            <MarkdownEditor {label} value={String(values[field.key] ?? "")} oninput={(value) => onchange(field.key, value)} />
+          {/if}
         {:else if field.type === "image"}
           <label><span>{label}{devMode ? ` (${field.key})` : ""}</span><ImagePicker value={String(values[field.key] ?? "")} onpick={(value) => onchange(field.key, value)} /></label>
         {:else if field.type === "tags"}

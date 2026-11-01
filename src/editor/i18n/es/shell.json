@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "Edición del cuerpo del artículo",
   "shell.sidebar": "Barra lateral",
   "shell.inlinePreview": "Vista previa en línea",
-  "shell.editorExperienceHint": "La vista previa en línea permite hacer clic en el cuerpo de un artículo y escribir directamente en la página. Los demás campos permanecen en la barra lateral. Esta preferencia se guarda en este navegador; para guardar el contenido sigue siendo necesario pulsar Guardar.",
+  "shell.editorExperienceHint": "La vista previa en línea permite hacer clic en los textos enriquecidos vinculados y escribir directamente en la página. Los campos sin vínculo de vista previa permanecen en la barra lateral. Esta preferencia se guarda en este navegador; para guardar el contenido sigue siendo necesario pulsar Guardar.",
   "shell.githubAccount": "Cuenta de GitHub",
   "shell.noGithubAccount": "No hay ninguna cuenta de GitHub conectada.",
   "shell.repository": "Repositorio",
@@ -67,7 +67,6 @@
   "shell.showKey": "Mostrar {name}",
   "shell.keyFormatError": "Revisa el formato de {name}.",
   "shell.editorInterfaceLanguage": "Idioma de la interfaz del editor",
-
   "shell.developerMode": "Modo de desarrollador",
   "shell.enableDevMode": "Activar modo de desarrollador",
   "shell.devModeHint": "Muestra el JSON sin procesar del borrador actual y las claves de los campos junto a sus etiquetas.",

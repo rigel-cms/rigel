@@ -50,6 +50,8 @@
   "fields.editArticleBody": "プレビューで記事本文を編集",
   "fields.loadingPreview": "プレビューを読み込み中…",
   "fields.editArticleBodyHint": "プレビューの記事本文をクリックすると編集できます。コンテンツの変更には保存が必要です。",
+  "fields.editRichText": "プレビューで編集",
+  "fields.editRichTextHint": "プレビューのこのテキストをクリックすると編集できます。変更には保存が必要です。",
   "fields.seoNotSet": "未設定",
   "fields.seoTooShort": "短すぎます",
   "fields.seoTooLong": "長すぎます",

@@ -50,6 +50,8 @@
   "fields.editArticleBody": "Artikeltext in der Vorschau bearbeiten",
   "fields.loadingPreview": "Vorschau wird geladen…",
   "fields.editArticleBodyHint": "Klicken Sie zum Bearbeiten auf den Artikeltext in der Vorschau. Änderungen an den Inhalten müssen gespeichert werden.",
+  "fields.editRichText": "In der Vorschau bearbeiten",
+  "fields.editRichTextHint": "Klicke in der Vorschau auf diesen Text, um ihn zu bearbeiten. Änderungen müssen gespeichert werden.",
   "fields.seoNotSet": "Nicht festgelegt",
   "fields.seoTooShort": "Zu kurz",
   "fields.seoTooLong": "Zu lang",

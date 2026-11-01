@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "記事本文の編集",
   "shell.sidebar": "サイドバー",
   "shell.inlinePreview": "インラインプレビュー",
-  "shell.editorExperienceHint": "インラインプレビューでは、記事本文をクリックしてページ上で直接編集できます。他のフィールドはサイドバーに表示されます。この設定はこのブラウザーに保存されますが、コンテンツには引き続き「保存」が必要です。",
+  "shell.editorExperienceHint": "インラインプレビューでは、プレビューに紐づいたリッチテキストをクリックしてページ上で直接編集できます。プレビューに紐づかないフィールドはサイドバーに表示されます。この設定はこのブラウザーに保存されますが、コンテンツには引き続き「保存」が必要です。",
   "shell.githubAccount": "GitHubアカウント",
   "shell.noGithubAccount": "GitHubアカウントが接続されていません。",
   "shell.repository": "リポジトリ",
@@ -67,7 +67,6 @@
   "shell.showKey": "{name}を表示",
   "shell.keyFormatError": "{name}の形式を確認してください。",
   "shell.editorInterfaceLanguage": "エディターの表示言語",
-
   "shell.developerMode": "開発者モード",
   "shell.enableDevMode": "開発者モードを有効にする",
   "shell.devModeHint": "現在の下書きの生のJSONと、ラベルの横にフィールドキーを表示します。",

@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "Modifica del corpo dell’articolo",
   "shell.sidebar": "Barra laterale",
   "shell.inlinePreview": "Anteprima con modifica diretta",
-  "shell.editorExperienceHint": "L’anteprima con modifica diretta permette di fare clic sul corpo di un articolo e scrivere direttamente nella pagina. Gli altri campi restano nella barra laterale. Questa preferenza viene salvata in questo browser; per salvare i contenuti devi comunque premere Salva.",
+  "shell.editorExperienceHint": "L’anteprima con modifica diretta permette di fare clic sui testi formattati collegati e scrivere direttamente nella pagina. I campi senza collegamento all’anteprima restano nella barra laterale. Questa preferenza viene salvata in questo browser; per salvare i contenuti devi comunque premere Salva.",
   "shell.githubAccount": "Account GitHub",
   "shell.noGithubAccount": "Nessun account GitHub collegato.",
   "shell.repository": "Repository",
@@ -67,7 +67,6 @@
   "shell.showKey": "Mostra {name}",
   "shell.keyFormatError": "Controlla il formato di {name}.",
   "shell.editorInterfaceLanguage": "Lingua dell’interfaccia dell’editor",
-
   "shell.developerMode": "Modalità sviluppatore",
   "shell.enableDevMode": "Attiva modalità sviluppatore",
   "shell.devModeHint": "Mostra il JSON grezzo della bozza corrente e le chiavi dei campi accanto alle etichette.",

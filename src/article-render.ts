@@ -80,9 +80,11 @@ function plain(node: ArticleNode): string {
 
 export function articleMarkdown(body: ArticleBody, options: ArticleMarkdownOptions = {}): string {
   validateBody(body);
-  const escaped = (text: string) => text.replace(/[\\`*_[\]<>#~]/g, "\\$&");
+  const escaped = (text: string) => text.replace(/[\\`*_[\]<>#~]/g, "\\$&")
+    .replace(/^([ \t]*)([-+=])(?=[ \t+=-]|$)/gm, "$1\\$2")
+    .replace(/^([ \t]*\d*)([.)])(?=[ \t]|$)/gm, "$1\\$2");
   function walk(node: ArticleNode, depth = 0): string {
-    const content = () => (node.children ?? []).map(child => walk(child, depth)).join("");
+    const content = () => (node.children ?? []).map((child, index) => child.type === "linebreak" && index === node.children!.length - 1 ? "<br>" : walk(child, depth)).join("");
     if (node.type === "extension") {
       const markdown = options.extensionMarkdown?.(node.name as string, node.data as import("./extensions").BlockData);
       if (markdown !== undefined) return markdown + "\n\n";
@@ -94,13 +96,18 @@ export function articleMarkdown(body: ArticleBody, options: ArticleMarkdownOptio
       let text = escaped(node.text ?? "");
       const format = Number(node.format);
       if (format & (8 | 32 | 64 | 128)) return renderText(node);
+      const whitespace = !(format & 16) && (format & 7) ? /^(\s*)([\s\S]*?)(\s*)$/.exec(node.text ?? "") : null;
+      if (whitespace) {
+        if (!whitespace[2]) return text;
+        text = escaped(whitespace[2]);
+      }
       if (format & 16) { const ticks = "`".repeat(Math.max(1, ...(node.text?.match(/`+/g) ?? []).map(run => run.length + 1))); text = ticks + " " + (node.text ?? "") + " " + ticks; }
       if (format & 1) text = `**${text}**`;
       if (format & 2) text = `*${text}*`;
       if (format & 4) text = `~~${text}~~`;
-      return text;
+      return whitespace ? whitespace[1] + text + whitespace[3] : text;
     }
-    if (node.type === "linebreak") return "\n";
+    if (node.type === "linebreak") return "\\\n";
     if (node.type === "paragraph") return content() + "\n\n";
     if (node.type === "heading") return "#".repeat(Number(node.tag?.slice(1))) + " " + content() + "\n\n";
     if (node.type === "quote") return content().trimEnd().split("\n").map(line => "> " + line).join("\n") + "\n\n";
@@ -108,7 +115,7 @@ export function articleMarkdown(body: ArticleBody, options: ArticleMarkdownOptio
     if (node.type === "list") return (node.children ?? []).map((child, index) => "  ".repeat(depth) + (node.listType === "number" ? `${(node.start ?? 1) + index}. ` : "- ") + walk(child, depth + 1).trimEnd() + "\n").join("") + "\n";
     if (node.type === "table") {
       const rows = node.children!;
-      const row = (cells: ArticleNode[]) => "| " + cells.map(cell => walk(cell).trim().replace(/\|/g, "\\|").replace(/\n+/g, "<br>")).join(" | ") + " |\n";
+      const row = (cells: ArticleNode[]) => "| " + cells.map(cell => walk(cell).trim().replace(/\|/g, "\\|").replace(/\\\n|\n+/g, "<br>")).join(" | ") + " |\n";
       const header = rows[0].children!.every(cell => Number(cell.headerState) & 1);
       return (header ? row(rows[0].children!) : "| " + rows[0].children!.map(() => " ").join(" | ") + " |\n") + "| " + rows[0].children!.map(() => "---").join(" | ") + " |\n" + rows.slice(header ? 1 : 0).map(item => row(item.children!)).join("") + "\n";
     }

@@ -13,6 +13,7 @@ export interface FieldDef {
   placeholder?: string;
   accept?: string;
   required?: boolean;
+  sidebarOnly?: boolean;
   initialValue?: unknown;
   fields?: FieldDef[];
   of?: string;

@@ -50,6 +50,8 @@
   "fields.editArticleBody": "Modifier le corps de l’article dans l’aperçu",
   "fields.loadingPreview": "Chargement de l’aperçu…",
   "fields.editArticleBodyHint": "Cliquez sur le corps de l’article dans l’aperçu pour le modifier. Enregistrez pour conserver les modifications du contenu.",
+  "fields.editRichText": "Modifier dans l’aperçu",
+  "fields.editRichTextHint": "Cliquez sur ce texte dans l’aperçu pour le modifier. Enregistrez pour conserver les modifications du contenu.",
   "fields.seoNotSet": "Non défini",
   "fields.seoTooShort": "Trop court",
   "fields.seoTooLong": "Trop long",

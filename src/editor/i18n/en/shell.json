@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "Article body editing",
   "shell.sidebar": "Sidebar",
   "shell.inlinePreview": "Inline preview",
-  "shell.editorExperienceHint": "Inline preview lets you click an article body and write directly on the page. Other fields stay in the sidebar. This preference saves in this browser; content still requires Save.",
+  "shell.editorExperienceHint": "Inline preview lets you click bound rich text and write directly on the page. Fields without a preview binding stay in the sidebar. This preference saves in this browser; content still requires Save.",
   "shell.githubAccount": "GitHub account",
   "shell.noGithubAccount": "No GitHub account connected.",
   "shell.repository": "Repository",
@@ -67,7 +67,6 @@
   "shell.showKey": "Show {name}",
   "shell.keyFormatError": "Check the {name} format.",
   "shell.editorInterfaceLanguage": "Editor interface language",
-
   "shell.developerMode": "Developer Mode",
   "shell.enableDevMode": "Enable dev mode",
   "shell.devModeHint": "Shows raw JSON of the current draft + field keys next to labels.",

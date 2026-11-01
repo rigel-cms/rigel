@@ -18,7 +18,7 @@
   import type { ContentDocument, FieldDef, Schema } from "../../schema/types";
 
   let {
-    schema, field, value, base, documents, devMode = false, onvalue,
+    schema, field, value, base, documents, devMode = false, inlineFields = [], oneditfield = () => {}, onvalue,
   }: {
     schema: Schema;
     field: FieldDef;
@@ -26,6 +26,8 @@
     base: string;
     documents: ContentDocument[];
     devMode?: boolean;
+    inlineFields?: string[];
+    oneditfield?: (path: string) => void;
     onvalue: (next: unknown) => void;
   } = $props();
 
@@ -85,7 +87,15 @@
     <textarea rows="3" value={typeof value === "string" ? value : ""} oninput={(event) => onvalue(event.currentTarget.value)}></textarea>
   </label>
 {:else if field.type === "markdown"}
-  <MarkdownEditor label={fieldLabel} value={typeof value === "string" ? value : ""} oninput={(next) => onvalue(next)} />
+  {#if !field.sidebarOnly && inlineFields.includes(base)}
+    <div class="schema-field">
+      <span class="schema-label">{label}</span>
+      <button type="button" class="outlined" onclick={() => oneditfield(base)}>{$t("fields.editRichText")}</button>
+      <p class="hint">{$t("fields.editRichTextHint")}</p>
+    </div>
+  {:else}
+    <MarkdownEditor label={fieldLabel} value={typeof value === "string" ? value : ""} oninput={(next) => onvalue(next)} />
+  {/if}
 {:else if field.type === "image" || field.type === "file"}
   <div class="schema-field">
     <span class="schema-label">{label}</span>
@@ -113,6 +123,8 @@
         {schema}
         {documents}
         {devMode}
+        {inlineFields}
+        {oneditfield}
         field={sub}
         base={`${base}.${sub.key}`}
         value={value && typeof value === "object" ? (value as Record<string, unknown>)[sub.key] : undefined}
@@ -141,6 +153,8 @@
               {schema}
               {documents}
               {devMode}
+              {inlineFields}
+              {oneditfield}
               field={sub}
               base={`${base}.${(item as Record<string, unknown>)._key}.${sub.key}`}
               value={item && typeof item === "object" ? (item as Record<string, unknown>)[sub.key] : undefined}

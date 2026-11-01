@@ -50,6 +50,8 @@
   "fields.editArticleBody": "Edit article body in preview",
   "fields.loadingPreview": "Loading preview…",
   "fields.editArticleBodyHint": "Click the article body in the preview to edit. Content changes require Save.",
+  "fields.editRichText": "Edit in preview",
+  "fields.editRichTextHint": "Click this text in the preview to edit. Content changes require Save.",
   "fields.seoNotSet": "Not set",
   "fields.seoTooShort": "Too short",
   "fields.seoTooLong": "Too long",

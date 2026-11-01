@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "文章正文编辑",
   "shell.sidebar": "侧边栏",
   "shell.inlinePreview": "行内预览",
-  "shell.editorExperienceHint": "行内预览让你点击文章正文，直接在页面上编辑。其他字段仍在侧边栏中。此偏好设置保存在当前浏览器中；内容仍需点击“保存”才会保存。",
+  "shell.editorExperienceHint": "行内预览让你点击预览中绑定的富文本，直接在页面上编辑。没有预览绑定的字段仍在侧边栏中。此偏好设置保存在当前浏览器中；内容仍需点击“保存”才会保存。",
   "shell.githubAccount": "GitHub 账号",
   "shell.noGithubAccount": "未连接 GitHub 账号。",
   "shell.repository": "仓库",
@@ -67,7 +67,6 @@
   "shell.showKey": "显示 {name}",
   "shell.keyFormatError": "请检查 {name} 的格式。",
   "shell.editorInterfaceLanguage": "编辑器界面语言",
-
   "shell.developerMode": "开发者模式",
   "shell.enableDevMode": "启用开发者模式",
   "shell.devModeHint": "显示当前草稿的原始 JSON，并在标签旁显示字段键名。",

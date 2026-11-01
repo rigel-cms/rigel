@@ -49,7 +49,7 @@
   "shell.articleBodyEditing": "Artikeltext bearbeiten",
   "shell.sidebar": "Seitenleiste",
   "shell.inlinePreview": "Inline-Vorschau",
-  "shell.editorExperienceHint": "Mit der Inline-Vorschau kannst du auf einen Artikeltext klicken und direkt auf der Seite schreiben. Andere Felder bleiben in der Seitenleiste. Diese Einstellung wird in diesem Browser gespeichert; Inhalte müssen weiterhin mit Speichern gesichert werden.",
+  "shell.editorExperienceHint": "Mit der Inline-Vorschau kannst du auf Rich-Text-Bereiche klicken und direkt auf der Seite schreiben. Felder ohne Vorschau-Bindung bleiben in der Seitenleiste. Diese Einstellung wird in diesem Browser gespeichert; Inhalte müssen weiterhin mit Speichern gesichert werden.",
   "shell.githubAccount": "GitHub-Konto",
   "shell.noGithubAccount": "Kein GitHub-Konto verbunden.",
   "shell.repository": "Repository",
@@ -67,7 +67,6 @@
   "shell.showKey": "{name} anzeigen",
   "shell.keyFormatError": "Prüfe das Format von {name}.",
   "shell.editorInterfaceLanguage": "Sprache der Editoroberfläche",
-
   "shell.developerMode": "Entwicklermodus",
   "shell.enableDevMode": "Entwicklermodus aktivieren",
   "shell.devModeHint": "Zeigt die JSON-Rohdaten des aktuellen Entwurfs sowie Feldschlüssel neben den Beschriftungen an.",

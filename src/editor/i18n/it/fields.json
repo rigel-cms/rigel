@@ -50,6 +50,8 @@
   "fields.editArticleBody": "Modifica il corpo dell’articolo nell’anteprima",
   "fields.loadingPreview": "Caricamento dell’anteprima…",
   "fields.editArticleBodyHint": "Fai clic sul corpo dell’articolo nell’anteprima per modificarlo. Premi Salva per salvare le modifiche ai contenuti.",
+  "fields.editRichText": "Modifica nell’anteprima",
+  "fields.editRichTextHint": "Fai clic su questo testo nell’anteprima per modificarlo. Premi Salva per salvare le modifiche ai contenuti.",
   "fields.seoNotSet": "Non impostato",
   "fields.seoTooShort": "Troppo breve",
   "fields.seoTooLong": "Troppo lungo",

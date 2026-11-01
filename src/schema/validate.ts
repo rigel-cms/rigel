@@ -91,6 +91,7 @@ function validateFieldsShape(schema: Schema, fields: FieldDef[], scope: string) 
     keys.add(field.key);
     if (typeof field.label !== "string" || !field.label.trim()) throw new SchemaError(`${scope}.${field.key}: label required`);
     if (field.accept !== undefined && (field.type !== "file" || typeof field.accept !== "string" || !field.accept.split(",").every(token => /^(?:\.[a-z0-9]+|[a-z0-9!#$&^_.+-]+\/(?:[a-z0-9!#$&^_.+-]+|\*))$/i.test(token.trim())))) throw new SchemaError(`${scope}.${field.key}: accept must contain file extensions or MIME types`);
+    if (field.sidebarOnly !== undefined && (field.type !== "markdown" || typeof field.sidebarOnly !== "boolean")) throw new SchemaError(`${scope}.${field.key}: sidebarOnly applies to markdown fields`);
     if (![...SCALARS, "object", "array", "reference"].includes(field.type)) throw new SchemaError(`${scope}.${field.key}: unknown field type ${field.type}`);
     if (field.type === "object") {
       if (field.of) objectDef(schema, field.of);

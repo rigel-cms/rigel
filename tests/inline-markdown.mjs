@@ -211,13 +211,27 @@ try {
   await check(`${frame}.querySelector('#contact').textContent.includes('Sidebar only.')`, 'reopened inline editor keeps the newer sidebar content');
   await clickAt(await hostAt('.mode-toggle button:first-child'));
   assert.deepEqual(exceptions, [], 'no page exceptions');
+  await clickAt(await hostAt('.mode-toggle button:nth-child(2)'));
+  if (await evaluate(`document.querySelector('.visual-actions button[aria-pressed]').getAttribute('aria-pressed') !== 'true'`)) await clickAt(await hostAt('.visual-actions button[aria-pressed]'));
+  await wait(`!!document.querySelector('[data-schema-path="faq.shipping.answer"] .ProseMirror')`, 'sidebar Markdown editor');
+  await evaluate(`document.querySelector('[data-schema-path="faq.shipping.answer"] .ProseMirror').focus()`);
+  await cdp('Input.insertText', { text: '\nLong sidebar paragraph.'.repeat(60) });
+  await wait(`document.querySelector('[data-schema-path="faq.shipping.answer"] .ProseMirror').getBoundingClientRect().height > 1000`, 'long sidebar Markdown');
+  await evaluate(`(()=>{const panel=document.querySelector('.schema-panel'); panel.style.height='420px'; panel.scrollIntoView({block:'start'}); const toolbar=panel.querySelector('[data-schema-path="faq.shipping.answer"] .formatting-toolbar'); panel.scrollTop += toolbar.getBoundingClientRect().top-panel.getBoundingClientRect().top+250;})()`);
+  await delay(100);
+  await check(`(()=>{const panel=document.querySelector('.schema-panel'); const toolbar=panel.querySelector('[data-schema-path="faq.shipping.answer"] .formatting-toolbar'); const p=panel.getBoundingClientRect(), t=toolbar.getBoundingClientRect(); return getComputedStyle(toolbar).position === 'sticky' && Math.abs(t.top-p.top-parseFloat(getComputedStyle(panel).paddingTop)) < 2 && t.bottom < p.bottom;})()`, 'sidebar-only Markdown toolbar stays visible after scrolling');
+  await writeFile(path.join(scratch, 'sticky-markdown.png'), Buffer.from((await cdp('Page.captureScreenshot')).data, 'base64'));
   await evaluate(`document.querySelector('#collection-spacing').hidden = false`);
   for (const width of [1280, 600]) {
     await cdp('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     await check(fieldGap('#collection-spacing [data-collection-field="draft"]', '#collection-spacing [data-collection-field="summary"]'), `article toggle has a 1rem gap before the next field at ${width}px`);
+    await evaluate(`(()=>{const panel=document.querySelector('#collection-spacing .schema-panel'); panel.style.height='420px'; panel.scrollIntoView({block:'start'}); const toolbar=panel.querySelector('.block-editor > .body-toolbar'); panel.scrollTop += toolbar.getBoundingClientRect().top-panel.getBoundingClientRect().top+250;})()`);
     await delay(100);
+    await check(`(()=>{const panel=document.querySelector('#collection-spacing .schema-panel'); const tabs=panel.querySelector('.panel-tabs').getBoundingClientRect(), toolbar=panel.querySelector('.block-editor > .body-toolbar'), t=toolbar.getBoundingClientRect(); return getComputedStyle(toolbar).position === 'sticky' && Math.abs(t.top-tabs.bottom) < 2 && t.bottom < panel.getBoundingClientRect().bottom;})()`, `sidebar block toolbar stays below sticky tabs at ${width}px`);
+    await check(`(()=>{const button=document.querySelector('#collection-spacing .block-editor > .body-toolbar button:not(:disabled)'); const r=button.getBoundingClientRect(); return button.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));})()`, `sticky block tools remain clickable at ${width}px`);
+    await writeFile(path.join(scratch, `sticky-block-${width}.png`), Buffer.from((await cdp('Page.captureScreenshot')).data, 'base64'));
   }
-  assert.deepEqual(exceptions, [], 'no page exceptions after sidebar spacing');
+  assert.deepEqual(exceptions, [], 'no page exceptions after sidebar scrolling');
   console.log(`PASS ${checks} inline rich-text checks`);
 } finally {
   ws?.close();

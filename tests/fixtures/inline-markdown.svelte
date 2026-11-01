@@ -47,6 +47,6 @@
   <button id="toggle-inline" hidden onclick={() => bodyInline = !bodyInline}>Toggle inline editing</button>
   <VisualEditor docId="page:sample" {schema} {docType} {values} previewPath="/preview.html" {bodyInline} creating={false} devMode={false} onchange={next => values = next} />
   <div id="collection-spacing" hidden>
-    <CollectionPanel fields={[{ key: 'draft', label: 'Draft', type: 'boolean' }, { key: 'summary', label: 'Summary', type: 'markdown' }]} values={{ draft: true, summary: 'Article summary.' }} storageSlug="sample" body={{ root: { type: 'root', version: 1, children: [], direction: null, format: '', indent: 0 } }} selected={null} focusToken={0} devMode={false} bodyInline inlineFields={['summary']} onchange={() => {}} onbody={() => {}} />
+    <CollectionPanel fields={[{ key: 'draft', label: 'Draft', type: 'boolean' }, { key: 'summary', label: 'Summary', type: 'markdown' }]} values={{ draft: true, summary: 'Article summary.' }} storageSlug="sample" body={{ root: { type: 'root', version: 1, children: Array.from({ length: 40 }, (_, index) => ({ type: 'paragraph', version: 1, children: [{ type: 'text', version: 1, text: `Article paragraph ${index + 1}.`, format: 0, detail: 0, mode: 'normal', style: '' }], direction: null, format: '', indent: 0, textFormat: 0, textStyle: '' })), direction: null, format: '', indent: 0 } }} selected={null} focusToken={0} devMode={false} inlineFields={['summary']} onchange={() => {}} onbody={() => {}} />
   </div>
 </div>

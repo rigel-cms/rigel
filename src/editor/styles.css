@@ -1309,7 +1309,7 @@
 .rigel .add-section .custom-select { flex: 1; }
 @media (max-width: 767px) { .rigel .select-option { min-height: 2.75rem; } }
 .rigel .schema-panel:has(> .panel-tabs) { scroll-padding-top: 4rem; }
-.rigel .schema-panel .block-editor > .body-toolbar:not(.image-toolbar) { position: static; }
+.rigel .schema-panel .block-editor > .body-toolbar:not(.image-toolbar), .rigel .schema-panel .markdown-editor:not(.markdown-inline) .formatting-toolbar { position: sticky; top: var(--properties-tabs-height, 0px); z-index: 3; }
 .rigel .schema-panel > .panel-tabs { position: sticky; top: 0; z-index: 10; padding-top: 0.5rem; margin-top: -0.5rem; background: var(--panel); }
 .rigel .schema-panel > .panel-tabs::before { content: ""; position: absolute; inset: -1rem -1rem 0; z-index: -1; background: var(--panel); }
 .rigel .panel-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border-control); }

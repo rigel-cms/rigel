@@ -52,7 +52,7 @@ On the local backend, open an asset in Media, edit its display name, title, desc
 
 Local file uploads send a browser-supplied author label through `X-Rigel-Author`. Rigel uses the browser identity's name or nickname, falling back to `Local user`. This is a descriptive label, not verified ownership or an audit identity. The metadata editor cannot change it. Existing files and URL or stock imports may have no captured author; the interface displays `Local user` as a fallback.
 
-For rich-text image insertion, saved repository-image alt text supplies a default that you can override per use, or leave empty for a decorative image. Image fields store the URL; declare and render a separate alt field where your site needs one. Rigel does not rewrite alt text already stored in content. Rich-text insertions remain unsaved until the document's Save action.
+For rich-text image insertion, saved repository-image alt text supplies a default that you can override per use, or leave empty for a decorative image. Image fields store the URL; declare and render a separate alt field where your site needs one. Store the original URL rather than a path your build generates. [Preview](preview.md) covers the `data-rigel-src` binding for optimized Astro images. Rigel does not rewrite alt text already stored in content. Rich-text insertions remain unsaved until the document's Save action.
 
 ## Image URLs and stock providers
 

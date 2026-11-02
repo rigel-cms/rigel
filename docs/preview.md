@@ -44,6 +44,21 @@ These HTML excerpts illustrate the scalar anchors. Render the saved values throu
 
 Paths use object keys and stable array `_key` values. Array positions are not preview bindings. For schema content, put `data-rigel-doc="page:about"` on each bound element and on section/list containers. It identifies the source document for that element; a parent attribute does not substitute for attributes on descendant anchors. Referenced records use their own IDs and local field paths.
 
+### Keep optimized images editable
+
+Astro's `Image` and `Picture` components replace `src` with hashed, responsive candidates, so changing `src` alone changes nothing while `srcset` still lists the old files. Mark an editable image with `data-rigel-src` to show the draft instead:
+
+```astro
+<Image src={cover} alt={hero.alt} widths={[480, 960]} sizes="100vw" data-rigel-image="hero.image" data-rigel-alt="hero.alt" data-rigel-src={hero.image} />
+<Picture src={cover} formats={["avif", "webp"]} alt={hero.alt} data-rigel-image="hero.image" data-rigel-src={hero.image} />
+```
+
+`data-rigel-image` names the field, as before. `data-rigel-src` holds the original browser-addressable URL that the field stores, and it marks the element as optimized. In preview, a marked image loses its `srcset` and `sizes`, and the surrounding `picture` sources lose theirs, so the field value is the file the browser loads. The attribute is not a second source of truth: preview renders the field value, and a value that fails the image URL check is dropped rather than loaded.
+
+Public pages are untouched. Rigel patches only the editor iframe, so built markup keeps its hashed URLs, `srcset` and AVIF or WebP sources. Images without `data-rigel-src` keep their previous behavior: the `src` changes and any `srcset` stays.
+
+Store the original reference in content, never a generated path. `/images/cover.jpg`, a media URL or an HTTPS URL work; `/_astro/cover.BnV1MXKY.webp` does not, because Astro derives it at build time. An imported file is not addressable either: `src/assets/cover.jpg` has no URL a browser can request. Serve the file from a public path or the media folder and bind that URL, even when the template imports the same file for optimization. Preview shows the original at its own size, not a resized or converted variant, and the built `width` and `height` stay as they were, so check a replacement with different proportions against the template's layout. An upload becomes reachable at its media URL once the host serves it or rebuilds.
+
 ## Prepare changing sections and lists
 
 Scalar anchors update existing elements. Adding sections needs inert templates for each allowed section type. This HTML excerpt uses the `intro` section from [Content model](content-model.md):

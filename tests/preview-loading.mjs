@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer as httpServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, build } from 'vite';
@@ -79,11 +79,17 @@ function loaded() { frame.contentDocument.querySelector('h1').textContent = valu
   {#key url}<SitePreview target={{kind:'page', slug:'copy'}} config={{draftUrl:new URL(url,location.href).origin, pages:{copy:new URL(url,location.href).pathname}}} values={{title:value}} body="" />{/key}
 {:else if mounted}<PreviewFrame bind:frame {url} {reloadToken} title="Loading regression" onloading={() => { error = ''; events.push({type:'loading', time:performance.now(), url}); }} onload={loaded} onerror={message => {error = message; events.push({type:'error', time:performance.now(), url});}} />{/if}
 </div>{/if}</div>`);
+const dictionaries = { en: {} };
+for (const file of await readdir(path.join(root, 'src/editor/i18n/en'))) if (file.endsWith('.json')) Object.assign(dictionaries.en, JSON.parse(await readFile(path.join(root, 'src/editor/i18n/en', file), 'utf8')));
 const options = {
   configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte(), {
     name: 'rigel-config-fixture',
-    resolveId(id) { if (id === 'virtual:rigel-config') return '\0virtual:rigel-config'; },
-    load(id) { if (id === '\0virtual:rigel-config') return 'export default { maxFileSize: 2097152 };'; },
+    resolveId(id) { if (['virtual:rigel-config', 'virtual:rigel-i18n', 'virtual:rigel-extensions'].includes(id)) return '\0' + id; },
+    load(id) {
+      if (id === '\0virtual:rigel-config') return 'export default { maxFileSize: 2097152, backend: "local", languages: ["en"] };';
+      if (id === '\0virtual:rigel-i18n') return 'export default ' + JSON.stringify(dictionaries);
+      if (id === '\0virtual:rigel-extensions') return 'export default [];';
+    },
   }],
   resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] },
   build: { outDir: path.join(scratch, 'dist'), emptyOutDir: true },
@@ -202,6 +208,8 @@ try {
   await cdp('Emulation.setDeviceMetricsOverride', {width:1200,height:850,deviceScaleFactor:1,mobile:false});
   await evaluate(`previewTest.article('/slow?delay=900&body')`);
   await wait(busy, 'article preview pending');
+  await evaluate(`document.querySelector('.visual-actions button').click()`);
+  await wait(`!!${bodyPanel}`, 'article properties panel');
   assert.equal(await evaluate(inlinePending), true, 'inline preference must not mount the sidebar BlockEditor while preview is pending'); checks++;
   await delay(450);
   assert.equal(await evaluate(inlinePending), true, 'sidebar stays in loading state until the delayed preview is ready'); checks++;

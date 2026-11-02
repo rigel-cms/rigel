@@ -14,7 +14,7 @@ export const prerender = false;
 export const GET: APIRoute = async ({ params, request }) => {
   const t = requestTranslator(request);
   const filename = params.filename ?? "";
-  if (import.meta.env.PROD || !safeMediaName(filename) || filename.startsWith(".") || /[/\\\u0000]/.test(filename)) {
+  if (import.meta.env.PROD || config.backend !== "local" || !safeMediaName(filename) || filename.startsWith(".") || /[/\\\u0000]/.test(filename)) {
     return new Response(t("local.notFound"), { status: 404 });
   }
   try {
@@ -29,7 +29,7 @@ export const GET: APIRoute = async ({ params, request }) => {
 
 export const POST: APIRoute = async ({ request }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || config.backend !== "local") {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   if (request.headers.get("Origin") !== new URL(request.url).origin) {
@@ -90,7 +90,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   export const PUT: APIRoute = async ({ request }) => {
   const t = requestTranslator(request);
-    if (import.meta.env.PROD) {
+    if (import.meta.env.PROD || config.backend !== "local") {
       return new Response("Local backend is dev-only", { status: 404 });
     }
     if (request.headers.get("Origin") !== new URL(request.url).origin) {
@@ -120,7 +120,7 @@ export const POST: APIRoute = async ({ request }) => {
 
 export const DELETE: APIRoute = async ({ request }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) return new Response("Local backend is dev-only", { status: 404 });
+  if (import.meta.env.PROD || config.backend !== "local") return new Response("Local backend is dev-only", { status: 404 });
   if (request.headers.get("Origin") !== new URL(request.url).origin) return new Response("Same-origin request required", { status: 403 });
   let body: unknown;
   try { body = await request.json(); } catch { return new Response("Invalid JSON body", { status: 400 }); }

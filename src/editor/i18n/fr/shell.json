@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "Visiteur de la démo",
+  "shell.demoMode": "Mode démo",
+  "shell.demoBanner": "Démo publique — les modifications restent en mémoire et disparaissent à l’actualisation. Aucun fichier n’est modifié.",
+  "shell.demoPublishDescription": "Publication simulée : rien n’est écrit ni déployé.",
+  "shell.demoPublished": "Publication simulée terminée. Rien n’a été écrit ni déployé. Actualisez pour réinitialiser vos modifications.",
+  "shell.demoDelete": "Supprimer cette entrée de la session de démo ? L’actualisation restaure le contenu d’origine.",
+  "shell.demoMediaReadOnly": "Médias en lecture seule : choisissez un fichier existant. Envois, imports et modifications des métadonnées désactivés.",
   "shell.searchScope": "Langues du contenu recherché",
   "shell.searchScopeDefault": "Par défaut du site ({scope})",
   "shell.searchScopeAll": "Toutes les langues",

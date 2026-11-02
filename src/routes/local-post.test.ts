@@ -20,7 +20,7 @@ test("local saves apply registered validation before writes and preserve unknown
   expect(await response.text()).toContain("Note requires text");
   expect(await readFile(file, "utf8")).toBe(before);
 });
-vi.mock("virtual:rigel-config", () => ({ default: { collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [
+vi.mock("virtual:rigel-config", () => ({ default: { backend: "local", collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [
   { key: "title", label: "Title", type: "string", required: true },
   { key: "description", label: "Description", type: "text" },
   { key: "date", label: "Date", type: "date" },

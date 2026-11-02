@@ -3,7 +3,7 @@ import { rigel } from "./index";
 
 vi.mock("@sveltejs/vite-plugin-svelte", () => ({ svelte: () => ({ name: "svelte" }) }));
 
-function setup(backend: "github" | "local", command: "dev" | "build") {
+function setup(backend: "github" | "local" | "demo", command: "dev" | "build") {
   const injectRoute = vi.fn(), warn = vi.fn(), updateConfig = vi.fn();
   const integration = rigel({ backend, ...(backend === "github" ? { repo: "owner/site" } : {}) });
   const hook = integration.hooks["astro:config:setup"] as (options: unknown) => void;
@@ -17,6 +17,10 @@ test("GitHub dev and static builds expose no local write routes or obsolete read
     expect(routes).toEqual(["/rigel", "/rigel/manifest.json", "/rigel/media.json"]);
     expect(warn).not.toHaveBeenCalled();
   }
+});
+
+test.each(["dev", "build"] as const)("demo %s exposes only public static editor routes", command => {
+  expect(setup("demo", command).routes).toEqual(["/rigel", "/rigel/manifest.json", "/rigel/media.json"]);
 });
 
 test("local persistence stays dev-only", () => {

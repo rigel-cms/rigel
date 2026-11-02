@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "Demo visitor",
+  "shell.demoMode": "Demo mode",
+  "shell.demoBanner": "Public demo — changes stay in memory and reset when you refresh. No files are written.",
+  "shell.demoPublishDescription": "Try publishing your saved changes. This is a simulation: nothing is written or deployed.",
+  "shell.demoPublished": "Demo publish complete. Nothing was written or deployed. Refresh to reset your changes.",
+  "shell.demoDelete": "Remove this entry from your demo session? Refresh restores the original content.",
+  "shell.demoMediaReadOnly": "Media is read-only in the demo. Choose an existing asset; uploads, imports and metadata changes are disabled.",
   "shell.searchScope": "Search content languages",
   "shell.searchScopeDefault": "Website default ({scope})",
   "shell.searchScopeAll": "All languages",

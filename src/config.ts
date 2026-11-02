@@ -23,7 +23,7 @@ export interface RigelConfig {
   mediaDir?: string;
   maxFileSize?: number;
   preview?: import("./preview").PreviewConfig;
-  backend: "local" | "github";
+  backend: "local" | "github" | "demo";
   jsonOutput?: JsonOutput;
   demo?: boolean;
   languages?: Locale[];
@@ -60,6 +60,7 @@ const DEFAULTS: Pick<RigelConfig, "copyDir" | "backend"> = {
 
 export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
+  if (!["local", "github", "demo"].includes(cfg.backend)) throw new Error("rigel: backend must be local, github or demo");
   cfg.search = { scope: effectiveSearchScope(cfg.search, undefined) };
   if (cfg.contentLocales !== undefined) {
     validateContentLocales(cfg.contentLocales);

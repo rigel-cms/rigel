@@ -19,6 +19,16 @@ function raw(cfg: RigelConfig): RawPlugin {
 
 const cfg: RigelConfig = { copyDir: "src/content/copy", backend: "local" };
 
+test("demo manifest carries its backend without GitHub identity or auth configuration", () => {
+  const plugin = raw({ ...cfg, backend: "demo", repo: "ignored/repo", users: ["private-user"] });
+  const code = plugin.load("\0virtual:rigel-manifest")!;
+  expect(code).toContain('backend: "demo"');
+  expect(code).not.toContain("github:");
+  expect(code).not.toContain("ignored/repo");
+  expect(code).not.toContain("private-user");
+  expect(JSON.parse(plugin.load("\0virtual:rigel-config")!.slice("export default ".length, -1)).backend).toBe("demo");
+});
+
 test("extensions are isolated static default imports relative to Astro root", async () => {
   const plugin = rigelManifestPlugin({ ...cfg, extensions: ["./src/notes.ts", "./custom/other.js"] }, undefined, new URL("file:///site%20root/")) as unknown as RawPlugin;
   expect(plugin.resolveId("virtual:rigel-extensions")).toBe("\0virtual:rigel-extensions");

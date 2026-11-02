@@ -2,7 +2,8 @@
   import { t } from "../i18n";
   import Icon from "./Icon.svelte";
   import type { PublishReview } from "./github-backend";
-  let { review, loading, busy, error, message, onrefresh, onconfirm, onclose }: {
+  let { demo = false, review, loading, busy, error, message, onrefresh, onconfirm, onclose }: {
+    demo?: boolean;
     review: PublishReview | null; loading: boolean; busy: boolean; error: string; message: string;
     onrefresh: () => void; onconfirm: () => void; onclose: () => void;
   } = $props();
@@ -18,7 +19,7 @@
 <dialog bind:this={dialog} class="rigel rigel-modal-backdrop publish-dialog" aria-labelledby="publish-title" aria-describedby="publish-description" oncancel={(event) => { event.preventDefault(); if (!busy) onclose(); }}>
   <form class="rigel-modal" onsubmit={(event) => { event.preventDefault(); onconfirm(); }} aria-busy={loading || busy}>
     <div class="publish-head"><h2 id="publish-title">{$t("connection.publishTitle")}</h2><button type="button" class="icon-btn" aria-label={$t("connection.closePublishReview")} disabled={busy} onclick={onclose}><Icon name="x" size={16} /></button></div>
-    <p id="publish-description">{#each $t("connection.publishDescription", { scope: "{scope}" }).split("{scope}") as part, index}{#if index}<strong>{$t("connection.publishScope")}</strong>{/if}{part}{/each}</p>
+    <p id="publish-description">{#if demo}{$t("shell.demoPublishDescription")}{:else}{#each $t("connection.publishDescription", { scope: "{scope}" }).split("{scope}") as part, index}{#if index}<strong>{$t("connection.publishScope")}</strong>{/if}{part}{/each}{/if}</p>
     {#if loading}<p role="status">{$t("connection.loadingReview")}</p>{/if}
     {#if review}
       <p><strong>{review.repo}</strong><br />{#each $t("connection.publishBranches", { branch: "{branch}", publishBranch: "{publishBranch}" }).split(/(\{branch\}|\{publishBranch\})/) as part}{#if part === "{branch}"}<span class="publish-branch">{review.branch}</span>{:else if part === "{publishBranch}"}<span class="publish-branch">{review.publishBranch}</span>{:else}{part}{/if}{/each}</p>
@@ -41,7 +42,7 @@
     <div class="publish-actions">
       <button type="button" bind:this={cancel} class="outlined" disabled={busy} onclick={onclose}>{message ? $t("connection.close") : $t("connection.cancel")}</button>
       {#if !message}<button type="button" class="outlined" disabled={loading || busy} onclick={onrefresh}>{$t("connection.reviewAgain")}</button>{/if}
-      {#if review && !message}<button id="confirm-publish" type="submit" class="primary" disabled={loading || busy || !review.files.length}>{busy ? $t("connection.working") : review.needsSync ? $t("connection.syncDraftsFirst") : $t("connection.confirmPublish")}</button>{/if}
+      {#if (demo || review) && !message}<button id="confirm-publish" type="submit" class="primary" disabled={loading || busy || (demo ? !!error : !review?.files.length)}>{busy ? $t("connection.working") : !demo && review?.needsSync ? $t("connection.syncDraftsFirst") : $t("connection.confirmPublish")}</button>{/if}
     </div>
   </form>
 </dialog>

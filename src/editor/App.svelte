@@ -37,6 +37,7 @@
   import UnsavedChanges from "./lib/UnsavedChanges.svelte";
   import ActionDialog from "./lib/ActionDialog.svelte";
   import PublishDialog from "./lib/PublishDialog.svelte";
+  import { validateDemoSelection } from "./lib/demo-backend";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
   import { previewUrl, previewPath } from "../preview";
@@ -64,6 +65,7 @@
   let sessionExpiresAt = $state(0);
   let tokenExpired = $state(false);
   const githubMode = $derived(manifest.backend === "github");
+  const demoMode = $derived(manifest.backend === "demo");
   let sel = $state<Sel | null>(null);
   const previewTarget = $derived(sel?.kind === "page" ? sel : null);
   let draft = $state<Record<string, unknown>>({});
@@ -96,6 +98,12 @@
 
   async function reviewPublish() {
     if (publishBusy || publishLoading) return;
+    if (demoMode) {
+      publishOpen = true;
+      publishMessage = "";
+      publishError = dirty ? $t("shell.saveBeforeReview") : "";
+      return;
+    }
     publishOpen = true;
     publishReview = null;
     publishError = "";
@@ -116,6 +124,11 @@
   }
 
   async function publish() {
+    if (demoMode) {
+      if (dirty || saveTask || saveState === "saving") { publishError = $t("shell.saveBeforeReview"); return; }
+      publishMessage = $t("shell.demoPublished");
+      return;
+    }
     if (publishBusy || publishLoading || !publishReview) return;
     publishBusy = true;
     publishError = "";
@@ -149,7 +162,7 @@
   let newDocument = $state<{ type: string; id: string; slug: string } | null>(null);
   let docBase = $state<Record<string, unknown> | null>(null);
   let documentReload = $state(0);
-  if (import.meta.hot) import.meta.hot.on("rigel:content-updated", () => { if (!githubMode) documentReload += 1; });
+  if (import.meta.hot) import.meta.hot.on("rigel:content-updated", () => { if (!githubMode && !demoMode) documentReload += 1; });
 
   async function loadBlueprint() {
     loadError = "";
@@ -307,7 +320,10 @@
             values.slug = normalizeUrlSlug(values.slug, $t);
             draft.slug = values.slug;
           }
-          if (githubMode) {
+          if (demoMode) {
+            if (!selection) throw new Error($t("shell.selectBeforeSaving"));
+            validateDemoSelection(manifest, selection, values, body, !!creating || creatingDoc);
+          } else if (githubMode) {
             if (!selection) throw new Error($t("shell.selectBeforeSaving"));
             await saveRemoteSelection(requireGitContext(), manifest, selection, values, body, !!creating || creatingDoc);
           } else {
@@ -350,10 +366,10 @@
 
   let settings = $state(getSettings());
   let settingsError = $state("");
-  const userName = $derived(githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? $t("shell.githubUser") : $t("shell.localUser"));
+  const userName = $derived(demoMode ? $t("shell.demoUser") : githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? $t("shell.githubUser") : $t("shell.localUser"));
   const userAvatar = $derived(githubMode && /^https:\/\/avatars\.githubusercontent\.com\//.test(githubAccess?.user.avatar_url ?? "") ? githubAccess!.user.avatar_url : "");
   let failedAvatar = $state("");
-  const userLogin = $derived(githubMode && githubAccess ? `@${githubAccess.user.login}` : $t("shell.localMode"));
+  const userLogin = $derived(demoMode ? $t("shell.demoMode") : githubMode && githubAccess ? `@${githubAccess.user.login}` : $t("shell.localMode"));
   let content: HTMLDivElement;
   let contentWidth = $state(0);
   let resizing = $state(false);
@@ -811,14 +827,14 @@
     if (!current || !collection) return;
     actionDialog = {
       title: $t("shell.deletePostTitle", { name: String(current.frontmatter.title ?? current.slug) }), confirmLabel: $t("shell.delete"), danger: true,
-      description: unsaved ? $t("shell.discardNewPostDescription") : githubMode ? $t("shell.deleteRemotePostDescription", { slug: current.slug, branch: String(manifest.github?.branch) }) : $t("shell.deleteLocalPostDescription", { slug: current.slug }),
+      description: unsaved ? $t("shell.discardNewPostDescription") : demoMode ? $t("shell.demoDelete") : githubMode ? $t("shell.deleteRemotePostDescription", { slug: current.slug, branch: String(manifest.github?.branch) }) : $t("shell.deleteLocalPostDescription", { slug: current.slug }),
       onconfirm: async () => {
         if (!unsaved) {
           if (githubMode) {
             try { await deleteRemotePost(requireGitContext(), manifest, collection.name, current.slug); }
             catch (error) { handleAuthError(error); throw error; }
           }
-          else {
+          else if (!demoMode) {
           const res = await fetch(`/rigel/api/local/${collection.name}/${encodeURIComponent(current.slug)}`, { method: "DELETE", headers: { "Accept-Language": $locale } });
           if (!res.ok) throw new Error((await res.text()) || $t("shell.deleteFailedStatus", { status: res.status }));
           }
@@ -941,8 +957,8 @@
       {/each}
     </nav>
 
-    {#if githubMode && manifest.github?.publishBranch}
-      <button id="publish-button" class="sidebar-publish" aria-label={$t("shell.publish")} data-tooltip={dirty ? $t("shell.saveBeforePublishing") : $t("shell.publishSavedChanges")} disabled={publishBusy || publishLoading || saveState === "saving" || connectionBusy || tokenExpired || githubAccess?.status !== "ready"} onclick={reviewPublish}>
+    {#if demoMode || (githubMode && manifest.github?.publishBranch)}
+      <button id="publish-button" class="sidebar-publish" aria-label={$t("shell.publish")} data-tooltip={dirty ? $t("shell.saveBeforePublishing") : $t("shell.publishSavedChanges")} disabled={publishBusy || publishLoading || saveState === "saving" || (!demoMode && (connectionBusy || tokenExpired || githubAccess?.status !== "ready"))} onclick={reviewPublish}>
         <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">{$t("shell.publish")}</span>
       </button>
     {/if}
@@ -951,7 +967,7 @@
     </button>
     <div class="aside-foot">
       <div class="user-menu-wrap">
-        <button class="user-btn" aria-label={githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} data-tooltip={githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
+        <button class="user-btn" aria-label={demoMode ? $t("shell.demoUser") : githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} data-tooltip={demoMode ? $t("shell.demoUser") : githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
           {@render avatar()}
           <span class="user-details"><span class="uname">{userName}</span><small>{userLogin}</small></span>
           <span class="user-menu-icon"><Icon name="dotsThreeOutlineVertical" size={18} /></span>
@@ -981,11 +997,11 @@
             <a role="menuitem" href={githubAccess?.installUrl} target="_blank" rel="noopener noreferrer">{$t("shell.configureGithubAccess")}</a>
             <button role="menuitem" class="github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={() => { userOpen = false; void connectGitHub(); }}>{$t("shell.reconnectGithub")}</button>
             {/if}
-            <button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? $t("shell.signOutTooltip") : $t("shell.localMode")} onclick={signOut}>
+            {#if !demoMode}<button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? $t("shell.signOutTooltip") : $t("shell.localMode")} onclick={signOut}>
               <Icon name="signOut" size={13} />
               {$t("shell.signOut")}
               {#if !githubMode}<span class="soon">{$t("shell.githubBackendHint")}</span>{/if}
-            </button>
+            </button>{/if}
           </div>
         {/if}
       </div>
@@ -1000,6 +1016,7 @@
           <button class="primary" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{connectionBusy ? $t("shell.connecting") : $t("shell.reconnectGithub")}</button>
         </div>
       {/if}
+      {#if demoMode}<p class="github-session" role="status">{$t("shell.demoBanner")}</p>{/if}
       {#if settingsError}<p role="alert">{settingsError}</p>{/if}
       {#if ready && sel && sel.kind !== "media"}
         {#if sel.kind === "page" || sel.kind === "post" || sel.kind === "menu" || sel.kind === "document"}
@@ -1224,5 +1241,5 @@
   <ActionDialog {...actionDialog} onclose={() => { actionDialog = null; }} />
 {/if}
 {#if publishOpen}
-  <PublishDialog review={publishReview} loading={publishLoading} busy={publishBusy} error={publishError} message={publishMessage} onrefresh={reviewPublish} onconfirm={publish} onclose={closePublish} />
+  <PublishDialog demo={demoMode} review={publishReview} loading={publishLoading} busy={publishBusy} error={publishError} message={publishMessage} onrefresh={reviewPublish} onconfirm={publish} onclose={closePublish} />
 {/if}

@@ -26,12 +26,13 @@
   } = $props();
   const id = $props.id();
   const maxFileSize = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  const demoMode = config.backend === "demo";
   let open = $state(false);
   let tab = $state<"library" | "upload" | "url" | EmbedProvider | StockSource>("library");
   const providerTab = $derived(tab === "youtube" || tab === "vimeo");
   const editing = $derived(!!embed || !!value);
   const stockKeys = $derived(open ? getSettings().apiKeys : null);
-  const tabs = $derived((kind === "file" ? ["library", "upload"] : kind === "video" ? ["library", "upload", "url", "youtube", "vimeo"] : ["library", "upload", "url", "picsum", ...Object.keys(STOCK_PROVIDERS).filter(source => stockKeys?.[source as keyof typeof STOCK_PROVIDERS]?.trim())]) as (typeof tab)[]);
+  const tabs = $derived((demoMode ? ["library"] : kind === "file" ? ["library", "upload"] : kind === "video" ? ["library", "upload", "url", "youtube", "vimeo"] : ["library", "upload", "url", "picsum", ...Object.keys(STOCK_PROVIDERS).filter(source => stockKeys?.[source as keyof typeof STOCK_PROVIDERS]?.trim())]) as (typeof tab)[]);
   let videoTitle = $state("");
   let privacy = $state(true);
   let muted = $state(false);
@@ -82,7 +83,7 @@
     if (inline) { tab = "library"; open = true; }
   }
   async function saveMetadata() {
-    if (!selected?.asset || savingMeta) return;
+    if (demoMode || !selected?.asset || !writable || savingMeta) return;
     const url = selected.asset.url;
     savingMeta = true; metaError = ""; metaNotice = "";
     try {
@@ -120,7 +121,7 @@
     if (!response.ok) throw new Error($t("media.listingUnavailable"));
     const data = await response.json();
     assets = (data.assets ?? data.images).filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
-    writable = data.writable === true;
+    writable = !demoMode && data.writable === true;
     folder = data.folder;
   }
   onMount(() => { if (inline) void run(); });
@@ -154,6 +155,7 @@
     finally { if (request === requestId) loading = false; }
   }
   async function confirm() {
+    if (demoMode && (tab !== "library" || !selected?.asset)) { error = $t("shell.demoMediaReadOnly"); return; }
     if (providerTab) {
       const ref = parseEmbedUrl(urlInput);
       if (!ref || ref.provider !== tab) { error = $t("media.pasteVideoUrl", { provider: tab === "youtube" ? "YouTube" : "Vimeo" }); return; }
@@ -187,6 +189,7 @@
     finally { if (request === requestId) picking = false; }
   }
   function upload(file?: File) {
+    if (demoMode) return;
     if (!file || picking) return;
     error = "";
     const limit = maxFileSize;
@@ -204,6 +207,7 @@
     releaseFile(); onclose?.(); trigger?.focus();
   }
   function changeTab(next: typeof tab) {
+    if (demoMode) next = "library";
     alt = altText; metaTitle = ""; metaDescription = "";
     requestId++; releaseFile(); tab = next; results = []; selected = null; error = ""; searched = false; loading = false;
     if (next === "youtube" || next === "vimeo") {
@@ -220,7 +224,7 @@
 </script>
 
 {#if inline}
-  <div class="titlebar"><h2>{$t("media.heading")}</h2><button bind:this={trigger} type="button" class="primary" onclick={launch}>{$t("media.upload")}</button></div>
+  <div class="titlebar"><h2>{$t("media.heading")}</h2><button bind:this={trigger} type="button" class="primary" disabled={demoMode} onclick={launch}>{$t("media.upload")}</button></div>
   <div class="media-library">
     {@render libraryBrowser()}
     {#if notice}<p role="status">{notice}</p>{/if}
@@ -239,6 +243,7 @@
 {/if}
 
 {#snippet libraryBrowser()}
+  {#if demoMode}<p class="hint">{$t("shell.demoMediaReadOnly")}</p>{/if}
   <p class="hint">{$t(writable ? "media.repositoryWritable" : "media.repositorySnapshot", { folder: folder || "…" })}</p>
   <div class="media-tools">
     <div class="media-views" role="group" aria-label={$t("media.view")}>
@@ -287,10 +292,10 @@
           <div class="media-details">
           {#if (inline && selected.asset) || metadataImport}
             <div class="media-meta">
-              {#if inline && selected.asset}<label><span>{$t("media.displayName")}</span><input aria-label={$t("media.mediaDisplayName")} type="text" maxlength="120" bind:value={metaName} /></label>{/if}
-              {#if imageImport}<label><span>{$t("media.decorativeAlt")}</span><input aria-label={$t("media.imageAlt")} type="text" maxlength="1000" disabled={picking} bind:value={alt} /></label>{:else if selected.asset?.type?.startsWith("image/")}<label><span>{$t("media.alt")}</span><textarea aria-label={$t("media.mediaAlt")} rows="3" maxlength="1000" bind:value={metaAlt}></textarea></label>{/if}
-              <label><span>{$t("media.title")}</span><input aria-label={$t(imageImport ? "media.imageTitle" : "media.mediaTitle")} type="text" maxlength="200" disabled={picking} bind:value={metaTitle} /></label>
-              <label><span>{$t("media.description")}</span><textarea aria-label={$t(imageImport ? "media.imageDescription" : "media.mediaDescription")} rows="3" maxlength="1000" disabled={picking} bind:value={metaDescription}></textarea></label>
+              {#if inline && selected.asset}<label><span>{$t("media.displayName")}</span><input aria-label={$t("media.mediaDisplayName")} type="text" maxlength="120" readonly={demoMode} bind:value={metaName} /></label>{/if}
+              {#if imageImport}<label><span>{$t("media.decorativeAlt")}</span><input aria-label={$t("media.imageAlt")} type="text" maxlength="1000" disabled={picking} bind:value={alt} /></label>{:else if selected.asset?.type?.startsWith("image/")}<label><span>{$t("media.alt")}</span><textarea aria-label={$t("media.mediaAlt")} rows="3" maxlength="1000" readonly={demoMode} bind:value={metaAlt}></textarea></label>{/if}
+              <label><span>{$t("media.title")}</span><input aria-label={$t(imageImport ? "media.imageTitle" : "media.mediaTitle")} type="text" maxlength="200" readonly={demoMode} disabled={picking} bind:value={metaTitle} /></label>
+              <label><span>{$t("media.description")}</span><textarea aria-label={$t(imageImport ? "media.imageDescription" : "media.mediaDescription")} rows="3" maxlength="1000" readonly={demoMode} disabled={picking} bind:value={metaDescription}></textarea></label>
               {#if selected.asset}<p class="hint">{$t("media.author", { author: selected.asset.author || $t("media.localUser") })}</p>{:else if selected.file}<p class="hint">{selected.file.name}</p>{/if}
             </div>
           {:else if selected.file}
@@ -317,7 +322,7 @@
           <div class="media-button-actions">
           {#if inline && selected.asset}
             <button type="button" class="outlined" disabled={picking || savingMeta} onclick={close}>{$t("media.cancel")}</button>
-            <button type="button" class="primary" disabled={picking || savingMeta} onclick={saveMetadata}>{$t(savingMeta ? "media.saving" : "media.save")}</button>
+            <button type="button" class="primary" disabled={!writable || picking || savingMeta} onclick={saveMetadata}>{$t(savingMeta ? "media.saving" : "media.save")}</button>
           {:else}
             <button type="button" class="outlined" disabled={picking} onclick={() => { selected = null; releaseFile(); }}>{$t("media.back")}</button>
             {#if inline && tab === "library"}<button type="button" class="primary" onclick={close}>{$t("media.done")}</button>{:else}<button type="button" class="primary" disabled={picking || (needsImport && !writable)} onclick={confirm}>{$t(picking ? kind === "file" ? "media.uploadingFile" : kind === "video" ? "media.uploadingVideo" : "media.importingPhoto" : kind === "file" ? selected.file ? "media.uploadFile" : "media.useFile" : kind === "video" ? "media.useVideo" : !inline ? "media.insertImage" : selected.file && mediaMetadata(selected.file.name)?.category !== "Images" ? "media.uploadFile" : "media.importImage")}</button>{/if}

@@ -27,9 +27,9 @@ test("public GitHub manifest exposes metadata, never build-time drafts or docume
   expect(manifest.contentLocales).toEqual(fixture.manifest.contentLocales);
 });
 
-test("local manifest keeps locale metadata and values without filtering server content", async () => {
+test.each(["local", "demo"])("%s manifest keeps locale metadata and values without filtering server content", async backend => {
   const previous = fixture.manifest.backend;
-  fixture.manifest.backend = "local";
+  fixture.manifest.backend = backend;
   try {
     const manifest: Manifest = await (await GET({} as never)).json();
     expect(manifest).toEqual(fixture.manifest);

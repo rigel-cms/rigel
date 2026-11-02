@@ -39,7 +39,7 @@ export interface GitHubBackendConfig {
 export interface Manifest {
   contentLocales?: import("../config").ContentLocalesConfig;
   search?: { scope: import("../config").SearchScope };
-  backend?: "github";
+  backend?: "github" | "demo";
   github?: GitHubBackendConfig;
   sidebar?: import("./navigation").SidebarEntry[];
   preview?: import("../preview").PreviewConfig;

@@ -1,6 +1,14 @@
 import { expect, test } from "vitest";
 import { parseConfig } from "./config";
 
+test("demo backend needs no auth config and is independent of sample-field visibility", () => {
+  for (const demo of [true, false]) {
+    expect(parseConfig({ backend: "demo", demo })).toMatchObject({ backend: "demo", demo });
+    expect(parseConfig({ backend: "demo", demo }).authOrigin).toBeUndefined();
+  }
+  for (const backend of ["invalid", "Demo", "", null, false]) expect(() => parseConfig({ backend } as never)).toThrow(/backend/);
+});
+
 test("defaults to local backend + src/content/copy", () => {
   expect(parseConfig()).toEqual({
     copyDir: "src/content/copy",

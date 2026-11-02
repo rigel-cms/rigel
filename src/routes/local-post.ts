@@ -37,7 +37,7 @@ export const POST: APIRoute = (context) => {
 
 const savePost: APIRoute = async ({ request, params }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || config.backend !== "local") {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   const folder = collectionFolder(String(params.collection ?? ""));
@@ -86,7 +86,7 @@ const savePost: APIRoute = async ({ request, params }) => {
 
 export const DELETE: APIRoute = async ({ request, params }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || config.backend !== "local") {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   const folder = collectionFolder(String(params.collection ?? ""));

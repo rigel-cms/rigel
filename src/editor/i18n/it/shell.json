@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "Visitatore demo",
+  "shell.demoMode": "Modalità demo",
+  "shell.demoBanner": "Demo pubblica: le modifiche restano in memoria e si azzerano ricaricando. Nessun file viene scritto.",
+  "shell.demoPublishDescription": "Pubblicazione simulata: nulla viene scritto o distribuito.",
+  "shell.demoPublished": "Simulazione completata. Nulla è stato scritto o distribuito. Ricarica per azzerare le modifiche.",
+  "shell.demoDelete": "Rimuovere questa voce dalla sessione demo? Ricaricando si ripristina il contenuto originale.",
+  "shell.demoMediaReadOnly": "Media in sola lettura. Scegli un file esistente; caricamenti, importazioni e modifiche ai metadati sono disattivati.",
   "shell.searchScope": "Lingue dei contenuti da cercare",
   "shell.searchScopeDefault": "Predefinito del sito ({scope})",
   "shell.searchScopeAll": "Tutte le lingue",

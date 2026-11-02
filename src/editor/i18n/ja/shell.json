@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "デモ訪問者",
+  "shell.demoMode": "デモモード",
+  "shell.demoBanner": "公開デモ：変更はメモリ内にのみ保存され、再読み込みでリセットされます。ファイルは書き込まれません。",
+  "shell.demoPublishDescription": "公開のシミュレーションです。書き込みやデプロイは行いません。",
+  "shell.demoPublished": "シミュレーション完了。書き込みやデプロイは行われていません。再読み込みで変更をリセットできます。",
+  "shell.demoDelete": "この項目をデモセッションから削除しますか？再読み込みで元に戻ります。",
+  "shell.demoMediaReadOnly": "メディアは読み取り専用です。既存のファイルを選択してください。アップロード、インポート、メタデータの変更は無効です。",
   "shell.searchScope": "検索するコンテンツの言語",
   "shell.searchScopeDefault": "サイトの既定値（{scope}）",
   "shell.searchScopeAll": "すべての言語",

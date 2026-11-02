@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "演示访客",
+  "shell.demoMode": "演示模式",
+  "shell.demoBanner": "公开演示：更改仅保存在内存中，刷新后重置。不会写入任何文件。",
+  "shell.demoPublishDescription": "模拟发布：不会写入或部署任何内容。",
+  "shell.demoPublished": "模拟发布完成。未写入或部署任何内容。刷新以重置更改。",
+  "shell.demoDelete": "从演示会话中删除此条目？刷新后将恢复原始内容。",
+  "shell.demoMediaReadOnly": "演示中的媒体为只读。请选择现有文件；上传、导入和元数据修改已禁用。",
   "shell.searchScope": "搜索内容语言",
   "shell.searchScopeDefault": "网站默认（{scope}）",
   "shell.searchScopeAll": "所有语言",

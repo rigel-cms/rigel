@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "Visitante de la demo",
+  "shell.demoMode": "Modo demo",
+  "shell.demoBanner": "Demo pública: los cambios quedan en memoria y se restablecen al recargar. No se escriben archivos.",
+  "shell.demoPublishDescription": "Publicación simulada: no se escribe ni se despliega nada.",
+  "shell.demoPublished": "Simulación completada. No se ha escrito ni desplegado nada. Recarga para restablecer los cambios.",
+  "shell.demoDelete": "¿Eliminar esta entrada de la sesión de demo? Recargar restaura el contenido original.",
+  "shell.demoMediaReadOnly": "Medios de solo lectura. Elige un archivo existente; las subidas, importaciones y cambios de metadatos están desactivados.",
   "shell.searchScope": "Idiomas del contenido de búsqueda",
   "shell.searchScopeDefault": "Predeterminado del sitio ({scope})",
   "shell.searchScopeAll": "Todos los idiomas",

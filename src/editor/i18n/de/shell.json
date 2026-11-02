@@ -1,4 +1,11 @@
 {
+  "shell.demoUser": "Demobesucher",
+  "shell.demoMode": "Demomodus",
+  "shell.demoBanner": "Öffentliche Demo — Änderungen bleiben im Speicher und werden beim Neuladen zurückgesetzt. Keine Dateien werden geschrieben.",
+  "shell.demoPublishDescription": "Simulierte Veröffentlichung: Es wird nichts geschrieben oder bereitgestellt.",
+  "shell.demoPublished": "Simulation abgeschlossen. Nichts wurde geschrieben oder bereitgestellt. Neuladen setzt Änderungen zurück.",
+  "shell.demoDelete": "Eintrag aus der Demositzung entfernen? Neuladen stellt den Inhalt wieder her.",
+  "shell.demoMediaReadOnly": "Medien sind schreibgeschützt. Vorhandene Dateien auswählen; Uploads, Importe und Metadatenänderungen sind deaktiviert.",
   "shell.searchScope": "Inhaltssprachen durchsuchen",
   "shell.searchScopeDefault": "Website-Standard ({scope})",
   "shell.searchScopeAll": "Alle Sprachen",

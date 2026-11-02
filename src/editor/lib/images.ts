@@ -118,6 +118,7 @@ export async function searchImages(
 }
 
 export async function importStockImage(image: StockResult): Promise<string> {
+  if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const url = new URL(image.url);
   const hosts = {
     picsum: ["picsum.photos"], unsplash: ["images.unsplash.com"],
@@ -139,6 +140,7 @@ export async function importStockImage(image: StockResult): Promise<string> {
 }
 
 export async function importImageUrl(value: string): Promise<string> {
+  if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   if (!safeImageUrl(value)) throw new Error(translate("media.unsafeImageUrl"));
   if (!value.startsWith("/") && new URL(value).protocol !== "https:") throw new Error(translate("media.remoteRequiresHttps"));
   if (!value.startsWith("/") && new URL(value).hostname === "images.unsplash.com") throw new Error(translate("media.unsplashHotlinkRequired"));
@@ -185,6 +187,7 @@ export function currentAuthor(): string {
 }
 
 export async function uploadMedia(file: File): Promise<string> {
+  if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const metadata = mediaMetadata(file.name);
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
@@ -196,6 +199,7 @@ export async function uploadMedia(file: File): Promise<string> {
 }
 
 export async function uploadImage(blob: Blob): Promise<string> {
+  if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   if (blob.size > limit) throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 }));
   const saved = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Accept-Language": get(locale) }, body: blob });

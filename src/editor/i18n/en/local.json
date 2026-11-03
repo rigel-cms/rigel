@@ -4,6 +4,8 @@
   "local.unknownDocument": "Unknown document",
   "local.readDocumentFailed": "Could not read document",
   "local.documentDeveloperOnly": "Documents are created and removed by the site developer",
+  "local.pageProtected": "This page is part of the website and cannot be deleted.",
+  "local.documentReferenced": "This page is referenced by other content and cannot be deleted.",
   "local.unknownDocumentTarget": "Unknown document type or slug",
   "local.saveDocumentFailed": "Could not save document",
   "local.unknownCollectionSlug": "Unknown collection/slug",

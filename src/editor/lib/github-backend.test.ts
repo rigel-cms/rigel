@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import type { Manifest } from "../../manifest/types";
 import { emptyBody } from "../../article-body";
 import { readValues } from "../../routes/serialize";
-import { loadManifestRemote, saveRemoteSelection, deleteRemotePost } from "./github-backend";
+import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument } from "./github-backend";
 
 vi.mock("virtual:rigel-extensions", () => ({ default: [{ name: "notes", blocks: [{ name: "note", label: "Note", editor() {}, render() {}, validate(data: Record<string, unknown>) { if (typeof data.text !== "string") throw new Error("Note requires text"); } }] }] }));
 const ctx = { token: "secret-token", repo: "owner/site", branch: "drafts" };
@@ -243,7 +243,58 @@ test("remote collection loads validate present types without filling optional om
   expect(s.calls.every(call => call.method === "GET")).toBe(true);
 });
 
-test("loads real draft content and CAS saves all kinds with Unicode without touching main", async()=>{
+async function pageFixture() {
+  const s = server(), original = blueprint();
+  original.schema!.documents.push({ name: "page", title: "Pages", type: "document", folder: "src/content/pages", protectedSlugs: ["home"], fields: [{ key: "title", label: "Title", type: "string" }, { key: "related", label: "Related", type: "reference", to: ["page"] }] });
+  for (const slug of ["home", "extra", "other"]) s.put(`playground/src/content/pages/${slug}.json`, JSON.stringify({ title: slug, ...(slug === "home" ? { slug: "renamed-home" } : {}) }));
+  return { s, original };
+}
+
+test("GitHub page deletion protects developer slugs even when their public slug changes", async () => {
+  const { s, original } = await pageFixture(), m = await loadManifestRemote(ctx, original);
+  const before = s.calls.length, files = new Map(s.files);
+  await expect(deleteRemoteDocument(ctx, m, "page:home")).rejects.toThrow(/part of the website/);
+  expect(s.calls).toHaveLength(before);
+  expect(s.files).toEqual(files);
+});
+
+test("GitHub deletes only the selected unprotected page and verifies its absence", async () => {
+  const { s, original } = await pageFixture(), m = await loadManifestRemote(ctx, original);
+  const before = new Map(s.files);
+  await deleteRemoteDocument(ctx, m, "page:extra");
+  before.delete("playground/src/content/pages/extra.json");
+  expect(s.files).toEqual(before);
+  expect((await loadManifestRemote(ctx, original)).documents!.some(doc => doc.id === "page:extra")).toBe(false);
+  expect(s.calls.filter(call => call.method === "PATCH").every(call => call.path === "/git/refs/heads/drafts" && call.body.force === false)).toBe(true);
+});
+
+test.each(["document", "collection"])("GitHub refuses page deletion referenced by a %s", async source => {
+  const { s, original } = await pageFixture();
+  if (source === "document") s.put("playground/src/content/pages/other.json", JSON.stringify({ title: "Related", related: { _ref: "page:extra" } }));
+  else {
+    original.collections![0].fields.push({ key: "related", label: "Related", type: "reference", to: "page" });
+    s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Related", related: "page:extra" }, body: emptyBody() }));
+  }
+  const m = await loadManifestRemote(ctx, original), before = new Map(s.files), calls = s.calls.length;
+  await expect(deleteRemoteDocument(ctx, m, "page:extra")).rejects.toThrow(/referenc/i);
+  expect(s.files).toEqual(before);
+  expect(s.calls).toHaveLength(calls);
+});
+
+test("GitHub page deletion shares the save queue and refuses a changed remote head", async () => {
+  const { s, original } = await pageFixture(), m = await loadManifestRemote(ctx, original);
+  await Promise.all([
+    saveRemoteSelection(ctx, m, { kind: "document", type: "page", id: "page:extra" }, { title: "Saved first" }, "", false),
+    deleteRemoteDocument(ctx, m, "page:extra"),
+  ]);
+  expect(s.files.has("playground/src/content/pages/extra.json")).toBe(false);
+  s.put("playground/src/content/pages/other.json", JSON.stringify({ title: "Concurrent edit" }));
+  const before = new Map(s.files);
+  await expect(deleteRemoteDocument(ctx, m, "page:other")).rejects.toThrow(/conflict/i);
+  expect(s.files).toEqual(before);
+});
+
+test("loads real draft content and CAS saves all kinds with Unicode without touching main",async()=>{
   const s=server();const original=blueprint();const m=await loadManifestRemote(ctx,original);
   expect(m.pages[0].values.intro.heading).toBe("Start with a hello.");
   expect(m.documents?.[0].id).toBe("author:alex");

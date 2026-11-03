@@ -4,6 +4,8 @@
   "local.unknownDocument": "Unbekanntes Dokument",
   "local.readDocumentFailed": "Dokument konnte nicht gelesen werden",
   "local.documentDeveloperOnly": "Dokumente werden vom Website-Entwickler erstellt und entfernt",
+  "local.pageProtected": "Diese Seite ist Teil der Website und kann nicht gelöscht werden.",
+  "local.documentReferenced": "Andere Inhalte verweisen auf diese Seite. Sie kann daher nicht gelöscht werden.",
   "local.unknownDocumentTarget": "Unbekannter Dokumenttyp oder Slug",
   "local.saveDocumentFailed": "Dokument konnte nicht gespeichert werden",
   "local.unknownCollectionSlug": "Unbekannte Sammlung oder unbekannter Slug",

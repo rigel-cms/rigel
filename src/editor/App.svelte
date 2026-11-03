@@ -24,7 +24,7 @@
   import SchemaPanel from "./lib/SchemaPanel.svelte";
   import { collectionPreviewValues, referenceLabel, referenceOptions } from "../manifest/references";
   import { isSeoField } from "../manifest/seo";
-  import { initialCollectionValues } from "../manifest/collections";
+  import { initialCollectionValues, validateCollectionValues } from "../manifest/collections";
   import { slugify } from "./lib/slugify";
   import { effectiveSlug, normalizeUrlSlug } from "../slugs";
   import Icon from "./lib/Icon.svelte";
@@ -40,11 +40,12 @@
   import { validateDemoSelection } from "./lib/demo-backend";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
+  import { isProtectedDocument, assertDocumentUnreferenced } from "../schema/deletion";
   import { previewUrl, previewPath } from "../preview";
   import type { ContentDocument, DocumentDef, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
-  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
+  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
 
   type Sel = Selection;
 
@@ -821,6 +822,39 @@
     };
   }
 
+  function deletePage() {
+    if (publishOpen || publishBusy || saveState === "saving" || sel?.kind !== "document" || !activeDocType || !schema) return;
+    const id = sel.id, type = activeDocType, slug = id.slice(type.name.length + 1), back = documentBack, pageSchema = schema;
+    if (isProtectedDocument(type, slug)) return;
+    const unsaved = newDocument?.id === id;
+    actionDialog = {
+      title: $t("shell.deletePostTitle", { name: String(draft.title ?? slug) }), confirmLabel: $t("shell.deletePage"), danger: true,
+      description: $t(unsaved ? "shell.discardNewPageDescription" : "shell.deletePageDescription"),
+      onconfirm: async () => {
+        if (!unsaved) {
+          assertDocumentUnreferenced(pageSchema, manifest.documents ?? [], id, $t);
+          const remaining = (manifest.documents ?? []).filter(doc => doc.id !== id);
+          for (const collection of manifest.collections ?? []) for (const post of collection.posts) {
+            validateCollectionValues(collection.fields, post.frontmatter, manifest.documents ?? [], $t);
+            try { validateCollectionValues(collection.fields, post.frontmatter, remaining, $t); }
+            catch { throw new Error($t("local.documentReferenced")); }
+          }
+          if (githubMode) {
+            try { await deleteRemoteDocument(requireGitContext(), manifest, id); }
+            catch (error) { handleAuthError(error); throw error; }
+          } else if (!demoMode) {
+            const response = await fetch(`/rigel/api/local/documents/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "Accept-Language": $locale } });
+            if (!response.ok) throw new Error((await response.text()) || $t("shell.deleteFailedStatus", { status: response.status }));
+          }
+          manifest.documents = (manifest.documents ?? []).filter(doc => doc.id !== id);
+        }
+        newDocument = null;
+        docBase = null;
+        openSelection(back);
+      },
+    };
+  }
+
   function deletePost() {
     if (publishOpen || publishBusy) return;
     const current = post, collection = coll, unsaved = newEntry !== null;
@@ -1138,6 +1172,8 @@
           documents={draftDocuments}
           previewPath={documentPreview("draft")}
           websitePath={documentPreview("website")}
+          ondelete={deletePage}
+          deleteDisabled={saveState === "saving" || publishBusy || publishOpen}
           bodyInline={settings.userPref.editorExperience === "inline"}
           creating={newDocument?.id === sel.id}
           devMode={settings.devMode}
@@ -1177,7 +1213,12 @@
             {/each}
           </section>
         {/each}
-
+        {#if !page.shared}
+          <section>
+            <button type="button" class="danger-btn" disabled aria-describedby="page-delete-notice">{$t("shell.deletePage")}</button>
+            <p id="page-delete-notice" class="hint">{$t("local.pageProtected")}</p>
+          </section>
+        {/if}
 
       {:else if sel?.kind === "post" && coll && post}
         {#key `${coll.name}/${post.slug}`}

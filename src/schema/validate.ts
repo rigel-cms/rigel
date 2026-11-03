@@ -54,6 +54,7 @@ export function validateSchema(input: Schema): Schema {
     names.add(doc.name);
     if (doc.demo !== undefined && typeof doc.demo !== "boolean") throw new SchemaError(`Document type ${doc.name}: demo must be boolean`);
     if (doc.creatable !== undefined && typeof doc.creatable !== "boolean") throw new SchemaError(`Document type ${doc.name}: creatable must be boolean`);
+    if (doc.protectedSlugs !== undefined && (!Array.isArray(doc.protectedSlugs) || Array.from(doc.protectedSlugs).some(slug => typeof slug !== "string" || !SLUG_PATTERN.test(slug)) || new Set(doc.protectedSlugs).size !== doc.protectedSlugs.length)) throw new SchemaError(`Document type ${doc.name}: protectedSlugs must contain unique valid storage slugs`);
     if (typeof doc.title !== "string" || !doc.title.trim()) throw new SchemaError(`Document type ${doc.name} requires a title`);
     if (doc.category !== undefined && (typeof doc.category !== "string" || !doc.category.trim())) throw new SchemaError(`Document type ${doc.name}: category must be a non-empty string`);
     const parts = String(doc.folder).split("/");

@@ -4,6 +4,8 @@
   "local.unknownDocument": "Documento desconocido",
   "local.readDocumentFailed": "No se pudo leer el documento",
   "local.documentDeveloperOnly": "Los documentos los crea y elimina el desarrollador del sitio",
+  "local.pageProtected": "Esta página forma parte del sitio web y no se puede eliminar.",
+  "local.documentReferenced": "Otros contenidos hacen referencia a esta página y no se puede eliminar.",
   "local.unknownDocumentTarget": "Tipo de documento o slug desconocido",
   "local.saveDocumentFailed": "No se pudo guardar el documento",
   "local.unknownCollectionSlug": "Colección o slug desconocido",

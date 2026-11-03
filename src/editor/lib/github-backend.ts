@@ -3,6 +3,7 @@ import extensions from "virtual:rigel-extensions";
 import { resolveExtensions, validateExtensionBlocks } from "../../extensions";
 import type { Manifest } from "../../manifest/types";
 import { serializeContentJson } from "../../json-output";
+import { isProtectedDocument, assertDocumentUnreferenced } from "../../schema/deletion";
 import type { Selection } from "../../manifest/navigation";
 import { validateBody, type ArticleBody } from "../../article-body";
 import { validateMenu } from "../../manifest/menu";
@@ -454,6 +455,38 @@ export async function confirmRemotePublish(ctx: GitContext, manifest: Manifest, 
     if (error instanceof GitError && [405, 409, 422].includes(error.status)) throw new GitError(translate("connection.publishRejected"), error.status);
     throw error;
   } finally { publishing.delete(key); }
+}
+
+export async function deleteRemoteDocument(ctx: GitContext, manifest: Manifest, id: string): Promise<void> {
+  const key = writeKey(ctx);
+  if (publishing.has(key)) throw new Error(translate("connection.waitBeforeDeleting"));
+  const snapshot = loaded(ctx, manifest);
+  const result = snapshot.writes.then(async () => {
+    if (!manifest.schema) throw new Error(translate("connection.missingSchema"));
+    const target = validateDocumentId(manifest.schema, id);
+    if (!target) throw new Error(translate("connection.unknownDocument"));
+    if (isProtectedDocument(target.type, target.slug)) throw new Error(translate("local.pageProtected"));
+    const documents = manifest.schema.documents.flatMap(type => {
+      const prefix = filePath(ctx, manifest, type.folder, "placeholder").replace(/placeholder\.json$/, "");
+      return [...snapshot.files].filter(([file]) => file.startsWith(prefix) && file.endsWith(".json")).map(([file, value]) => ({ id: `${type.name}:${file.slice(prefix.length, -5)}`, type: type.name, slug: file.slice(prefix.length, -5), data: parseJson(value.text) as Record<string, unknown> }));
+    });
+    assertDocumentUnreferenced(manifest.schema, documents, id, translate);
+    const remaining = documents.filter(doc => doc.id !== id);
+    for (const collection of manifest.collections ?? []) {
+      const folder = manifest.github!.collections.find(entry => entry.name === collection.name)!.folder;
+      const prefix = filePath(ctx, manifest, folder, "placeholder").replace(/placeholder\.json$/, "");
+      for (const [file, value] of snapshot.files) if (file.startsWith(prefix) && file.endsWith(".json")) {
+        const values = (parseJson(value.text) as { frontmatter: Record<string, unknown> }).frontmatter;
+        validateCollectionValues(collection.fields, values, documents, translate);
+        try { validateCollectionValues(collection.fields, values, remaining, translate); }
+        catch { throw new Error(translate("local.documentReferenced")); }
+      }
+    }
+    await mutate(ctx, manifest, filePath(ctx, manifest, target.type.folder, target.slug), null, false);
+  });
+  snapshot.writes = result.catch(() => {});
+  saving.set(key, (saving.get(key) ?? 0) + 1);
+  try { await result; } finally { saving.set(key, (saving.get(key) ?? 1) - 1); }
 }
 
 export async function deleteRemotePost(ctx: GitContext, manifest: Manifest, collection: string, slug: string): Promise<void> {

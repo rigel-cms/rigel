@@ -93,6 +93,28 @@ test("github manifest projects only public remote configuration", () => {
   expect(raw(cfg).load("\0virtual:rigel-manifest")).not.toContain("github:");
 });
 
+test("successful page deletion explicitly invalidates the watched file", () => {
+  const plugin = rigelManifestPlugin({ ...cfg, schema: { objects: [], documents: [{ name: "page", title: "Pages", type: "document", folder: "src/content/pages", fields: [{ key: "title", label: "Title", type: "string" }] }] } }, undefined, new URL("file:///site/"));
+  const use = vi.fn(), emit = vi.fn();
+  const server = { middlewares: { use }, watcher: { emit }, ws: { on: vi.fn(), clients: new Set() }, environments: { client: { hot: { send: vi.fn() } } } };
+  (plugin.configureServer as (server: unknown) => void)(server);
+  for (const [method, url, status, expected] of [
+    ["DELETE", "/rigel/api/local/documents/page%3Aextra", 204, true],
+    ["DELETE", "/rigel/api/local/documents/page%3Ahome", 403, false],
+    ["GET", "/rigel/api/local/documents/page%3Aextra", 200, false],
+    ["DELETE", "/rigel/api/local/documents/page%3A..%2Fextra", 204, false],
+    ["DELETE", "/rigel/api/local/documents/%", 204, false],
+  ] as const) {
+    emit.mockClear();
+    const once = vi.fn(), next = vi.fn();
+    use.mock.calls[0][0]({ method, url }, { statusCode: status, once }, next);
+    expect(next).toHaveBeenCalledOnce();
+    for (const [, finish] of once.mock.calls) finish();
+    expect(emit).toHaveBeenCalledTimes(expected ? 1 : 0);
+    if (expected) expect(emit).toHaveBeenCalledWith("unlink", "/site/src/content/pages/extra.json");
+  }
+});
+
 test("Astro content-store reloads reach public pages but not mounted editor clients", () => {
   const plugin = rigelManifestPlugin(cfg);
   const editor = { send: vi.fn() }, website = { send: vi.fn() };

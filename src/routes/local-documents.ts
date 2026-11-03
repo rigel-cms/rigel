@@ -4,7 +4,7 @@ import type { Translator } from "../editor/i18n/format";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import config from "virtual:rigel-config";
-import { DocumentStoreError, readDocuments, writeDocument } from "../schema/store";
+import { deleteDocument, DocumentStoreError, readDocuments, writeDocument } from "../schema/store";
 import { SchemaError, isPlainObject, validateDocument, validateDocumentId } from "../schema/validate";
 import type { Schema } from "../schema/types";
 
@@ -63,12 +63,15 @@ const handle: APIRoute = async ({ request, params }) => {
   const t = requestTranslator(request);
   const guarded = guard();
   if (guarded instanceof Response) return guarded;
-  if (request.method === "DELETE") return new Response(t("local.documentDeveloperOnly"), { status: 405, headers: { Allow: "GET, POST, PUT" } });
   if (request.headers.get("Origin") !== new URL(request.url).origin) return new Response("Same-origin request required", { status: 403 });
   const id = decodeParam(String(params.id ?? ""));
   const target = validateDocumentId(guarded.schema, id);
   if (!target) return new Response(t("local.unknownDocumentTarget"), { status: 400 });
   try {
+    if (request.method === "DELETE") {
+      await deleteDocument(guarded.schema, guarded.root, target.type.name, target.slug, config.preview, t, config.collections);
+      return new Response(null, { status: 204 });
+    }
     const data = await readBody(request, t);
     const documents = await readDocuments(guarded.schema, guarded.root, config.preview, t);
     const next = { ...data, _id: id, _type: target.type.name };

@@ -18,7 +18,7 @@
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
   let {
-    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {},
+    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {},
   }: {
     docId: string;
     schema?: Schema;
@@ -28,6 +28,8 @@
     documents?: Record<string, Record<string, unknown>>;
     previewPath: string | null;
     websitePath?: string | null;
+    ondelete?: () => void;
+    deleteDisabled?: boolean;
     body?: "" | import("../../article-body").ArticleBody;
     properties?: Snippet<[SelectedField | null, number, boolean, () => void, boolean, string[], (path: string) => void]>;
     bodyInline?: boolean;
@@ -573,6 +575,8 @@
       {values}
       {docId}
       pagePath={websitePath}
+      {ondelete}
+      {deleteDisabled}
       {selected}
       {creating}
       {pending}

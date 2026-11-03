@@ -105,6 +105,12 @@ Non-shared document types appear in All pages. Uncategorized pages belong to Cor
 
 A shared edit affects every consuming page after Save and the site's rebuild or development refresh. A preview URL does not turn a shared record into a page editor. See [Sidebar](sidebar.md) for navigation and [Content locales](content-locales.md) for optional language-specific types.
 
+## Protect required pages
+
+Set `protectedSlugs: ["home", "about", "contact"]` on a document type to keep those pages in the website. These are storage filenames without `.json`, not editable URL slugs. Renaming a page or changing its public slug does not remove protection. List required pages explicitly; other pages of that type, including pages editors create, can be deleted from the Page tab after confirmation.
+
+Protected pages show a disabled Delete page button and a short explanation. Shared records, singletons, types with `creatable: false`, and fixed copy modules remain developer-managed. The local store and GitHub backend enforce the same protection and reject deletion of pages referenced by other content. Deleting a page does not repair ordinary URL links in menus or copy.
+
 ## Bind the page preview
 
 The schema cannot infer which DOM elements display a field. Give rendered elements explicit `data-rigel-*` bindings and an owning document ID. This Astro excerpt assumes `doc` and an `intro` section from the schema above:

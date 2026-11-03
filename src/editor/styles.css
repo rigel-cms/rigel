@@ -497,7 +497,8 @@
   font-size: 0.8125rem;
   cursor: pointer;
 }
-.rigel .danger-btn:hover { background: var(--danger-soft); }
+.rigel .danger-btn:hover:not(:disabled) { background: var(--danger-soft); }
+.rigel .danger-btn:disabled { border-color: var(--border-subtle); background: var(--surface-raised); color: var(--text-3); cursor: not-allowed; }
 
 /* ── Palette ───────────────────────────── */
 .rigel aside:has(.palette-backdrop) { z-index: 100; }

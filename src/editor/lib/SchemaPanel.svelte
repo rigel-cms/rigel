@@ -21,9 +21,10 @@
   import { isSeoField } from "../../manifest/seo";
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
   import { slugify } from "../../slugs";
+  import { isProtectedDocument } from "../../schema/deletion";
 
   let {
-    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, pagePath = null, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
+    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, pagePath = null, ondelete, deleteDisabled = false, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
   }: {
     schema: Schema;
     docType: DocumentDef;
@@ -36,6 +37,8 @@
     focusToken: number;
     devMode: boolean;
     pagePath?: string | null;
+    ondelete?: () => void;
+    deleteDisabled?: boolean;
     inlineFields?: string[];
     oneditfield?: (path: string) => void;
     onchange: (next: Record<string, unknown>) => void;
@@ -46,6 +49,7 @@
   let host: HTMLDivElement;
   let tab = $state<"page" | "content" | "seo">("content");
   let addType = $state("");
+  const protectedPage = $derived(isProtectedDocument(docType, docId.slice(docType.name.length + 1)));
   const sections = $derived(sectionList(values));
   const allowedTypes = $derived(schema.objects.filter((object) => object.type === "section"));
   const selectedField = $derived(selected?.docId === docId ? fieldForPath(schema, docType, values, selected.path) : null);
@@ -186,6 +190,12 @@
   </section>
   {#if creating}
     <p class="panel-note">{$t("fields.newPageNotice")}</p>
+  {/if}
+  {#if !docType.shared && ondelete}
+    <section>
+      <button type="button" class="danger-btn" disabled={deleteDisabled || protectedPage} aria-describedby={protectedPage ? "page-delete-notice" : undefined} onclick={ondelete}>{$t("shell.deletePage")}</button>
+      {#if protectedPage}<p id="page-delete-notice" class="hint">{$t("local.pageProtected")}</p>{/if}
+    </section>
   {/if}
   </div>
   <div id="properties-content" role={docType.shared ? undefined : "tabpanel"} aria-labelledby={docType.shared ? undefined : "properties-tab-content"} hidden={tab !== "content"}>

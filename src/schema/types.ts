@@ -48,6 +48,7 @@ export interface DocumentDef {
   singleton?: boolean;
   demo?: boolean;
   creatable?: boolean;
+  protectedSlugs?: string[];
   template?: DocumentTemplateSection[];
   initialValue?: Record<string, unknown>;
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseConfig } from "../config";
+import { validateDocumentId } from "../schema/validate";
 import type { RigelConfig } from "../config";
 import type { GitHubBackendConfig } from "../manifest/types";
 
@@ -80,6 +81,18 @@ export const menus = {
     name: "rigel-manifest",
     enforce: "pre",
     configureServer(server) {
+      if (cfg.backend === "local" && cfg.schema && root) server.middlewares.use((request, response, next) => {
+        const match = /^\/rigel\/api\/local\/documents\/([^/?]+)(?:\?.*)?$/.exec(request.url ?? "");
+        if (request.method === "DELETE" && match) {
+          let id: string;
+          try { id = decodeURIComponent(match[1]); } catch { return next(); }
+          const target = validateDocumentId(cfg.schema!, id);
+          if (target) response.once("finish", () => {
+            if (response.statusCode === 204) server.watcher.emit("unlink", path.resolve(fileURLToPath(root), target.type.folder, `${target.slug}.json`));
+          });
+        }
+        next();
+      });
       const editors = new WeakSet<WebSocketClient>();
       server.ws.on("rigel:editor-ready", (_data, client) => editors.add(client));
       const hot = server.environments.client.hot;

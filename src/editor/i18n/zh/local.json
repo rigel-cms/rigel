@@ -4,6 +4,8 @@
   "local.unknownDocument": "未知文档",
   "local.readDocumentFailed": "无法读取文档",
   "local.documentDeveloperOnly": "文档由网站开发者创建和删除",
+  "local.pageProtected": "此页面是网站的一部分，无法删除。",
+  "local.documentReferenced": "其他内容引用了此页面，无法删除。",
   "local.unknownDocumentTarget": "未知的文档类型或 slug",
   "local.saveDocumentFailed": "无法保存文档",
   "local.unknownCollectionSlug": "未知的集合或 slug",

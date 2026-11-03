@@ -23,7 +23,7 @@ Install the SDK with your site's package manager:
 npm install @rigel-cms/rigel
 ```
 
-To test a prerelease, install `@rigel-cms/rigel@next` instead. Keep the resolved version in your site's lockfile.
+To test a release candidate, install `@rigel-cms/rigel@rc` instead. Keep the resolved version in your site's lockfile.
 
 The example below creates an editable About page. Keep your existing Astro integrations when adding Rigel.
 

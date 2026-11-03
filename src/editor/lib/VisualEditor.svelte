@@ -8,7 +8,7 @@
   import { tooltipRoot } from "./tooltip";
   import editorStyles from "../styles.css?inline";
   import type { ArticleBody } from "../../article-body";
-  import { patchPreview } from "../../preview";
+  import { bindPreviewDocument, patchPreview } from "../../preview";
   import { anchorValue } from "../../preview";
   import SchemaPanel from "./SchemaPanel.svelte";
   import SidebarIcon from "./SidebarIcon.svelte";
@@ -435,6 +435,7 @@
       doc.addEventListener("mouseout", onOut, true);
       doc.addEventListener("submit", (event) => event.preventDefault(), true);
       doc.defaultView?.addEventListener("scroll", () => closeInline(), { passive: true });
+      if (schema) bindPreviewDocument(doc, docId);
       if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error($t("richtext.liveEditingUnavailable"));
       loaded = true;
       bodyAvailable = !schema && !!body && !!doc.querySelector('[data-rigel-richtext="$body"]');

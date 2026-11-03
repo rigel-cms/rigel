@@ -145,6 +145,9 @@ test("collection Markdown HMR invalidates the manifest without reloading the edi
   send.mockClear();
   expect(handler.call(context, { file: "/site/src/content/blog-other/post.md", modules: [], timestamp: 2 })).toBeUndefined();
   expect(send).not.toHaveBeenCalled();
+  const astro = { environment: { ...context.environment, name: "astro" } };
+  expect(handler.call(astro, { file: "/site/src/content/blog/nested/post.md", modules: [], timestamp: 3 })).toEqual([]);
+  expect(send).toHaveBeenCalledWith("astro:content-changed", {});
 });
 
 test.each([

@@ -135,6 +135,8 @@ export const menus = {
         }
         if (this.environment.name === "client") {
           this.environment.hot.send({ type: "custom", event: isMenu ? "rigel:menus-updated" : isCollection ? "rigel:collections-updated" : "rigel:content-updated", data: {} });
+        } else {
+          this.environment.hot.send("astro:content-changed", {});
         }
         return [];
       },

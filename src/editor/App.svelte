@@ -538,7 +538,7 @@
     return map;
   });
   function documentPreview(mode: "draft" | "website") {
-    if (sel?.kind !== "document" || (mode === "draft" && newDocument?.id === sel.id)) return null;
+    if (sel?.kind !== "document" || (mode === "draft" && newDocument?.id === sel.id && !manifest.preview?.documents?.[sel.type]?.template)) return null;
     const storedSlug = activeDocument ? effectiveSlug(activeDocument.data, activeDocument.slug) : sel.id.slice(sel.type.length + 1);
     return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: storedSlug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, mode);
   }

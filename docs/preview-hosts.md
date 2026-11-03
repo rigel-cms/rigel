@@ -33,7 +33,7 @@ Bases accept HTTPS with an optional path prefix. For example, `https://www.examp
 
 ## Separate templates from public routes
 
-The canvas resolves a configured `template` first. It is a static root-relative path on the editor's own origin, unaffected by either host base. Saved schema pages and new or saved articles use it; new schema pages have no canvas until their first Save, even with a template configured. A page mapping can use `{ url: "/about/", template: "/rigel/preview/about/" }`; document and collection mappings accept `template` too. The host must emit the route. Inside the CMS, only `/rigel/preview/` and its descendants are allowed as templates.
+The canvas resolves a configured `template` first. It is a static root-relative path on the editor's own origin, unaffected by either host base. New and saved schema pages and articles use it. New schema pages without a template have no canvas until their first Save. A page mapping can use `{ url: "/about/", template: "/rigel/preview/about/" }`; document and collection mappings accept `template` too. The host must emit the route. Inside the CMS, only `/rigel/preview/` and its descendants are allowed as templates.
 
 Without `template`, article canvases use the collection's `new` route even after Save or when reopening an existing article. This lets a prepared empty layout display an in-memory draft without waiting for deployment. With neither `template` nor `new`, an article has no canvas, even if its `url` is mapped. Saved schema pages and legacy copy pages use their mapped routes when no template is configured.
 

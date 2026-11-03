@@ -24,9 +24,9 @@ rigel({
 
 `pages` maps legacy copy-page slugs. `documents` maps schema type names; `index` is the route for the effective slug `home`. `collections` maps article collection names. Every configured route must actually exist in your host output.
 
-`template` is a static editor-local route used by the canvas for saved schema pages and new or saved articles. It stays on the editor's origin even when `draftUrl` is set. `/rigel/preview/` is the permitted template namespace inside the CMS, not a route generator. The host must supply the prepared page.
+`template` is a static editor-local route used by the canvas for new and saved schema pages and articles. It stays on the editor's origin even when `draftUrl` is set. `/rigel/preview/` is the permitted template namespace inside the CMS, not a route generator. The host must supply the prepared page.
 
-A collection can instead use `new: "/preview/blog/"`. Without `template`, the article canvas uses `new` for saved articles too, while the public link uses `url`. Article canvases require `template` or `new`; a `url` mapping alone provides website links but no canvas. Saved schema pages without `template` use their mapped document route. New schema pages have no canvas until their first Save, even with a configured template. See [Preview hosts](preview-hosts.md) for the full destination rules.
+A collection can instead use `new: "/preview/blog/"`. Without `template`, the article canvas uses `new` for saved articles too, while the public link uses `url`. Article canvases require `template` or `new`; a `url` mapping alone provides website links but no canvas. Saved schema pages without `template` use their mapped document route. New schema pages can use a configured template before Save. Without one, they have no canvas until their first Save. See [Preview hosts](preview-hosts.md) for the full destination rules.
 
 ## Bind rendered fields
 
@@ -42,7 +42,9 @@ These HTML excerpts illustrate the scalar anchors. Render the saved values throu
 
 `data-rigel-text` updates text content. `data-rigel-richtext` renders a Markdown string, or the article body for `$body`. Image and alt bindings apply to `<img>`; href bindings apply to `<a>`. Collection tags can use `data-rigel-tags="tags"` on a `<ul>` or `<ol>` to render comma-separated tags as list items.
 
-Paths use object keys and stable array `_key` values. Array positions are not preview bindings. For schema content, put `data-rigel-doc="page:about"` on each bound element and on section/list containers. It identifies the source document for that element; a parent attribute does not substitute for attributes on descendant anchors. Referenced records use their own IDs and local field paths.
+Paths use object keys and stable array `_key` values. Array positions are not preview bindings. For a reusable schema-page template, use `data-rigel-doc="$document"` for primary-document bindings, including those inside prepared section templates. The editor replaces this marker with the active document ID before applying draft values. Keep referenced and shared records bound to their own IDs. This lets one static template render any new or saved page of its type without creating a content file.
+
+For schema content, put `data-rigel-doc="page:about"` on each bound element and on section/list containers. It identifies the source document for that element; a parent attribute does not substitute for attributes on descendant anchors. Referenced records use their own IDs and local field paths.
 
 ### Keep optimized images editable
 

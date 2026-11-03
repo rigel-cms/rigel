@@ -99,6 +99,12 @@ function rebindTree(root: Element | DocumentFragment, update: (element: Element)
   }
 }
 
+export function bindPreviewDocument(doc: Document, id: string) {
+  rebindTree(doc.documentElement, element => {
+    if (element.getAttribute("data-rigel-doc") === "$document") element.setAttribute("data-rigel-doc", id);
+  });
+}
+
 export function patchPreview(doc: Document, values: Record<string, unknown>, body: "" | import("./article-body").ArticleBody, options: PatchDocuments = {}) {
   if (!doc.documentElement) return;
   let previews = extensionPreviews.get(doc);

@@ -23,7 +23,7 @@
   import { slugify } from "../../slugs";
 
   let {
-    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
+    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, pagePath = null, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
   }: {
     schema: Schema;
     docType: DocumentDef;
@@ -35,6 +35,7 @@
     documents: ContentDocument[];
     focusToken: number;
     devMode: boolean;
+    pagePath?: string | null;
     inlineFields?: string[];
     oneditfield?: (path: string) => void;
     onchange: (next: Record<string, unknown>) => void;
@@ -43,7 +44,7 @@
   } = $props();
 
   let host: HTMLDivElement;
-  let tab = $state<"content" | "seo">("content");
+  let tab = $state<"page" | "content" | "seo">("content");
   let addType = $state("");
   const sections = $derived(sectionList(values));
   const allowedTypes = $derived(schema.objects.filter((object) => object.type === "section"));
@@ -57,12 +58,12 @@
     void focusToken;
     const path = selected?.docId === docId ? selected.path : "";
     const sectionKey = selected?.docId === docId ? selected.sectionKey : undefined;
-    tab = "content";
+    tab = docType.shared || sectionKey || !path || path.includes(".") ? "content" : isSeoField(path) ? "seo" : "page";
     if (!focusToken || !host) return;
     let cancelled = false;
     void tick().then(() => {
       if (cancelled) return;
-      const properties = host.querySelector(sectionKey ? ".section-properties" : ".document-properties");
+      const properties = host.querySelector(sectionKey ? ".section-properties" : isSeoField(path) && !docType.shared ? ".seo-fields" : ".document-properties");
       const field = [...properties?.querySelectorAll<HTMLElement>("[data-schema-path]") ?? []].find((element) => element.dataset.schemaPath === path);
       const scope = field ?? properties;
       const target = scope?.querySelector<HTMLElement>('[contenteditable="true"]')
@@ -168,13 +169,14 @@
   {#if docType.shared}
     <p class="shared-badge"><Icon name="info" size={12} /> {$t(docType.demo ? "fields.demoContentNotice" : "fields.sharedContentNotice")}</p>
   {/if}
-  {#if seoFields.length}<PropertiesTabs bind:tab />{/if}
-  <div id="properties-content" role={seoFields.length ? "tabpanel" : undefined} aria-labelledby={seoFields.length ? "properties-tab-content" : undefined} hidden={tab !== "content"}>
+  {#if !docType.shared}<PropertiesTabs bind:tab seo={seoFields.length > 0} />{/if}
+  <div id={docType.shared ? undefined : "properties-page"} role={docType.shared ? undefined : "tabpanel"} aria-labelledby={docType.shared ? undefined : "properties-tab-page"} hidden={!docType.shared && tab !== "page"}>
   <section class="document-properties">
     <h3>{$t(docType.shared ? "fields.content" : "fields.pageProperties")}</h3>
     {#if !docType.shared}
       <label><span>{$t("fields.urlSlug")}</span><input type="text" value={String(values.slug ?? docId.slice(docType.name.length + 1))} oninput={(event) => onchange({ ...values, slug: event.currentTarget.value })} onblur={() => { if (Object.hasOwn(values, "slug")) onchange({ ...values, slug: slugify(String(values.slug)) }); }} /></label>
       <p class="hint">{$t("fields.documentSlugHint")}</p>
+      <label class="page-path"><span>{$t("shell.websiteRoute")}</span><input type="text" value={pagePath ?? $t("shell.notConfigured")} readonly /></label>
     {/if}
     {#each docFields.filter(field => docType.shared || !isSeoField(field.key)) as field (field.key)}
       <div data-schema-path={field.key}>
@@ -185,6 +187,8 @@
   {#if creating}
     <p class="panel-note">{$t("fields.newPageNotice")}</p>
   {/if}
+  </div>
+  <div id="properties-content" role={docType.shared ? undefined : "tabpanel"} aria-labelledby={docType.shared ? undefined : "properties-tab-content"} hidden={tab !== "content"}>
   {#if sections.length || values.sections !== undefined}
     <section>
       <h3>{$t("fields.structure")}</h3>

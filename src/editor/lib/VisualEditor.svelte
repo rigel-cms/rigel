@@ -572,6 +572,7 @@
       {docType}
       {values}
       {docId}
+      pagePath={websitePath}
       {selected}
       {creating}
       {pending}

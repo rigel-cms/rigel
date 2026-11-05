@@ -99,6 +99,14 @@ try {
   await click(collectionLink('blog'));
   const blogTitles = await rowTitles();
   assert.equal(blogTitles.length, 3);
+  for (const width of [390, 640, 768, 1024, 1280]) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 640 });
+    for (const selector of ['#nav-pages', collectionLink('blog')]) {
+      await click(selector);
+      await check(`[...document.querySelectorAll('.table-card th, .table-card td, .table-sort, .table-link')].every(node => getComputedStyle(node).textAlign === 'left')`, `list cells and text buttons stay left-aligned at ${width}px: ${selector}`);
+    }
+  }
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await check(`document.querySelector('.pages-search input').getAttribute('aria-label')==='Search Blog' && !document.querySelector('.pages-controls [role=combobox]')`, 'collection search has its own accessible label and no fake categories');
   await check(`!document.querySelector('aside button[data-collection="journal-fr"]')`, 'collection navigation retains current locale filtering');
   for (const [query, expected] of [['  aLpHa  ', ['Alpha story']], ['PUBLIC-story', ['Alpha story']], ['second-story', ['Beta story']], ['field NOTES', ['Alpha story']], ['ReSeArCh', ['Alpha story']], ['untitled', ['—']], ['   ', blogTitles], ['no-match', []]]) {

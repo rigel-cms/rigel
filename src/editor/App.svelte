@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t, locale } from "./i18n";
   import { onMount, tick } from "svelte";
+  import { draftSnapshot, updateDraftField, contentCatalog, selectContent, replaceArticleBody, registerDraftTools, type DraftModelContext } from "./lib/webmcp";
   import { tooltipRoot } from "./lib/tooltip";
   onMount(() => tooltipRoot(document.body).destroy);
   import type {
@@ -685,6 +686,7 @@
   }
 
   function openSelection(next: Sel | null) {
+    draftRevision += 1;
     if (next?.kind === "page" || next?.kind === "document") {
       if (sel?.kind === "pages" || sel?.kind === "documents") entryList = sel;
       else if (sel?.kind !== "page" && sel?.kind !== "document") entryList = null;
@@ -760,7 +762,50 @@
     }
   }
 
+  let draftRevision = 0;
+  const draftInstance = `${Date.now()}-${Math.random()}`;
+  const draftContext = () => JSON.stringify([draftInstance, sel ? navigationKey(sel) : null, contentLocale ?? null, draftRevision, authRevision]);
+
+  function draftToolGuard() {
+    if (!ready || demoMode) throw new Error("Draft tools are unavailable in this editor mode.");
+    if (githubMode) {
+      requireGitContext();
+      if (connectionError) throw new Error("Reconnect GitHub and verify editing access first.");
+    }
+    const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open';
+    const overlay = document.querySelector(blocked) || [...document.querySelectorAll('iframe')].some(frame => frame.contentDocument?.querySelector(blocked));
+    if (connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
+  }
+
+  $effect(() => {
+    if (!ready || demoMode) return;
+    if (githubMode && (!connected || connectionBusy || connectionError || tokenExpired || githubAccess?.status !== "ready")) return;
+    return registerDraftTools((document as Document & { modelContext?: DraftModelContext }).modelContext, {
+      guard: draftToolGuard,
+      read: () => draftSnapshot(manifest, sel, contentLocale, draftContext(), draft, bodyDraft),
+      update: (input) => updateDraft(updateDraftField(manifest, sel, contentLocale, draftContext(), draft, input)),
+      body: input => updateBody(replaceArticleBody(sel, draftContext(), input)),
+      list: () => contentCatalog(manifest, contentLocale, draftContext()),
+      select: input => {
+        select(selectContent(contentCatalog(manifest, contentLocale, draftContext()), input));
+        return { pendingConfirmation: !!pendingNavigation };
+      },
+      settled: tick,
+    });
+  });
+
+  function updateBody(next: ArticleBody) {
+    bodyDraft = next;
+    touch();
+  }
+
+  function updateDraft(next: Record<string, unknown>) {
+    draft = next;
+    touch();
+  }
+
   function touch() {
+    draftRevision += 1;
     if (sel?.kind === "document") {
       dirty = JSON.stringify(draft) !== JSON.stringify(docBase);
       if (saveState !== "saving") saveState = "idle";
@@ -1161,7 +1206,7 @@
       {:else if sel?.kind === "document" && schema && activeDocType}
         {#if standaloneDocument}
           <div class="document-form">
-            <SchemaPanel {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={(next) => { draft = next; touch(); }} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
+            <SchemaPanel {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={updateDraft} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
           </div>
         {:else}
         <VisualEditor
@@ -1182,7 +1227,7 @@
             const doc = manifest.documents?.find((entry) => entry.id === id);
             if (doc) select({ kind: "document", type: doc.type, id: doc.id });
           }}
-          onchange={(next: Record<string, unknown>) => { draft = next; touch(); }}
+          onchange={updateDraft}
         />
         {/if}
 
@@ -1228,15 +1273,15 @@
             previewValues={collectionPreviewValues(coll.fields, draft, manifest.documents ?? [], $t)}
             body={bodyDraft}
             bodyInline={settings.userPref.editorExperience === "inline"}
-            onbody={(value) => { bodyDraft = value; touch(); }}
+            onbody={updateBody}
             previewPath={manifest.preview ? previewUrl(manifest.preview, sel, "draft", !!newEntry) : null}
             websitePath={manifest.preview ? previewUrl(manifest.preview, { ...sel, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null}
             creating={!!newEntry}
             devMode={settings.devMode}
-            onchange={(next) => { draft = next; touch(); }}
+            onchange={updateDraft}
           >
             {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading, inlineFields, oneditfield)}
-              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
+              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
             {/snippet}
           </VisualEditor>
         {/key}

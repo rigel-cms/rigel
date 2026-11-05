@@ -19,6 +19,7 @@ These guides follow the SDK source in this repository. Check your installed vers
 - [Authors and references](authors.md): reusable author records and article selectors.
 - [Content and SEO](seo.md): editable metadata and the HTML your templates must render.
 - [Extensions](extensions.md): custom article controls and saved blocks.
+- [Browser-assisted drafts](webmcp.md): optional native WebMCP tools for content navigation and unsaved page, article, menu and shared-content edits.
 
 ## Save and publish
 

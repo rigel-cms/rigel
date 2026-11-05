@@ -32,6 +32,10 @@ Declare language-specific page types and article collections, then use an option
 
 Register your own slash commands, toolbar buttons and saved article blocks with Svelte components. The [extension guide](docs/extensions.md) covers registration, editable blocks and published rendering.
 
+## Browser-assisted drafts
+
+Browsers with the experimental native WebMCP API can offer agents access to existing pages, blog/news articles, menus and shared content. Tools read and edit supported drafts, including structured fields and article bodies. Changes stay unsaved until you review them and press Save. See [setup and limits](docs/webmcp.md).
+
 ## License
 
 [Apache-2.0](LICENSE). Copyright 2026 [Alex Zappa](https://alex.zappa.dev/) ([FreshJuice](https://freshjuice.dev/)).

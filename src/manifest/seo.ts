@@ -5,10 +5,11 @@ export const SEO_FIELDS = [
   { key: "metaTitle", label: systemMessage("defaults.seoTitle"), labelKey: "defaults.seoTitle", type: "string" },
   { key: "description", label: systemMessage("defaults.seoDescription"), labelKey: "defaults.seoDescription", type: "text" },
   { key: "ogImage", label: systemMessage("defaults.socialImage"), labelKey: "defaults.socialImage", type: "image" },
+  { key: "noindex", label: systemMessage("defaults.noindex"), labelKey: "defaults.noindex", type: "boolean" },
 ] satisfies CollectionField[];
 
 export function isSeoField(key: string): boolean {
-  return key === "metaTitle" || key === "description" || key === "ogImage";
+  return key === "metaTitle" || key === "description" || key === "ogImage" || key === "noindex";
 }
 
 export function withSeoFields<T extends { key: string }>(fields: T[]): (T | typeof SEO_FIELDS[number])[] {

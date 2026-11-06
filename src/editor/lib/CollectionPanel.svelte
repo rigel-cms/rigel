@@ -113,11 +113,16 @@
     <h3>{$t("fields.seo")}</h3>
     {#each fields.filter(field => isSeoField(field.key)) as field (field.key)}
       <div data-collection-field={field.key}>
-        <label>
-          <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
-          {#if field.type === "image"}<ImagePicker value={String(values[field.key] ?? "")} onpick={(value) => onchange(field.key, value)} />
-          {:else if field.type === "text"}<textarea rows="3" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)}></textarea>
-          {:else}<input type="text" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)} />{/if}
+        <label class:inline={field.type === "boolean"}>
+          {#if field.type === "boolean"}
+            <input type="checkbox" role="switch" class="switch" checked={values[field.key] === true} onchange={(event) => onchange(field.key, event.currentTarget.checked)} />
+            <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
+          {:else}
+            <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
+            {#if field.type === "image"}<ImagePicker value={String(values[field.key] ?? "")} onpick={(value) => onchange(field.key, value)} />
+            {:else if field.type === "text"}<textarea rows="3" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)}></textarea>
+            {:else}<input type="text" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)} />{/if}
+          {/if}
         </label>
         <SeoGuidance field={field.key} value={values[field.key]} />
       </div>

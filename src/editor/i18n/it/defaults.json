@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "Non indicizzare (noindex)",
+  "defaults.noindexHelp": "Indica ai motori di ricerca di non indicizzare questa pagina né mostrarla nei risultati. I robot possono comunque scansionare la pagina e seguire i suoi link. Questo non rende la pagina privata.",
   "defaults.draft": "Bozza",
   "defaults.seoTitle": "Titolo SEO",
   "defaults.seoDescription": "Descrizione SEO",

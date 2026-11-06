@@ -4,6 +4,17 @@ import { isSeoField, withSeoFields } from "./seo";
 import { validateDocument } from "../schema/validate";
 import defaults from "../editor/i18n/en/defaults.json";
 
+test("noindex is an optional SEO boolean validated through the page save schema", () => {
+  const config = parseConfig({ schema: { documents: [{ name: "page", title: "Pages", type: "document", folder: "pages", fields: [title] }], objects: [] } });
+  expect(isSeoField("noindex")).toBe(true);
+  expect(isSeoField("draft")).toBe(false);
+  expect(withSeoFields([title]).find(field => field.key === "noindex")).toEqual({ key: "noindex", label: "No index (noindex)", labelKey: "defaults.noindex", type: "boolean" });
+  for (const data of [{}, { noindex: false }, { noindex: true }]) {
+    expect(validateDocument(config.schema!, "page", "home", data, [])).toEqual(data);
+  }
+  expect(() => validateDocument(config.schema!, "page", "home", { noindex: "true" }, [])).toThrow(/boolean/);
+});
+
 const title = { key: "title", label: "Title", type: "string" as const };
 
 test("every website document and article receives SEO fields, but shared records do not", () => {
@@ -12,9 +23,9 @@ test("every website document and article receives SEO fields, but shared records
     { name: "author", title: "Authors", type: "document" as const, folder: "authors", shared: true, fields: [title] },
   ], objects: [] };
   const config = parseConfig({ schema, collections: [{ name: "blog", folder: "blog", fields: [title] }] });
-  expect(config.schema?.documents[0].fields.map(field => field.key)).toEqual(["title", "metaTitle", "description", "ogImage", "draft"]);
+  expect(config.schema?.documents[0].fields.map(field => field.key)).toEqual(["title", "metaTitle", "description", "ogImage", "noindex", "draft"]);
   expect(config.schema?.documents[1].fields).toEqual([title]);
-  expect(config.collections?.[0].fields.map(field => field.key)).toEqual(["title", "metaTitle", "description", "ogImage"]);
+  expect(config.collections?.[0].fields.map(field => field.key)).toEqual(["title", "metaTitle", "description", "ogImage", "noindex"]);
   expect(schema.documents[0].fields).toEqual([title]);
   expect(parseConfig(config)).toEqual(config);
 });
@@ -42,7 +53,7 @@ test("only injected labels carry translation keys, including after JSON serializ
   const fields = config.schema!.documents[0].fields;
   expect(fields[0]).toBe(title);
   expect(fields.filter(field => field.labelKey).map(field => [field.key, field.labelKey])).toEqual([
-    ["metaTitle", "defaults.seoTitle"], ["description", "defaults.seoDescription"], ["ogImage", "defaults.socialImage"], ["draft", "defaults.draft"],
+    ["metaTitle", "defaults.seoTitle"], ["description", "defaults.seoDescription"], ["ogImage", "defaults.socialImage"], ["noindex", "defaults.noindex"], ["draft", "defaults.draft"],
   ]);
   for (const field of [...fields, ...config.collections![0].fields]) {
     if (field.labelKey) expect(defaults[field.labelKey as keyof typeof defaults]).toBe(field.label);
@@ -51,7 +62,8 @@ test("only injected labels carry translation keys, including after JSON serializ
   const declared = [title, { key: "draft", label: "Draft", type: "boolean" as const, initialValue: true },
     { key: "metaTitle", label: "SEO title", type: "string" as const, required: true },
     { key: "description", label: "SEO description", type: "text" as const },
-    { key: "ogImage", label: "Social image", type: "image" as const }];
+    { key: "ogImage", label: "Social image", type: "image" as const },
+    { key: "noindex", label: "Custom indexing", type: "boolean" as const, initialValue: true }];
   const explicit = parseConfig({ schema: { ...schema, documents: [{ ...schema.documents[0], fields: declared }] }, collections: [{ name: "blog", folder: "blog", fields: declared }] });
   expect(explicit.schema!.documents[0].fields).toEqual(declared);
   expect(explicit.collections![0].fields).toEqual(declared);

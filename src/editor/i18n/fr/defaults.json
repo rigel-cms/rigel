@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "Ne pas indexer (noindex)",
+  "defaults.noindexHelp": "Indique aux moteurs de recherche de ne pas indexer cette page ni de l’afficher dans les résultats. Les robots peuvent toujours explorer la page et suivre ses liens. Cela ne rend pas la page privée.",
   "defaults.draft": "Brouillon",
   "defaults.seoTitle": "Titre SEO",
   "defaults.seoDescription": "Description SEO",

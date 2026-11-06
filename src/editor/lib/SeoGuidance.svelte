@@ -17,6 +17,8 @@
       <span class="seo-length-count" aria-hidden="true">{count}/{limits.max}</span>
     </div>
   </div>
+{:else if field === "noindex"}
+  <p class="hint" data-seo-noindex>{$t("defaults.noindexHelp")}</p>
 {:else if field === "ogImage"}
   <p class="hint">{$t("fields.seoRecommendedImageSize")}</p>
 {/if}

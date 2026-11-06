@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "Nicht indexieren (noindex)",
+  "defaults.noindexHelp": "Weist Suchmaschinen an, diese Seite nicht zu indexieren oder in Suchergebnissen anzuzeigen. Robots können die Seite weiterhin crawlen und ihren Links folgen. Die Seite wird dadurch nicht privat.",
   "defaults.draft": "Entwurf",
   "defaults.seoTitle": "SEO-Titel",
   "defaults.seoDescription": "SEO-Beschreibung",

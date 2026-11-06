@@ -65,6 +65,14 @@ Pages and article collections have live search with a clear button. Collection s
 
 Back returns to the original table with its search and category intact. Clicking Pages in the sidebar starts at All pages with an empty query. Clicking a collection in the sidebar clears that collection's query. These resets happen after any unsaved-change prompt is accepted; Keep editing preserves the current view and filters.
 
+## Editor links
+
+Editor locations use hash paths, such as `/rigel/#/collections/blog`, `/rigel/#/pages/about` or `/rigel/#/logoSet/brands`. Refreshing or reopening a link restores that location after the content loads and, for GitHub, after connecting. Document links use stable storage IDs, so editing a public slug does not break them.
+
+Browser Back and Forward use the same unsaved-change dialog as sidebar navigation. Keep editing retains the current location; Save and leave proceeds only after a successful save. Links restore locations, not unsaved edits. Missing entries and malformed links open Welcome. Opening `/rigel/` without a hash also opens Welcome.
+
+Page-category filters and non-default content languages appear as query parameters inside the hash. These paths stay within the static editor route and do not require hosting rewrites.
+
 ## Content languages and search
 
 When [content locales](content-locales.md) are configured, the content-language switcher filters the sidebar, Pages and collections to that locale. Declarations without a locale remain visible across languages, which suits shared authors, menus and media. The editor's interface language is a separate preference.

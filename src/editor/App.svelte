@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t, locale } from "./i18n";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { selectionHash, resolveHash, createHashNavigation } from "./lib/hash-navigation";
   import { draftSnapshot, updateDraftField, contentCatalog, selectContent, replaceArticleBody, registerDraftTools, type DraftModelContext } from "./lib/webmcp";
   import { tooltipRoot } from "./lib/tooltip";
   onMount(() => tooltipRoot(document.body).destroy);
@@ -582,6 +583,37 @@
 
   $effect(() => {
     void loadBlueprint();
+  });
+
+  let hashNavigation: ReturnType<typeof createHashNavigation> | null = null;
+  function currentHash() {
+    const selection = sel?.kind === "pages" ? { kind: "pages" as const, ...(pagesFilter !== null ? { category: pagesFilter } : {}) } : sel;
+    return selectionHash(selection, contentLocale === manifest.contentLocales?.defaultLocale ? undefined : contentLocale);
+  }
+
+  function restoreHash(hash: string) {
+    const route = resolveHash(hash, manifest);
+    selectedContentLocale = route.locale;
+    entryList = null;
+    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? null : null;
+    pagesQuery = "";
+    openSelection(route.selection);
+    hashNavigation?.write(currentHash(), true);
+  }
+
+  $effect(() => {
+    if (!ready || (githubMode && !connected)) return;
+    return untrack(() => {
+      const navigation = createHashNavigation(restoreHash, requestNavigation, () => dirty || saveState === "saving" || publishOpen || publishBusy);
+      hashNavigation = navigation;
+      restoreHash(location.hash);
+      return () => { navigation.destroy(); hashNavigation = null; };
+    });
+  });
+
+  $effect(() => {
+    const hash = currentHash();
+    if (ready && (!githubMode || connected)) hashNavigation?.write(hash);
   });
 
   $effect(() => {

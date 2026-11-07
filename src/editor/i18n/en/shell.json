@@ -1,4 +1,13 @@
 {
+  "shell.about": "About",
+  "shell.acknowledgements": "Acknowledgements",
+  "shell.createdBy": "Crafted by {name}",
+  "shell.aboutSource": "Rigel is open source. Explore the source code on {github} and read the documentation on our {website}.",
+  "shell.aboutAcknowledgements": "Meet the open-source projects behind Rigel in our {acknowledgements}.",
+  "shell.aboutLegal": "Read our {terms} and {privacy}.",
+  "shell.aboutLicense": "{license} license.",
+  "shell.website": "website",
+  "shell.installedVersion": "Rigel CMS v{version}",
   "shell.updateAvailable": "Rigel {version} is available",
   "shell.updateInstructions": "Ask your developer to update Rigel and rebuild the site.",
   "shell.updateReleaseNotes": "Release notes",

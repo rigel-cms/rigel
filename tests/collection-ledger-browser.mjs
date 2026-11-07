@@ -13,6 +13,8 @@ let sequence = 0, head = "b".repeat(40), installed = true, writable = true, fixt
 const nextSha = () => (++sequence).toString(16).padStart(40, "0");
 const files = new Map(), blobs = new Map(), trees = new Map(), commits = new Map(), requests = [], errors = [];
 let localMode = false, localReindexed = 0;
+let holdBlobs = false;
+const layouts = [];
 const localLedgers = new Map();
 const articleBody = text => ({ root: { type: "root", version: 1, children: [{ type: "paragraph", version: 1, children: [{ type: "text", version: 1, text, detail: 0, format: 0, mode: "normal", style: "" }], direction: null, format: "", indent: 0 }], direction: null, format: "", indent: 0 } });
 const put = (path, text) => { const sha = shaOf(text); blobs.set(sha, text); files.set(path, { sha, text, mode: "100644" }); };
@@ -109,7 +111,7 @@ try {
         await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from(JSON.stringify(manifest)).toString("base64") });
       } else if (target.hostname === "api.github.com") {
         const isBlob = request.method === "GET" && target.pathname.includes("/git/blobs/");
-        if (isBlob) { active++; peak = Math.max(peak,active); await new Promise(resolve => setTimeout(resolve,60)); }
+        if (isBlob) { active++; peak = Math.max(peak,active); while (holdBlobs) await new Promise(resolve => setTimeout(resolve,20)); await new Promise(resolve => setTimeout(resolve,60)); }
         const [status, result] = api(target.pathname + target.search, request.method, request.postData ? JSON.parse(request.postData) : undefined);
         if (isBlob) active--;
         await cdp("Fetch.fulfillRequest", { requestId, responseCode: status, responseHeaders: [
@@ -137,7 +139,82 @@ try {
     throw new Error(`Timed out: ${expression}\n${JSON.stringify(errors)}\n${await evaluate("document.body.innerText.slice(0,2000)")}`);
   };
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  await cdp("Page.addScriptToEvaluateOnNewDocument", { source: "localStorage.setItem('rigelcms.settings',JSON.stringify({language:'en',devMode:true,userPref:{editorExperience:'sidebar'}}));" });
+  const checkLayout = async state => {
+    for (const width of [1280, 390]) {
+      await cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      const layout = await evaluate(`(() => {
+        const heading = document.querySelector('.titlebar'), card = document.querySelector('.table-card');
+        const add = [...heading.querySelectorAll('button')].find(b => b.textContent === 'Add new');
+        const refresh = add?.nextElementSibling;
+        const status = document.querySelector('main > [role=status]');
+        const alert = document.querySelector('main > [role=alert]');
+        const controls = [...document.querySelectorAll('main > button')];
+        const fits = element => {
+          const rect = element.getBoundingClientRect();
+          if (rect.width <= 0 || rect.left < 0 || rect.right > innerWidth + 1 || element.scrollWidth > element.clientWidth + 1) return false;
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            const style = getComputedStyle(parent), box = parent.getBoundingClientRect();
+            if (/(hidden|clip|auto|scroll)/.test(style.overflowY) && (rect.top < box.top - 1 || rect.bottom > box.bottom + 1)) return false;
+          }
+          return true;
+        };
+        return {
+          refreshAfterAdd: refresh?.textContent === 'Refresh' && refresh.parentElement === heading && !card.contains(refresh),
+          statusAfterTable: !status || (card.nextElementSibling === status && status.getBoundingClientRect().top >= card.getBoundingClientRect().bottom && getComputedStyle(status).position === 'static'),
+          alertAfterTable: !alert || !!(card.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING),
+          noClipping: [add, refresh, status, alert, ...controls].filter(Boolean).every(fits),
+          status: !!status, alert: !!alert,
+          overflow: document.documentElement.scrollWidth > innerWidth
+        };
+      })()`);
+      assert.equal(layout.refreshAfterAdd, true, JSON.stringify({ state, width, layout }));
+      assert.equal(layout.statusAfterTable, true);
+      assert.equal(layout.alertAfterTable, true);
+      assert.equal(layout.noClipping, true, JSON.stringify({ state, width, layout }));
+      assert.equal(layout.overflow, false);
+      assert.equal(layout.status, state !== 'indexed');
+      assert.equal(layout.alert, state === 'error');
+      const artifact = `_temp/collection-layout-${state}-${width}.png`;
+      await writeFile(artifact, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+      layouts.push({ state, width, ...layout, artifact });
+    }
+    await cdp('Emulation.clearDeviceMetricsOverride');
+  };
+  const checkMaintenance = async backend => {
+    for (const width of [1280, 390]) {
+      await cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      const layout = await evaluate(`(() => {
+        const pane = document.querySelector('.settings-pane');
+        const groups = [...pane.querySelectorAll('.clear-data')];
+        const styles = groups.map(element => {
+          const style = getComputedStyle(element);
+          return Object.fromEntries(['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'backgroundColor', 'boxShadow', 'marginTop'].map(key => [key, style[key]]));
+        });
+        return {
+          devMode: pane.querySelector('[role=switch]').checked,
+          headings: groups.map(element => element.querySelector('h3').textContent),
+          tags: groups.map(element => element.tagName),
+          enabled: !groups[0]?.querySelector('button').disabled,
+          styles,
+          fits: groups.every(element => { const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth && element.scrollWidth <= element.clientWidth; })
+        };
+      })()`);
+      assert.equal(layout.devMode, false);
+      assert.deepEqual(layout.headings, ['Maintenance', 'Clear Data']);
+      assert.deepEqual(layout.tags, ['DIV', 'DIV']);
+      assert.equal(layout.enabled, true);
+      assert.equal(layout.fits, true);
+      assert.deepEqual(layout.styles[0], layout.styles[1]);
+      for (const key of ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']) assert.equal(layout.styles[0][key], '0px');
+      assert.equal(layout.styles[0].boxShadow, 'none');
+      assert.equal(layout.styles[0].backgroundColor, 'rgba(0, 0, 0, 0)');
+      const artifact = `_temp/maintenance-${backend}-${width}.png`;
+      await writeFile(artifact, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+      layouts.push({ backend, width, ...layout, artifact });
+    }
+    await cdp('Emulation.clearDeviceMetricsOverride');
+  };
+  await cdp("Page.addScriptToEvaluateOnNewDocument", { source: "localStorage.setItem('rigelcms.settings',JSON.stringify({language:'en',devMode:false,userPref:{editorExperience:'sidebar'}}));" });
   await cdp("Page.navigate", { url });
   await waitFor("!!document.querySelector('#github-sign-in')");
   await click("#github-sign-in");
@@ -148,6 +225,7 @@ try {
   await click('[data-collection="blog"]');
   await waitFor("document.querySelectorAll('tbody .table-link').length === 12");
   assert.equal(articleReads(0),0);
+  await checkLayout('indexed');
   await click('tbody .table-link');
   await waitFor("!!document.querySelector('[aria-label=\"Toggle properties panel\"]') && !document.querySelector('main')?.innerText.includes('Loading article')");
   assert.equal(articleReads(0),1);
@@ -167,6 +245,7 @@ try {
   await evaluate("[...document.querySelectorAll('.user-menu button')].find(b=>b.textContent.trim()==='Settings').click()");
   await waitFor("!!document.querySelector('.settings-modal')");
   await evaluate("[...document.querySelectorAll('.settings-nav button')].find(b=>b.textContent.includes('Advanced')).click()");
+  await checkMaintenance(localMode ? 'local' : 'github');
   await evaluate("[...document.querySelectorAll('.settings-pane button')].find(b=>b.textContent==='Reindex collections').click()");
   await waitFor("!!document.querySelector('.action-dialog[open]')");
   const originalArticles = [...files].filter(([path]) => path !== ledgerPath).map(([path,file])=>[path,file.text]);
@@ -190,9 +269,9 @@ try {
   await click('[data-collection="blog"]'); await waitFor("document.querySelectorAll('tbody .table-link').length === 12");
   assert.equal(await evaluate("document.querySelector('tbody').textContent.includes('External edit')"),true);
   assert.equal(await evaluate("document.querySelector('tbody').textContent.includes('article-02')"),false);
-  await evaluate("[...document.querySelectorAll('.table-card button')].find(b=>b.textContent==='Refresh').click()");
-  await waitFor("[...document.querySelectorAll('.table-card button')].find(b=>b.textContent==='Refresh')?.disabled === true");
-  await waitFor("[...document.querySelectorAll('.table-card button')].find(b=>b.textContent==='Refresh')?.disabled === false && document.querySelectorAll('tbody .table-link').length === 12 && !document.querySelector('.table-card [role=status]')");
+  await evaluate("[...document.querySelectorAll('.titlebar button')].find(b=>b.textContent==='Refresh').click()");
+  await waitFor("[...document.querySelectorAll('.titlebar button')].find(b=>b.textContent==='Refresh')?.disabled === true");
+  await waitFor("[...document.querySelectorAll('.titlebar button')].find(b=>b.textContent==='Refresh')?.disabled === false && document.querySelectorAll('tbody .table-link').length === 12 && !document.querySelector('main > [role=status]')");
   const beforeRefreshedSelection=requests.length;
   await click('tbody .table-link');
   await waitFor("!!document.querySelector('[aria-label=\"Toggle properties panel\"]')");
@@ -202,13 +281,17 @@ try {
   put(ledgerPath,'{'); head=nextSha(); remember();
   await cdp('Page.navigate',{url}); await waitFor("!!document.querySelector('#rigel-sidebar')");
   assert.equal(articleReads(beforeCorrupt),0);
+  holdBlobs = true;
   await click('[data-collection="blog"]');
-  await waitFor("document.querySelector('.table-card [role=status]')?.textContent.includes('Indexing metadata')");
-  await evaluate("[...document.querySelectorAll('.table-card button')].find(b=>b.textContent==='Cancel').click()");
-  await waitFor("!!document.querySelector('.table-card [role=alert]')");
+  await waitFor("document.querySelector('main > [role=status]')?.textContent.includes('Indexing metadata')");
+  await checkLayout('loading');
+  await evaluate("[...document.querySelectorAll('main > button')].find(b=>b.textContent==='Cancel').click()");
+  holdBlobs = false;
+  await waitFor("!!document.querySelector('main > [role=alert]')");
   assert.equal(await evaluate("document.querySelector('.table-card')?.textContent.includes('Metadata index incomplete')"),true);
-  await evaluate("[...document.querySelectorAll('.table-card button')].find(b=>b.textContent==='Retry loading').click()");
-  await waitFor("document.querySelectorAll('tbody .table-link').length === 12 && !document.querySelector('.table-card [role=alert]')");
+  await checkLayout('error');
+  await evaluate("[...document.querySelectorAll('main > button')].find(b=>b.textContent==='Retry loading').click()");
+  await waitFor("document.querySelectorAll('tbody .table-link').length === 12 && !document.querySelector('main > [role=alert]')");
   assert.equal(articleReads(beforeCorrupt),12);
   assert.equal(requests.slice(beforeCorrupt).some(r=>!['GET','OPTIONS'].includes(r.method)),false);
   const fallbackReads = articleReads(beforeCorrupt);
@@ -222,6 +305,7 @@ try {
     await evaluate("[...document.querySelectorAll('.user-menu button')].find(b=>b.textContent.trim()==='Settings').click()");
     await waitFor("!!document.querySelector('.settings-modal')");
     await evaluate("[...document.querySelectorAll('.settings-nav button')].find(b=>b.textContent.includes('Advanced')).click()");
+    await checkMaintenance('local');
     await evaluate("[...document.querySelectorAll('.settings-pane button')].find(b=>b.textContent==='Reindex collections').click()");
     await waitFor("!!document.querySelector('.action-dialog[open]')");
     await click('.action-dialog button[type=submit]');
@@ -232,8 +316,9 @@ try {
     localReindexed=entries.length;
   }
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({benchmark:'12 indexed articles',loginArticleReads:0,selectedArticleReads:1,reopenedArticleReads:0,externalChangedOrNewReads:2,deletedReads:0,corruptLedgerFallbackReads:fallbackReads,cancelAndRetry:true,peakBlobConcurrency:peak,reindexArticleFilesChanged:0,ledgerOnlyCommit:true,articleSaveAtomic:true,localReindexed}));
+  console.log(JSON.stringify({benchmark:'12 indexed articles',loginArticleReads:0,selectedArticleReads:1,reopenedArticleReads:0,externalChangedOrNewReads:2,deletedReads:0,corruptLedgerFallbackReads:fallbackReads,cancelAndRetry:true,peakBlobConcurrency:peak,reindexArticleFilesChanged:0,ledgerOnlyCommit:true,articleSaveAtomic:true,localReindexed,layouts}));
 } finally {
+  holdBlobs = false;
   for(const [file,bytes] of localLedgers) if(bytes===null) await rm(file,{force:true}); else await writeFile(file,bytes);
   socket?.close(); chrome.kill("SIGKILL");
   await new Promise(resolve => gateway.close(resolve));

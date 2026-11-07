@@ -1,4 +1,13 @@
 {
+  "shell.about": "Über",
+  "shell.acknowledgements": "Danksagungen",
+  "shell.createdBy": "Erstellt von {name}",
+  "shell.aboutSource": "Rigel ist Open Source. Den Quellcode finden Sie auf {github}, die Dokumentation auf unserer {website}.",
+  "shell.aboutAcknowledgements": "Die von Rigel verwendeten Open-Source-Projekte finden Sie unter {acknowledgements}.",
+  "shell.aboutLegal": "Lesen Sie unsere {terms} und unsere {privacy}.",
+  "shell.aboutLicense": "{license}-Lizenz.",
+  "shell.website": "Website",
+  "shell.installedVersion": "Rigel CMS v{version}",
   "shell.updateAvailable": "Rigel {version} ist verfügbar",
   "shell.updateInstructions": "Bitte deinen Entwickler, Rigel zu aktualisieren und die Website neu zu bauen.",
   "shell.updateReleaseNotes": "Versionshinweise",

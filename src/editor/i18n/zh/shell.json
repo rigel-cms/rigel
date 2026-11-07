@@ -1,4 +1,13 @@
 {
+  "shell.about": "关于",
+  "shell.acknowledgements": "致谢",
+  "shell.createdBy": "由 {name} 创建",
+  "shell.aboutSource": "Rigel 是开源软件。您可以在 {github} 上查看源代码，并在我们的{website}阅读文档。",
+  "shell.aboutAcknowledgements": "请参阅{acknowledgements}，了解 Rigel 使用的开源项目。",
+  "shell.aboutLegal": "请阅读我们的{terms}和{privacy}。",
+  "shell.aboutLicense": "采用 {license} 许可证。",
+  "shell.website": "网站",
+  "shell.installedVersion": "Rigel CMS v{version}",
   "shell.updateAvailable": "Rigel {version} 已发布",
   "shell.updateInstructions": "请联系开发者更新 Rigel 并重新构建网站。",
   "shell.updateReleaseNotes": "发行说明",

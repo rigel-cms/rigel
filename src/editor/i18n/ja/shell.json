@@ -1,4 +1,13 @@
 {
+  "shell.about": "このアプリについて",
+  "shell.acknowledgements": "謝辞",
+  "shell.createdBy": "制作者: {name}",
+  "shell.aboutSource": "Rigel はオープンソースです。{github} でソースコードを、{website}でドキュメントをご覧いただけます。",
+  "shell.aboutAcknowledgements": "Rigel が利用するオープンソースプロジェクトは、{acknowledgements}をご覧ください。",
+  "shell.aboutLegal": "{terms}と{privacy}をご確認ください。",
+  "shell.aboutLicense": "{license} ライセンス。",
+  "shell.website": "ウェブサイト",
+  "shell.installedVersion": "Rigel CMS v{version}",
   "shell.updateAvailable": "Rigel {version} が利用可能です",
   "shell.updateInstructions": "開発者に Rigel の更新とサイトの再ビルドを依頼してください。",
   "shell.updateReleaseNotes": "リリースノート",

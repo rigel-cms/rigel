@@ -19,7 +19,7 @@ for (const locale of ['en', 'fr', 'es', 'ru', 'zh', 'ja', 'it', 'de', 'nl']) {
   for (const file of await readdir(path.join(root, 'src/editor/i18n', locale))) if (file.endsWith('.json')) Object.assign(dictionaries[locale], JSON.parse(await readFile(path.join(root, 'src/editor/i18n', locale, file), 'utf8')));
 }
 const virtual = { name: 'update-config', resolveId(id) { if (id.startsWith('virtual:rigel-')) return '\0' + id; }, load(id) { if (id.startsWith('\0virtual:rigel-')) return 'export default ' + JSON.stringify(id.endsWith('config') ? { backend: 'local', languages: Object.keys(dictionaries), defaultLanguage: 'en' } : id.endsWith('i18n') ? dictionaries : []); } };
-const manifest = { backend: 'local', pages: [{ slug: 'home', label: 'Home', groups: [{ id: 'hero', label: 'Hero', fields: [{ key: 'title', label: 'Title', type: 'string' }] }], values: { hero: { title: 'Original title' } } }] };
+const manifest = { backend: 'local', pages: [{ slug: 'home', label: 'Home', groups: [{ id: 'hero', label: 'Hero', fields: [{ key: 'title', label: 'Title', type: 'string' }] }], values: { hero: { title: 'Original title' } } }], schema: { objects: [], documents: [{ name: 'settings', title: 'Website settings', type: 'document', shared: true, singleton: true, folder: 'src/content/settings', fields: [{ key: 'siteName', label: 'Website name', type: 'string' }] }] }, documents: [{ id: 'settings:site', type: 'settings', slug: 'site', data: { _id: 'settings:site', _type: 'settings', siteName: 'Fixture website' } }] };
 const options = { configFile: false, root: scratch, publicDir: false, logLevel: 'error', plugins: [virtual, svelte()], resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] }, build: { outDir: path.join(scratch, 'dist'), emptyOutDir: true }, server: { host: '127.0.0.1', port: 0, fs: { allow: [root] } } };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn, label) { for (let i = 0; i < 100; i++) { const result = await fn(); if (result) return result; await delay(100); } throw Error('Timed out: ' + label); }
@@ -66,6 +66,34 @@ try {
   await check(`document.querySelector('.update-notice a').href==='https://github.com/rigel-cms/rigel/releases' && document.querySelector('.update-notice a').rel.includes('noreferrer')`, 'release notes use trusted fixed URL');
   await check(`!!localStorage.getItem(${JSON.stringify(cacheKey)})`, 'built App uses installed package version cache key');
   assert.equal(npmCalls, 1);
+  await cdp('Page.navigate', { url: origin + '/#/settings/site' });
+  await wait(`!!document.querySelector('.document-form')`);
+  await check(`!document.querySelector('[data-rigel-version]') && document.querySelector('.save-button').disabled`, 'website settings and sidebar have no scattered version labels or content edits');
+  await click('.user-btn');
+  await evaluate(`[...document.querySelectorAll('[role=menuitem]')].find(item=>item.textContent.trim()==='Settings').click()`);
+  await wait(`!!document.querySelector('.settings-modal')`);
+  await check(`JSON.stringify([...document.querySelectorAll('.settings-nav button')].map(button=>button.textContent.trim()))===JSON.stringify(['Interface','Content','Connection','Media','Advanced','About'])`, 'About follows Advanced');
+  for (let pane = 0; pane < 5; pane++) {
+    await evaluate(`document.querySelectorAll('.settings-nav button')[${pane}].click()`);
+    await check(`!document.querySelector('[data-rigel-version]')`, `settings pane ${pane} has no version label`);
+  }
+  await evaluate(`document.querySelectorAll('.settings-nav button')[5].click()`);
+  const aboutLinks = ['https://github.com/rigel-cms/rigel', 'https://rigelcms.dev/', 'https://github.com/rigel-cms/rigel/blob/main/ACKNOWLEDGEMENTS.md', 'https://rigelcms.dev/terms/', 'https://rigelcms.dev/privacy/', 'https://github.com/rigel-cms/rigel/blob/main/LICENSE', 'https://alex.zappa.dev/'];
+  await check(`document.querySelectorAll('[data-rigel-version]').length===1 && document.querySelector('.about-brand [data-rigel-version]').textContent===${JSON.stringify('v' + version)} && document.querySelector('.about-brand h3').textContent==='Rigel CMS' && document.querySelector('.about-credit').textContent==='Apache-2.0 license. Crafted by Alex Zappa' && JSON.stringify([...document.querySelectorAll('.settings-pane a')].map(a=>a.href))===${JSON.stringify(JSON.stringify(aboutLinks))}`, 'About header has installed version once and final line has license and author');
+  await check(`document.querySelectorAll('.settings-pane.about > p').length===4 && document.querySelector('.settings-pane.about > p').textContent==='Rigel is open source. Explore the source code on GitHub and read the documentation on our website.' && [...document.querySelectorAll('.settings-pane.about > p')].every(p=>p.textContent.length>[...p.querySelectorAll('a')].map(a=>a.textContent).join('').length)`, 'About links appear in contextual prose rather than standalone rows');
+  assert.match(await readFile(path.join(root, 'src/editor/styles.css'), 'utf8'), /\.rigel \.settings-pane\.about a,\s*\.rigel \.settings-pane\.about a:visited\s*\{\s*color: var\(--link\)/);
+  await evaluate(`document.querySelector('.settings-nav button.active').focus()`);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab' });
+  await check(`getComputedStyle(document.activeElement).outlineStyle!=='none'`, 'About inline links retain visible keyboard focus');
+  for (const width of [390, 1280]) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 640 });
+    for (const theme of ['light', 'dark']) {
+      await evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}`);
+      await check(`document.documentElement.scrollWidth<=innerWidth && [...document.querySelectorAll('.settings-pane a,.settings-pane img')].every(el=>{const r=el.getBoundingClientRect();return r.width>0 && r.left>=0 && r.right<=innerWidth}) && document.querySelector('.settings-pane img').naturalWidth>0`, `${width}px ${theme} About logo and links fit`);
+      await writeFile(path.join(scratch, `about-${width}-${theme}.png`), Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    }
+  }
+  await click('.settings-head .close');
   await reload(); await wait(`!!document.querySelector('.update-notice')`); assert.equal(npmCalls, 1); checks.push('fresh cache makes no network request');
   for (const width of [390, 1280]) {
     await cdp('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 640 });
@@ -85,6 +113,12 @@ try {
   for (const locale of Object.keys(dictionaries)) {
     await evaluate(`localStorage.setItem('rigelcms.settings',JSON.stringify({language:${JSON.stringify(locale)}}))`); await reload(); await wait(`!!document.querySelector('.update-notice')`);
     await check(`document.querySelector('.update-notice').textContent.includes(${JSON.stringify(dictionaries[locale]['shell.updateAvailable']?.replace('{version}', '99.0.1'))})`, locale + ' notice translation');
+    await click('.user-btn');
+    await evaluate(`document.querySelector('button[role=menuitem]').click()`);
+    await wait(`!!document.querySelector('.settings-modal')`);
+    await evaluate(`document.querySelectorAll('.settings-nav button')[5].click()`);
+    await check(`document.querySelector('.settings-nav button.active').textContent.trim()===${JSON.stringify(dictionaries[locale]['shell.about'])} && document.querySelector('.settings-pane').textContent.includes(${JSON.stringify(dictionaries[locale]['shell.createdBy'].replace('{name}', 'Alex Zappa'))}) && document.querySelectorAll('[data-rigel-version]').length===1`, locale + ' About and credit translation');
+    await click('.settings-head .close');
   }
   await evaluate(`localStorage.removeItem('rigelcms.settings')`);
   fail = true; await clearCache(); await reload(); await wait(`!!localStorage.getItem(${JSON.stringify(cacheKey)})`);

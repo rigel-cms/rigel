@@ -1281,6 +1281,7 @@
         {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
           <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
         {/if}
+        {#if githubMode && sel.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
         {#if sel.kind === "pages" || (sel.kind === "collection" && coll)}
           <div class="pages-controls">
           {#if sel.kind === "pages" && categories.length}
@@ -1320,12 +1321,6 @@
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
 
         <div class="table-card">
-          {#if githubMode && sel?.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
-          {#if sel?.kind === "collection" && coll?.index && coll.index.state !== "complete"}
-            <p role="status">{$t("shell.indexingCollections", { loaded: coll.index.loaded, total: coll.index.total })}</p>
-            {#if coll.index.error}<p role="alert">{coll.index.error}</p><button onclick={() => indexCollections(coll!.name)}>{$t("shell.retryLoading")}</button>{/if}
-            {#if coll.index.state === "indexing"}<button onclick={cancelIndexing}>{$t("connection.cancel")}</button>{/if}
-          {/if}
           <table>
             <thead>
               <tr>
@@ -1366,6 +1361,11 @@
             </tbody>
           </table>
         </div>
+        {#if sel?.kind === "collection" && coll?.index && coll.index.state !== "complete"}
+          <p role="status">{$t("shell.indexingCollections", { loaded: coll.index.loaded, total: coll.index.total })}</p>
+          {#if coll.index.error}<p role="alert">{coll.index.error}</p><button onclick={() => indexCollections(coll!.name)}>{$t("shell.retryLoading")}</button>{/if}
+          {#if coll.index.state === "indexing"}<button onclick={cancelIndexing}>{$t("connection.cancel")}</button>{/if}
+        {/if}
 
       {:else if sel?.kind === "document" && schema && activeDocType}
         {#if standaloneDocument}

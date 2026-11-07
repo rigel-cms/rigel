@@ -18,7 +18,7 @@ import { documentIndex, isPlainObject, validateDocument, validateDocumentId, val
 import { applyValues, readValues } from "../../routes/serialize";
 import { assertUniqueUrlSlugs, normalizeUrlSlug, validateDocumentSlugs } from "../../slugs";
 import { readGitHubTextBatch } from "./github-text-batch";
-import { cacheFile, cachedFile, fileCacheScope, fileCacheChanged, fileCacheRevision, fileBlobSha } from "./file-cache";
+import { cacheFile, cachedFile, fileCacheScope, fileCacheChanged, fileCacheRevision, fileBlobSha, binaryBlobSha, cachedThumbnail, cacheThumbnail, clearMediaFileCache, onFileCacheClear } from "./file-cache";
 
 export interface GitContext { token: string; repo: string; branch: string; cacheAccount?: string; assertActive?: () => void; mediaSession?: object }
 
@@ -730,7 +730,9 @@ async function remoteMedia(ctx: GitContext, manifest: Manifest) {
     if (!entry || entry.type !== "blob" || !["100644", "100755"].includes(entry.mode)) throw new Error(translate("connection.invalidFile"));
     const blob = await gh(ctx, `/git/blobs/${entry.sha}`);
     if (sha(blob?.sha) !== entry.sha) throw new Error(translate("connection.blobShaMismatch"));
-    return decodeMedia(blob, limit);
+    const bytes = decodeMedia(blob, limit);
+    if (await binaryBlobSha(new Blob([bytes])) !== entry.sha) throw new Error(translate("connection.blobShaMismatch"));
+    return bytes;
   };
   let record: Record<string, MediaMeta> = {};
   const ledger = entries.get(paths.ledger);
@@ -755,15 +757,16 @@ async function remoteMedia(ctx: GitContext, manifest: Manifest) {
 }
 
 type MediaListing = Awaited<ReturnType<typeof remoteMedia>>;
-type MediaCache = { session: object; scope: string; listing?: Promise<MediaListing>; blobs: Map<string, Blob>; pending: Map<string, Promise<Blob>>; bytes: number; active: number; waiting: (() => void)[] };
+type MediaCache = { session: object; scope: string; persistent?: ReturnType<typeof fileCacheScope>; listing?: Promise<MediaListing>; thumbnails: Map<string, Promise<Blob>>; transforming: number; transformsWaiting: (() => void)[]; blobs: Map<string, Blob>; pending: Map<string, Promise<Blob>>; bytes: number; active: number; waiting: (() => void)[] };
 let mediaCaches = new WeakMap<Manifest, MediaCache>();
 export function resetRemoteMediaCache() { mediaCaches = new WeakMap(); fileCacheChanged(); }
+onFileCacheClear(resetRemoteMediaCache);
 function mediaCache(ctx: GitContext, manifest: Manifest) {
   ctx.assertActive?.(); loaded(ctx, manifest, false);
   const session = ctx.mediaSession ?? ctx, scope = JSON.stringify([ctx.token, target(ctx, manifest)]);
   let cache = mediaCaches.get(manifest);
   if (!cache || cache.session !== session || cache.scope !== scope) {
-    cache = { session, scope, blobs: new Map(), pending: new Map(), bytes: 0, active: 0, waiting: [] };
+    cache = { session, scope, thumbnails: new Map(), transforming: 0, transformsWaiting: [], blobs: new Map(), pending: new Map(), bytes: 0, active: 0, waiting: [] };
     mediaCaches.set(manifest, cache);
   }
   return cache;
@@ -787,6 +790,7 @@ function mediaListing(ctx: GitContext, manifest: Manifest, cache: MediaCache) {
 export async function listRemoteMedia(ctx: GitContext, manifest: Manifest, refresh = false): Promise<MediaAsset[]> {
   if (refresh) {
     ctx.assertActive?.();
+    await clearMediaFileCache();
     const previous = mediaCaches.get(manifest);
     previous?.blobs.clear(); previous?.pending.clear();
     mediaCaches.delete(manifest);
@@ -827,6 +831,53 @@ export async function readRemoteMedia(ctx: GitContext, manifest: Manifest, url: 
   })();
   cache.pending.set(key, request);
   try { return await request; } finally { if (cache.pending.get(key) === request) cache.pending.delete(key); }
+}
+
+export const MEDIA_THUMBNAIL_TRANSFORM = "v1:320x320:contain:webp:0.8";
+
+export async function readRemoteThumbnail(ctx: GitContext, manifest: Manifest, url: string): Promise<Blob> {
+  const cache = mediaCache(ctx, manifest), listing = mediaListing(ctx, manifest, cache), media = await listing;
+  assertMediaCache(ctx, manifest, cache);
+  if (cache.listing !== listing) throw new Error(translate("connection.reloadDraft"));
+  if (!safeFileUrl(url) || !media.assets.some(asset => asset.url === url)) throw new Error(translate("local.unknownAsset"));
+  if (mediaMetadata(url)?.category !== "Images") return readRemoteMedia(ctx, manifest, url);
+  const path = media.directory + "/" + url.slice(media.prefix.length).split("/").map(decodeURIComponent).join("/"), sha = media.entries.get(path).sha;
+  const existing = cache.thumbnails.get(sha);
+  if (existing) return existing;
+  const started = fileCacheRevision();
+  const guard = () => { assertMediaCache(ctx, manifest, cache); if (started !== fileCacheRevision() || cache.listing !== listing) throw new Error(translate("connection.reloadDraft")); };
+  const request = (async () => {
+    const scope = ctx.cacheAccount ? await (cache.persistent ??= fileCacheScope(ctx.cacheAccount, target(ctx, manifest))) : undefined;
+    guard();
+    const cached = await cachedThumbnail(scope, sha, MEDIA_THUMBNAIL_TRANSFORM);
+    guard();
+    if (cached) return cached;
+    if (cache.transforming >= 4) await new Promise<void>(resolve => cache.transformsWaiting.push(resolve)); else cache.transforming++;
+    try {
+      guard();
+      const original = await readRemoteMedia(ctx, manifest, url);
+      guard();
+      if (typeof createImageBitmap === "undefined" || typeof document === "undefined") return original;
+      let bitmap: ImageBitmap;
+      try { bitmap = await createImageBitmap(original); } catch { guard(); return original; }
+      let thumbnail: Blob | null;
+      try {
+        const scale = Math.min(1, 320 / bitmap.width, 320 / bitmap.height), canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) return original;
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        thumbnail = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/webp", 0.8));
+      } finally { bitmap.close(); }
+      guard();
+      if (!thumbnail || thumbnail.type !== "image/webp") return original;
+      await cacheThumbnail(scope, sha, MEDIA_THUMBNAIL_TRANSFORM, thumbnail, started);
+      guard();
+      return thumbnail;
+    } finally { const next = cache.transformsWaiting.shift(); if (next) next(); else cache.transforming--; }
+  })();
+  cache.thumbnails.set(sha, request);
+  try { return await request; } finally { if (cache.thumbnails.get(sha) === request) cache.thumbnails.delete(sha); }
 }
 
 function queueRemoteWrite<T>(ctx: GitContext, manifest: Manifest, operation: () => Promise<T>): Promise<T> {

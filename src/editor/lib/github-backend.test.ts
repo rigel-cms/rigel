@@ -370,6 +370,21 @@ test("media request benchmark shares listing, parallel blobs and reopened previe
   expect(reads.filter(call => call.path.includes("/git/blobs/"))).toHaveLength(13);
 });
 
+test("media rejects source bytes that do not hash to the verified tree identity and retries cleanly", async () => {
+  const s = server(), url = "/rigel-media/verified.txt";
+  s.put(`playground/public${url}`, "original");
+  const m = await loadEditingFixture(ctx, blueprint()), original = fetch;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const response = await original(url, init);
+    if (!url.includes("/git/blobs/")) return response;
+    const data = await response.json();
+    return Response.json({ ...data, content: Buffer.from("tampered").toString("base64") });
+  });
+  await expect(readRemoteMedia(ctx, m, url)).rejects.toThrow(/SHA mismatch/);
+  vi.stubGlobal("fetch", original);
+  expect(await (await readRemoteMedia(ctx, m, url)).text()).toBe("original");
+});
+
 test("immutable blob reuse preserves each asset MIME and signature validation", async () => {
   const s = server();
   s.put("playground/public/rigel-media/a.txt", "plain,text");

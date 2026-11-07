@@ -4,7 +4,8 @@ import { locale, translate } from "../i18n";
 import type { Manifest } from "../../manifest/types";
 import type { MediaMeta } from "../../media-metadata";
 import { safeFileUrl } from "../../media-types";
-import { listRemoteMedia, readRemoteMedia, resetRemoteMediaCache, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, type GitContext } from "./github-backend";
+import { listRemoteMedia, readRemoteMedia, readRemoteThumbnail, resetRemoteMediaCache, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, type GitContext } from "./github-backend";
+import { onFileCacheClear } from "./file-cache";
 import type { MediaAsset } from "./media-library";
 
 let current: (() => { ctx: GitContext; manifest: Manifest }) | undefined;
@@ -22,6 +23,7 @@ export function onMediaReset(reset: () => void, refresh: () => void = () => {}) 
 export function refreshMediaPreviews() { for (const refresh of refreshes) refresh(); }
 let revision = 0;
 export function resetMediaPreviews() { revision++; resetRemoteMediaCache(); for (const reset of resets) reset(); }
+onFileCacheClear(() => { for (const clear of sources) clear(); });
 export function configureMediaBackend(getContext: typeof current, error: typeof onError = () => {}, getBackend?: typeof backend) {
   resetMediaPreviews(); current = getContext; onError = error; backend = getBackend;
   return () => { resetMediaPreviews(); current = undefined; onError = () => {}; backend = undefined; };
@@ -93,7 +95,7 @@ export function mediaSource(node: Element, source: string) {
     const request = revision, canonical = url.split(/[?#]/)[0], suffix = url.includes("#") ? "#" + url.split("#")[1] : "";
     const load = () => {
       if (request !== revision) return;
-      void remote((ctx, manifest) => readRemoteMedia(ctx, manifest, canonical)).then(blob => {
+      void remote((ctx, manifest) => (node.tagName === "IMG" && node.closest?.(".thumb, .media-thumbnail") ? readRemoteThumbnail : readRemoteMedia)(ctx, manifest, canonical)).then(blob => {
         if (request !== revision) return;
         objectURL = URL.createObjectURL(blob);
         node.setAttribute(attribute, objectURL + suffix);
@@ -102,7 +104,7 @@ export function mediaSource(node: Element, source: string) {
     if (typeof IntersectionObserver !== "undefined" && node.closest?.(".thumb, .media-thumbnail")) {
       observer = new IntersectionObserver(entries => {
         if (entries.some(entry => entry.isIntersecting)) { observer?.disconnect(); observer = undefined; load(); }
-      }, { rootMargin: "200px" });
+      }, { rootMargin: "0px" });
       observer.observe(node);
     } else load();
   }

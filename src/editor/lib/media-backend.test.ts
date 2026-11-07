@@ -39,7 +39,8 @@ test("reset rejects late media completion even when the same context is reused",
 });
 
 test("library thumbnails wait for near viewport while detail previews remain eager", async () => {
-  const read = vi.spyOn(github, "readRemoteMedia").mockResolvedValue(new Blob(["image"]));
+  const read = vi.spyOn(github, "readRemoteThumbnail").mockResolvedValue(new Blob(["image"]));
+  const original = vi.spyOn(github, "readRemoteMedia").mockResolvedValue(new Blob(["original"]));
   const ctx = { token: "fixture", repo: "owner/site", branch: "drafts" }, manifest = { pages: [], github: { mediaDir: "media" } } as any;
   configureMediaBackend(() => ({ ctx, manifest }), undefined, () => "github");
   let visible!: IntersectionObserverCallback;
@@ -57,7 +58,8 @@ test("library thumbnails wait for near viewport while detail previews remain eag
   expect(disconnect).toHaveBeenCalled();
   preview.destroy();
   const detail = mediaSource({ ...node, closest: () => null } as unknown as Element, "/media/a.png");
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(original).toHaveBeenCalledTimes(1);
+  expect(read).toHaveBeenCalledTimes(1);
   detail.destroy();
 });
 

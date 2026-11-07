@@ -1116,9 +1116,12 @@
 />
 {#if !ready || (githubMode && !connected)}
 <div class="rigel connection-shell">
-  <main id="github-connection" class="connection-card" aria-busy={connectionBusy}>
+  <main id="github-connection" class="connection-card" aria-busy={(!ready && !loadError) || connectionBusy}>
     <div class="connection-brand"><img src={logo} alt="" width="64" height="64" /><span>Rigel <span class="brand-suffix">CMS</span></span></div>
     <h1>{!ready ? $t("shell.loadingEditor") : $t("shell.connectGithub")}</h1>
+    {#if (!ready && !loadError) || connectionBusy}
+      <div class="connection-loader" role="progressbar" aria-label={!ready ? $t("shell.loadingConfiguration") : !sessionExpiresAt ? $t("shell.signingIn") : $t("shell.checkingAccess")}></div>
+    {/if}
     {#if !ready}
       {#if loadError}<p class="connection-error" role="alert">{loadError}</p><button class="primary" onclick={loadBlueprint}>{$t("shell.retryLoading")}</button>
       {:else}<p role="status">{$t("shell.loadingConfiguration")}</p>{/if}

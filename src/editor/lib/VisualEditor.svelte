@@ -429,7 +429,7 @@
     }
     try {
       doc.addEventListener("click", onClick, true);
-      doc.addEventListener("contextmenu", event => { if (!devMode) event.preventDefault(); }, true);
+      doc.addEventListener("contextmenu", event => { if (mode === "edit" && !devMode) event.preventDefault(); }, true);
       doc.addEventListener("dblclick", onDoubleClick, true);
       doc.addEventListener("mouseover", onOver, true);
       doc.addEventListener("mouseout", onOut, true);

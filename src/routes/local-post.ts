@@ -11,6 +11,8 @@ import config from "virtual:rigel-config";
 import extensions from "virtual:rigel-extensions";
 import { resolveExtensions, validateExtensionBlocks } from "../extensions";
 import { validateCollectionValues } from "../manifest/collections";
+import { COLLECTION_LEDGER } from "../manifest/collection-ledger";
+import { collectionWrite, rebuildCollectionLedger, safeCollectionFile } from "../manifest/collection-ledger-store";
 import { readDocuments } from "../schema/store";
 import { fileURLToPath } from "node:url";
 import type { CollectionConfig } from "../config";
@@ -28,16 +30,23 @@ function safeSlug(slug: string): string | null {
   return /^[a-z0-9][a-z0-9_-]*$/.test(slug) ? slug : null;
 }
 
-let writes: Promise<unknown> = Promise.resolve();
-export const POST: APIRoute = (context) => {
-  const result = writes.then(() => savePost(context));
-  writes = result.catch(() => {});
-  return result;
+export const POST: APIRoute = (context) => collectionWrite(async () => savePost(context));
+
+export const GET: APIRoute = async ({ request, params }) => {
+  const t = requestTranslator(request);
+  if (import.meta.env.PROD || config.backend !== "local") return new Response("Local backend is dev-only", { status: 404 });
+  const folder = collectionFolder(String(params.collection ?? "")), slug = safeSlug(String(params.slug ?? ""));
+  if (!folder || !slug) return new Response(t("local.unknownCollectionSlug"), { status: 404 });
+  try {
+    const text = await readFile(await safeCollectionFile(folder, `${slug}.json`, t), "utf8"), post = JSON.parse(text);
+    validateBody(post.body, t);
+    return new Response(text, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  } catch { return new Response(t("local.postNotFound"), { status: 404 }); }
 };
 
 const savePost: APIRoute = async ({ request, params }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || config.backend !== "local") {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   const folder = collectionFolder(String(params.collection ?? ""));
@@ -63,12 +72,18 @@ const savePost: APIRoute = async ({ request, params }) => {
     validateCollectionValues(fields, body.frontmatter, documents, t);
     if (Object.hasOwn(body.frontmatter, "slug")) body.frontmatter.slug = normalizeUrlSlug(body.frontmatter.slug, t);
     const names = await readdir(folder).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return []; throw error; });
-    const entries = await Promise.all(names.filter(name => name.endsWith(".json") && name !== `${slug}.json`).map(async name => ({ slug: name.slice(0, -5), values: JSON.parse(await readFile(path.join(folder, name), "utf8")).frontmatter })));
+    const entries = await Promise.all(names.filter(name => name.endsWith(".json") && name !== COLLECTION_LEDGER && name !== `${slug}.json`).map(async name => {
+      const data = JSON.parse(await readFile(await safeCollectionFile(folder, name, t), "utf8"));
+      validateBody(data.body, t); validateCollectionValues(fields, data.frontmatter, documents, t);
+      return { slug: name.slice(0, -5), values: data.frontmatter };
+    }));
     assertUniqueUrlSlugs([...entries, { slug, values: body.frontmatter }], t);
   } catch (error) {
     return new Response(error instanceof Error ? error.message : t("local.invalidArticle"), { status: 400 });
   }
   await mkdir(path.dirname(file), { recursive: true });
+  await safeCollectionFile(folder, `${slug}.json`, t);
+  await safeCollectionFile(folder, COLLECTION_LEDGER, t);
   const fm = { ...body.frontmatter };
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
@@ -81,12 +96,16 @@ const savePost: APIRoute = async ({ request, params }) => {
       }
     } else await rename(temporary, file);
   } finally { await rm(temporary, { force: true }); }
+  const collection = config.collections!.find(c => c.name === params.collection)!;
+  const documents = config.schema && config.root ? await readDocuments(config.schema, fileURLToPath(config.root), config.preview, t) : [];
+  await rebuildCollectionLedger(collection, documents, t);
   return new Response(null, { status: 204 });
 };
 
-export const DELETE: APIRoute = async ({ request, params }) => {
+export const DELETE: APIRoute = (context) => collectionWrite(async () => deletePost(context));
+const deletePost: APIRoute = async ({ request, params }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || config.backend !== "local") {
     return new Response("Local backend is dev-only", { status: 404 });
   }
   const folder = collectionFolder(String(params.collection ?? ""));
@@ -96,10 +115,14 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   }
   const file = path.resolve(folder, `${slug}.json`);
   try {
-    await readFile(file); // only delete existing files
+    await readFile(await safeCollectionFile(folder, `${slug}.json`, t));
+    await safeCollectionFile(folder, COLLECTION_LEDGER, t);
   } catch {
     return new Response(t("local.postNotFound"), { status: 404 });
   }
   await rm(file);
+  const collection = config.collections!.find(c => c.name === params.collection)!;
+  const documents = config.schema && config.root ? await readDocuments(config.schema, fileURLToPath(config.root), config.preview, t) : [];
+  await rebuildCollectionLedger(collection, documents, t);
   return new Response(null, { status: 204 });
 };

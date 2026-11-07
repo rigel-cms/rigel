@@ -13,9 +13,11 @@ rigel({
 })
 ```
 
-`mediaDir` is relative to Astro's `publicDir` and defaults to `rigel-media`. Traversal paths are rejected. `maxFileSize` is a positive integer in bytes; the default is 2 MiB, displayed as 2 MB in the interface. Both the browser and local upload endpoint enforce the limit, including streamed requests without a reliable Content-Length.
+`mediaDir` is relative to Astro's `publicDir` and defaults to `rigel-media`. Traversal paths are rejected. `maxFileSize` is a positive integer in bytes; the default is 2 MiB, displayed as 2 MB in the interface. The browser and both writable backends enforce the limit. The local endpoint also checks streamed requests without a reliable Content-Length.
 
-The local development server supports uploading, metadata updates and file deletion. A static build emits `/rigel/media.json` as a read-only snapshot. Its `assets` array contains all supported files; `images` contains images only. Rebuild to refresh the snapshot. GitHub-backed content editing does not provide GitHub media writes; repository imports need the local server. See [GitHub](github.md) for content Save and Publish behavior.
+The local development server writes media to the filesystem. The GitHub backend commits uploads, metadata and confirmed deletions to the configured drafts branch through the existing authenticated connection. It reads the current branch listing and can preview private or newly uploaded files before a site build. Uploads include their metadata in the same commit and create the media folder when needed. See [GitHub](github.md) for content Save and the separate Publish action.
+
+A static build still emits `/rigel/media.json` with an `assets` array for all supported files and an `images` array for images only. Local read-only views and demo mode use this snapshot; the authenticated GitHub library does not.
 
 ## Supported files
 
@@ -34,7 +36,7 @@ SVG, HTML, scripts, executables and unknown extensions are outside the upload al
 
 ## Browse and upload
 
-Use Grid or List view, search, category and modified-month filters. Filters combine; Reset filters clears them. Refresh rereads the listing. Dates come from filesystem modification time in UTC, not an upload history. A checkout can change them. Missing date metadata does not match a specific month.
+Use Grid or List view, search, category and modified-month filters. Filters combine; Reset filters clears them. Refresh rereads the listing. Local dates come from filesystem modification time in UTC, not an upload history. A checkout can change them. GitHub listings omit modified dates because Git blob metadata has no file modification timestamp. Missing date metadata does not match a specific month.
 
 Images have thumbnails, videos have playback previews, and PDF and text files have document previews. Other files show a type icon and metadata with a download link. Previewing a file is not a safety check.
 
@@ -48,17 +50,17 @@ Metadata lives in `.rigel-media.json` inside the configured media folder, keyed 
 
 New uploads use random UUID filenames.
 
-On the local backend, open an asset in Media, edit its display name, title, description or image alt text, then press Save. Metadata writes validate the listed asset URL, reject unknown fields and use an atomic sidecar replacement. Display names allow safe filename-like characters up to 120 characters without requiring an extension. Titles are capped at 200 characters; descriptions and alt text at 1,000. Nonimages cannot receive alt metadata.
+On either writable backend, open an asset in Media, edit its display name, title, description or image alt text, then press Save. Metadata writes validate the listed asset URL, reject unknown fields and use an atomic sidecar replacement locally or a verified repository commit on GitHub. Display names allow safe filename-like characters up to 120 characters without requiring an extension. Titles are capped at 200 characters; descriptions and alt text at 1,000. Nonimages cannot receive alt metadata.
 
 Local file uploads send a browser-supplied author label through `X-Rigel-Author`. Rigel uses the browser identity's name or nickname, falling back to `Local user`. This is a descriptive label, not verified ownership or an audit identity. The metadata editor cannot change it. Existing files and URL or stock imports may have no captured author; the interface displays `Local user` as a fallback.
 
-For rich-text image insertion, saved repository-image alt text supplies a default that you can override per use, or leave empty for a decorative image. Image fields store the URL; declare and render a separate alt field where your site needs one. Rigel does not rewrite alt text already stored in content. Rich-text insertions remain unsaved until the document's Save action.
+For rich-text image insertion, saved repository-image alt text supplies a default that you can override per use, or leave empty for a decorative image. Image fields store the URL; declare and render a separate alt field where your site needs one. Store the original URL rather than a path your build generates. [Preview](preview.md) covers the `data-rigel-src` binding for optimized Astro images. Rigel does not rewrite alt text already stored in content. Rich-text insertions remain unsaved until the document's Save action.
 
 ## Image URLs and stock providers
 
 Image pickers offer Library, Upload, URL and Lorem Picsum. Pexels, Pixabay and Unsplash appear when their keys are configured in Settings under Media. Repository Upload excludes Unsplash.
 
-Remote URL, Picsum, Pexels and Pixabay image imports download bytes through the browser and upload them locally. In a content picker, a root-relative URL can be used directly without making a copy. Remote image downloads require HTTPS and browser CORS permission. The import path accepts JPEG, PNG and WebP responses within the configured size limit. Download failures stay visible. The server accepts validated bytes rather than fetching arbitrary remote URLs.
+Remote URL, Picsum, Pexels and Pixabay image imports download bytes through the browser and upload them through the current backend. In a content picker, a root-relative URL can be used directly without making a copy. Remote image downloads require HTTPS and browser CORS permission. The import path accepts JPEG, PNG and WebP responses within the configured size limit. Download failures stay visible. The server accepts validated bytes rather than fetching arbitrary remote URLs.
 
 Unsplash selections keep the provider's hotlink and record the download through its API. They do not become repository files. Rich-text stock insertions retain credit links; check the provider's current licensing and [Unsplash hotlinking requirements](https://unsplash.com/documentation#hotlinking) for your use.
 

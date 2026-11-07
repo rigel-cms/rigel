@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "インデックスに登録しない（noindex）",
+  "defaults.noindexHelp": "このページをインデックスに登録せず、検索結果に表示しないよう検索エンジンに指示します。ロボットは引き続きページをクロールし、リンクをたどることができます。ページが非公開になるわけではありません。",
   "defaults.draft": "下書き",
   "defaults.seoTitle": "SEOタイトル",
   "defaults.seoDescription": "SEO説明文",

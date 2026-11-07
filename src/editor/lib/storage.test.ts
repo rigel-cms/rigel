@@ -162,7 +162,7 @@ test("session restore never falls back to an obsolete storage key after signout"
 test("malformed storage and blocked storage never prevent memory-only login", () => {
   entries.set("rigelcms.session", "{");
   expect(readSession(config)).toBeNull();
-  expect(entries.size).toBe(0);
+  expect([...entries.keys()].filter(key => key !== "rigelcms.cache.files.clear")).toEqual([]);
   for (const method of ["getItem", "setItem", "removeItem"] as const) localStorage[method] = () => { throw new Error("Blocked"); };
   expect(() => writeSession(config, { accessToken: "ghu_fixture", expiresAt: Date.now() + 3600000 })).not.toThrow();
   expect(readSession(config)).toBeNull();

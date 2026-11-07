@@ -105,6 +105,12 @@ Non-shared document types appear in All pages. Uncategorized pages belong to Cor
 
 A shared edit affects every consuming page after Save and the site's rebuild or development refresh. A preview URL does not turn a shared record into a page editor. See [Sidebar](sidebar.md) for navigation and [Content locales](content-locales.md) for optional language-specific types.
 
+## Protect required pages
+
+Set `protectedSlugs: ["home", "about", "contact"]` on a document type to keep those pages in the website. These are storage filenames without `.json`, not editable URL slugs. Renaming a page or changing its public slug does not remove protection. List required pages explicitly; other pages of that type, including pages editors create, can be deleted from the Page tab after confirmation.
+
+Protected pages show a disabled Delete page button and a short explanation. Shared records, singletons, types with `creatable: false`, and fixed copy modules remain developer-managed. The local store and GitHub backend enforce the same protection and reject deletion of pages referenced by other content. Deleting a page does not repair ordinary URL links in menus or copy.
+
 ## Bind the page preview
 
 The schema cannot infer which DOM elements display a field. Give rendered elements explicit `data-rigel-*` bindings and an owning document ID. This Astro excerpt assumes `doc` and an `intro` section from the schema above:
@@ -128,4 +134,4 @@ Content stays in memory until explicit Save. Unsaved-navigation guards offer a c
 
 The local document endpoint works only in development with the local backend. It validates content and reference targets, requires same-origin writes, rejects unsafe paths and prototype keys, and writes within declared folders. Document files and request bodies have a 1 MiB limit. The request checks Content-Length before reading, then checks the buffered body size; this is not a streaming memory limit.
 
-Local writes use temporary files and atomic replacement; creation refuses an existing target. Local Save writes files without creating a Git commit. The SDK does not provide a general multi-process transaction or reserve arbitrary Astro routes. Schema document deletion remains developer-owned, so check references before removing files or types. For remote saving and publishing, see [GitHub](github.md).
+Local writes use temporary files and atomic replacement; creation refuses an existing target. Local Save writes files without creating a Git commit. The SDK does not provide a general multi-process transaction or reserve arbitrary Astro routes. Editors can delete unprotected pages after confirmation; required pages and referenced content stay protected. Check references before removing files or types directly. For remote saving and publishing, see [GitHub](github.md).

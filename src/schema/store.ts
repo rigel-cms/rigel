@@ -3,7 +3,10 @@ import { systemMessage, type Translator } from "../editor/i18n/format";
 import { link, lstat, mkdir, open, readdir, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { constants } from "node:fs";
-import { isPlainObject } from "./validate";
+import { isPlainObject, SchemaError } from "./validate";
+import { assertDocumentUnreferenced, isProtectedDocument } from "./deletion";
+import { validateCollectionValues } from "../manifest/collections";
+import type { CollectionConfig } from "../config";
 import { SLUG_PATTERN, type ContentDocument, type Schema } from "./types";
 import { normalizeUrlSlug, validateDocumentSlugs } from "../slugs";
 import type { PreviewConfig } from "../preview";
@@ -27,7 +30,7 @@ async function resolveRoot(root: string): Promise<string> {
   return real;
 }
 
-async function resolveFolder(root: string, folder: string): Promise<string> {
+async function resolveFolder(root: string, folder: string, missingStatus = 500): Promise<string> {
   if (!folder.split("/").every((part) => FOLDER_PART.test(part))) throw new DocumentStoreError("Unsafe document folder", 500);
   let directory = await resolveRoot(root);
   for (const part of folder.split("/")) {
@@ -36,7 +39,7 @@ async function resolveFolder(root: string, folder: string): Promise<string> {
       if (error.code === "ENOENT") return null;
       throw error;
     });
-    if (!info) throw new DocumentStoreError(`Document folder ${folder} does not exist`, 500);
+    if (!info) throw new DocumentStoreError(`Document folder ${folder} does not exist`, missingStatus);
     if (info.isSymbolicLink() || !info.isDirectory()) throw new DocumentStoreError(`Document folder ${folder} must contain only real directories`, 500);
   }
   return directory;
@@ -82,7 +85,7 @@ export async function readDocuments(schema: Schema, root: string, preview?: Prev
       if (error instanceof DocumentStoreError && error.status === 500 && /does not exist/.test(error.message)) continue;
       throw error;
     }
-    const names = (await readdir(directory)).filter((name) => name.endsWith(".json")).sort();
+    const names = (await readdir(directory)).filter((name) => name.endsWith(".json") && name !== ".rigel-collection.json").sort();
     for (const name of names) {
       const slug = name.slice(0, -5);
       if (!SLUG_PATTERN.test(slug)) throw new DocumentStoreError(`Invalid document filename ${name}`, 500);
@@ -107,6 +110,65 @@ export function writeDocument(...args: Parameters<typeof writeDocumentFile>): Pr
   const result = writes.then(() => writeDocumentFile(...args));
   writes = result.catch(() => {});
   return result;
+}
+
+export function deleteDocument(...args: Parameters<typeof deleteDocumentFile>): Promise<void> {
+  const result = writes.then(() => deleteDocumentFile(...args));
+  writes = result.catch(() => {});
+  return result;
+}
+
+async function deleteDocumentFile(
+  schema: Schema,
+  root: string,
+  typeName: string,
+  slug: string,
+  preview?: PreviewConfig,
+  t: Translator = systemMessage,
+  collections: Pick<CollectionConfig, "folder" | "fields">[] = [],
+): Promise<void> {
+  const type = schema.documents.find(entry => entry.name === typeName);
+  if (!type) throw new DocumentStoreError(t("local.unknownDocumentType", { type: typeName }), 404);
+  if (!SLUG_PATTERN.test(slug)) throw new DocumentStoreError(t("local.invalidDocumentSlug"), 400);
+  const directory = await resolveFolder(root, type.folder, 404);
+  const file = path.join(directory, `${slug}.json`);
+  try {
+    const existing = await lstat(file);
+    if (existing.isSymbolicLink() || !existing.isFile()) throw new DocumentStoreError("Document must be a regular file", 409);
+    if (isProtectedDocument(type, slug)) throw new DocumentStoreError(t("local.pageProtected"), 403);
+    const documents = await readDocuments(schema, root, preview, t);
+    try { assertDocumentUnreferenced(schema, documents, `${typeName}:${slug}`, t); }
+    catch (error) {
+      if (error instanceof SchemaError) throw new DocumentStoreError(error.message, 409);
+      throw error;
+    }
+    const remaining = documents.filter(doc => doc.id !== `${typeName}:${slug}`);
+    for (const collection of collections) {
+      if (!collection.fields.some(field => field.type === "reference")) continue;
+      const folder = path.relative(path.resolve(root), path.resolve(root, collection.folder));
+      let collectionDirectory: string;
+      try { collectionDirectory = await resolveFolder(root, folder, 404); }
+      catch (error) {
+        if (error instanceof DocumentStoreError && error.status === 404) continue;
+        throw error;
+      }
+      for (const name of (await readdir(collectionDirectory)).filter(name => name.endsWith(".json") && name !== ".rigel-collection.json")) {
+        if (!/^[a-z0-9][a-z0-9_-]*\.json$/.test(name)) throw new DocumentStoreError("Invalid collection filename", 500);
+        const data = await readJsonFile(path.join(collectionDirectory, name), t);
+        if (!isPlainObject(data) || !isPlainObject(data.frontmatter)) throw new DocumentStoreError("Invalid collection document", 500);
+        validateCollectionValues(collection.fields, data.frontmatter, documents, t);
+        try { validateCollectionValues(collection.fields, data.frontmatter, remaining, t); }
+        catch { throw new DocumentStoreError(t("local.documentReferenced"), 409); }
+      }
+    }
+    await resolveFolder(root, type.folder);
+    const current = await lstat(file);
+    if (!current.isFile() || current.isSymbolicLink() || current.dev !== existing.dev || current.ino !== existing.ino) throw new DocumentStoreError("Document path changed", 409);
+    await unlink(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new DocumentStoreError(t("local.documentNotFound"), 404);
+    throw error;
+  }
 }
 
 async function writeDocumentFile(

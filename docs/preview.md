@@ -24,9 +24,9 @@ rigel({
 
 `pages` maps legacy copy-page slugs. `documents` maps schema type names; `index` is the route for the effective slug `home`. `collections` maps article collection names. Every configured route must actually exist in your host output.
 
-`template` is a static editor-local route used by the canvas for saved schema pages and new or saved articles. It stays on the editor's origin even when `draftUrl` is set. `/rigel/preview/` is the permitted template namespace inside the CMS, not a route generator. The host must supply the prepared page.
+`template` is a static editor-local route used by the canvas for new and saved schema pages and articles. It stays on the editor's origin even when `draftUrl` is set. `/rigel/preview/` is the permitted template namespace inside the CMS, not a route generator. The host must supply the prepared page.
 
-A collection can instead use `new: "/preview/blog/"`. Without `template`, the article canvas uses `new` for saved articles too, while the public link uses `url`. Article canvases require `template` or `new`; a `url` mapping alone provides website links but no canvas. Saved schema pages without `template` use their mapped document route. New schema pages have no canvas until their first Save, even with a configured template. See [Preview hosts](preview-hosts.md) for the full destination rules.
+A collection can instead use `new: "/preview/blog/"`. Without `template`, the article canvas uses `new` for saved articles too, while the public link uses `url`. Article canvases require `template` or `new`; a `url` mapping alone provides website links but no canvas. Saved schema pages without `template` use their mapped document route. New schema pages can use a configured template before Save. Without one, they have no canvas until their first Save. See [Preview hosts](preview-hosts.md) for the full destination rules.
 
 ## Bind rendered fields
 
@@ -42,7 +42,24 @@ These HTML excerpts illustrate the scalar anchors. Render the saved values throu
 
 `data-rigel-text` updates text content. `data-rigel-richtext` renders a Markdown string, or the article body for `$body`. Image and alt bindings apply to `<img>`; href bindings apply to `<a>`. Collection tags can use `data-rigel-tags="tags"` on a `<ul>` or `<ol>` to render comma-separated tags as list items.
 
-Paths use object keys and stable array `_key` values. Array positions are not preview bindings. For schema content, put `data-rigel-doc="page:about"` on each bound element and on section/list containers. It identifies the source document for that element; a parent attribute does not substitute for attributes on descendant anchors. Referenced records use their own IDs and local field paths.
+Paths use object keys and stable array `_key` values. Array positions are not preview bindings. For a reusable schema-page template, use `data-rigel-doc="$document"` for primary-document bindings, including those inside prepared section templates. The editor replaces this marker with the active document ID before applying draft values. Keep referenced and shared records bound to their own IDs. This lets one static template render any new or saved page of its type without creating a content file.
+
+For schema content, put `data-rigel-doc="page:about"` on each bound element and on section/list containers. It identifies the source document for that element; a parent attribute does not substitute for attributes on descendant anchors. Referenced records use their own IDs and local field paths.
+
+### Keep optimized images editable
+
+Astro's `Image` and `Picture` components replace `src` with hashed, responsive candidates, so changing `src` alone changes nothing while `srcset` still lists the old files. Mark an editable image with `data-rigel-src` to show the draft instead:
+
+```astro
+<Image src={cover} alt={hero.alt} widths={[480, 960]} sizes="100vw" data-rigel-image="hero.image" data-rigel-alt="hero.alt" data-rigel-src={hero.image} />
+<Picture src={cover} formats={["avif", "webp"]} alt={hero.alt} data-rigel-image="hero.image" data-rigel-src={hero.image} />
+```
+
+`data-rigel-image` names the field, as before. `data-rigel-src` holds the original browser-addressable URL that the field stores, and it marks the element as optimized. In preview, a marked image loses its `srcset` and `sizes`, and the surrounding `picture` sources lose theirs, so the field value is the file the browser loads. The attribute is not a second source of truth: preview renders the field value, and a value that fails the image URL check is dropped rather than loaded.
+
+Public pages are untouched. Rigel patches only the editor iframe, so built markup keeps its hashed URLs, `srcset` and AVIF or WebP sources. Images without `data-rigel-src` keep their previous behavior: the `src` changes and any `srcset` stays.
+
+Store the original reference in content, never a generated path. `/images/cover.jpg`, a media URL or an HTTPS URL work; `/_astro/cover.BnV1MXKY.webp` does not, because Astro derives it at build time. An imported file is not addressable either: `src/assets/cover.jpg` has no URL a browser can request. Serve the file from a public path or the media folder and bind that URL, even when the template imports the same file for optimization. Preview shows the original at its own size, not a resized or converted variant, and the built `width` and `height` stay as they were, so check a replacement with different proportions against the template's layout. An upload becomes reachable at its media URL once the host serves it or rebuilds.
 
 ## Prepare changing sections and lists
 

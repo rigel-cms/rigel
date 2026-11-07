@@ -4,6 +4,8 @@
   "local.unknownDocument": "不明な文書です",
   "local.readDocumentFailed": "文書を読み込めませんでした",
   "local.documentDeveloperOnly": "文書の作成と削除はサイト開発者が行います",
+  "local.pageProtected": "このページはウェブサイトの一部のため、削除できません。",
+  "local.documentReferenced": "このページは他のコンテンツから参照されているため、削除できません。",
   "local.unknownDocumentTarget": "不明な文書の種類またはスラッグです",
   "local.saveDocumentFailed": "文書を保存できませんでした",
   "local.unknownCollectionSlug": "不明なコレクションまたはスラッグです",

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { readDocuments, writeDocument, DocumentStoreError } from "./store";
+import { deleteDocument, readDocuments, writeDocument, DocumentStoreError } from "./store";
 import { validateSchema } from "./validate";
 import type { Schema } from "./types";
 
@@ -112,6 +112,59 @@ test("concurrent different document identities cannot claim the same URL slug", 
   const results = await Promise.allSettled(["one", "two"].map(slug => writeDocument(schema, root, "page", slug, { title: "Race", slug: "shared-url" }, "create")));
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
   expect(results.filter(result => result.status === "rejected")).toHaveLength(1);
+});
+
+test("deletes only unprotected documents using storage slugs despite changed public URLs", async () => {
+  const policy: Schema = { ...schema, documents: schema.documents.map(type => ({ ...type, protectedSlugs: ["home"] })) };
+  await writeDocument(policy, root, "page", "home", { ...home, slug: "changed-url" }, "create");
+  await expect(deleteDocument(policy, root, "page", "home")).rejects.toMatchObject({ status: 403 });
+  await writeDocument(policy, root, "page", "custom", { title: "Custom", slug: "home", protected: true }, "create");
+  await deleteDocument(policy, root, "page", "custom");
+  expect(await readdir(path.join(root, "content/pages"))).toEqual(["home.json"]);
+  await expect(deleteDocument(policy, root, "page", "custom")).rejects.toMatchObject({ status: 404 });
+  await expect(deleteDocument(policy, root, "unknown", "custom")).rejects.toMatchObject({ status: 404 });
+  await rm(path.join(root, "content/pages"), { recursive: true });
+  await expect(deleteDocument(policy, root, "page", "missing")).rejects.toMatchObject({ status: 404 });
+});
+
+test.each([{ shared: true }, { singleton: true }, { creatable: false }])("deletion retains type-wide protection %j", async policy => {
+  await writeDocument(schema, root, "page", "home", home, "create");
+  const fixed: Schema = { ...schema, documents: schema.documents.map(type => ({ ...type, ...policy })) };
+  await expect(deleteDocument(fixed, root, "page", "home")).rejects.toMatchObject({ status: 403 });
+  expect(JSON.parse(await readFile(path.join(root, "content/pages/home.json"), "utf8"))).toEqual(home);
+});
+
+test("deletion queues after writes and checks references from all schema documents", async () => {
+  await writeDocument(schema, root, "page", "home", home, "create");
+  const writing = writeDocument(schema, root, "logoSet", "brands", { title: "Brands", custom: [{ nested: { _ref: "page:home" } }] }, "create");
+  const deleting = deleteDocument(schema, root, "page", "home");
+  await writing;
+  await expect(deleting).rejects.toMatchObject({ status: 409 });
+  await writeDocument(schema, root, "logoSet", "brands", { title: "Brands" }, "update");
+  await deleteDocument(schema, root, "page", "home");
+  expect(await readdir(path.join(root, "content/pages"))).toEqual([]);
+  const create = writeDocument(schema, root, "page", "home", home, "create");
+  const remove = deleteDocument(schema, root, "page", "home");
+  await Promise.all([create, remove]);
+  expect(await readdir(path.join(root, "content/pages"))).toEqual([]);
+});
+
+test("deletion rejects traversal, non-files, symlinked files and symlinked folders", async () => {
+  await expect(deleteDocument(schema, root, "page", "../outside")).rejects.toMatchObject({ status: 400 });
+  const outside = path.join(root, "outside.json");
+  await writeFile(outside, JSON.stringify(home));
+  const file = path.join(root, "content/pages/home.json");
+  await symlink(outside, file);
+  await expect(deleteDocument(schema, root, "page", "home")).rejects.toMatchObject({ status: 409 });
+  expect(JSON.parse(await readFile(outside, "utf8"))).toEqual(home);
+  await rm(file);
+  await mkdir(file);
+  await expect(deleteDocument(schema, root, "page", "home")).rejects.toMatchObject({ status: 409 });
+  await rm(path.join(root, "content/pages"), { recursive: true });
+  await symlink(root, path.join(root, "content/pages"));
+  await expect(deleteDocument(schema, root, "page", "outside")).rejects.toMatchObject({ status: 500 });
+  const unsafe: Schema = { ...schema, documents: [{ ...schema.documents[0], folder: "../outside" }] };
+  await expect(deleteDocument(unsafe, root, "page", "home")).rejects.toMatchObject({ status: 500 });
 });
 
 test("concurrent creates cannot overwrite an author or another new document", async () => {

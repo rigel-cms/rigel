@@ -31,7 +31,10 @@ export function searchIndex(manifest: Manifest, scope: SearchScope, locale: stri
   }
   for (const collection of content.collections ?? []) {
     add({ kind: "collection", name: collection.name }, collection.label, t("shell.collection"), collection.locale);
-    for (const post of collection.posts) add({ kind: "post", collection: collection.name, slug: post.slug }, String(post.frontmatter.title ?? post.slug), t("shell.searchItemHint", { name: collection.label, slug: post.slug }), collection.locale);
+    for (const slug of collection.storageSlugs ?? collection.posts.map(post => post.slug)) {
+      const post = collection.posts.find(post => post.slug === slug);
+      add({ kind: "post", collection: collection.name, slug }, String(post?.frontmatter.title ?? slug), t("shell.searchItemHint", { name: collection.label, slug }), collection.locale);
+    }
   }
   if (content.menus) {
     add({ kind: "menus" }, t("shell.menus"), t("shell.collection"));

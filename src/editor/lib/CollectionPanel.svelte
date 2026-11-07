@@ -16,10 +16,13 @@
   import type { ContentDocument } from "../../schema/types";
   import { slugify } from "../../slugs";
 
-  let { fields, values, storageSlug, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, inlineFields = [], oneditbody = () => {}, oneditfield = () => {}, onchange, onbody }: {
+  let { fields, values, storageSlug, pagePath = null, ondelete, deleteDisabled = false, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, inlineFields = [], oneditbody = () => {}, oneditfield = () => {}, onchange, onbody }: {
     fields: CollectionField[];
     values: Record<string, unknown>;
     storageSlug: string;
+    pagePath?: string | null;
+    ondelete: () => void;
+    deleteDisabled?: boolean;
     body: ArticleBody;
     bodyInline?: boolean;
     bodyLoading?: boolean;
@@ -34,13 +37,13 @@
     onbody: (body: ArticleBody) => void;
   } = $props();
   let host: HTMLDivElement;
-  let tab = $state<"content" | "seo">("content");
+  let tab = $state<"page" | "content" | "seo">("content");
 
   $effect(() => {
     void focusToken;
     const path = selected?.path;
     if (!path || !focusToken) return;
-    tab = "content";
+    tab = path === "$body" ? "content" : isSeoField(path) ? "seo" : "page";
     void tick().then(() => {
       const field = host?.querySelector(`[data-collection-field="${CSS.escape(path)}"]`);
       const control = (path === "$body" ? field?.querySelector<HTMLElement>('[contenteditable="true"]') : field?.querySelector<HTMLElement>('button[role="combobox"], input, textarea, [contenteditable="true"]')) ?? field?.querySelector<HTMLElement>('button');
@@ -52,11 +55,12 @@
 
 <div class="schema-panel collection-panel" bind:this={host}>
   <PropertiesTabs bind:tab />
-  <div id="properties-content" role="tabpanel" aria-labelledby="properties-tab-content" hidden={tab !== "content"}>
+  <div id="properties-page" role="tabpanel" aria-labelledby="properties-tab-page" hidden={tab !== "page"}>
   <section>
     <h3>{$t("fields.articleDetails")}</h3>
     <label><span>{$t("fields.urlSlug")}</span><input type="text" value={String(values.slug ?? storageSlug)} oninput={(event) => onchange("slug", event.currentTarget.value)} onblur={() => { if (Object.hasOwn(values, "slug")) onchange("slug", slugify(String(values.slug))); }} /></label>
     <p class="hint">{$t("fields.collectionSlugHint")}</p>
+    <label class="page-path"><span>{$t("shell.websiteRoute")}</span><input type="text" value={pagePath ?? $t("shell.notConfigured")} readonly /></label>
     {#each fields.filter(field => field.key !== "slug" && !isSeoField(field.key)) as field (field.key)}
       {@const label = field.labelKey ? $t(field.labelKey) : field.label}
       <div data-collection-field={field.key}>
@@ -92,6 +96,11 @@
       </div>
     {/each}
   </section>
+  <section>
+    <button type="button" class="danger-btn" aria-label={$t("shell.deletePost")} disabled={deleteDisabled} onclick={ondelete}>{$t("shell.deletePost")}</button>
+  </section>
+  </div>
+  <div id="properties-content" role="tabpanel" aria-labelledby="properties-tab-content" hidden={tab !== "content"}>
   <section data-collection-field="$body">
     {#if bodyInline}
       <button class="outlined" disabled={bodyLoading} onclick={oneditbody}>{$t("fields.editArticleBody")}</button>
@@ -104,11 +113,16 @@
     <h3>{$t("fields.seo")}</h3>
     {#each fields.filter(field => isSeoField(field.key)) as field (field.key)}
       <div data-collection-field={field.key}>
-        <label>
-          <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
-          {#if field.type === "image"}<ImagePicker value={String(values[field.key] ?? "")} onpick={(value) => onchange(field.key, value)} />
-          {:else if field.type === "text"}<textarea rows="3" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)}></textarea>
-          {:else}<input type="text" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)} />{/if}
+        <label class:inline={field.type === "boolean"}>
+          {#if field.type === "boolean"}
+            <input type="checkbox" role="switch" class="switch" checked={values[field.key] === true} onchange={(event) => onchange(field.key, event.currentTarget.checked)} />
+            <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
+          {:else}
+            <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
+            {#if field.type === "image"}<ImagePicker value={String(values[field.key] ?? "")} onpick={(value) => onchange(field.key, value)} />
+            {:else if field.type === "text"}<textarea rows="3" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)}></textarea>
+            {:else}<input type="text" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)} />{/if}
+          {/if}
         </label>
         <SeoGuidance field={field.key} value={values[field.key]} />
       </div>

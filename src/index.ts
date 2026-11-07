@@ -91,6 +91,11 @@ export function rigel(options: Partial<RigelConfig> = {}): AstroIntegration {
             prerender: false,
           });
           injectRoute({
+            pattern: "/rigel/api/local/reindex",
+            entrypoint: "@rigel-cms/rigel/routes/local-reindex.ts",
+            prerender: false,
+          });
+          injectRoute({
             pattern: "/rigel/api/local/[collection]/[slug]",
             entrypoint: "@rigel-cms/rigel/routes/local-post.ts",
             prerender: false,

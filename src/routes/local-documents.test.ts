@@ -46,6 +46,7 @@ beforeEach(async () => {
   config.backend = "local";
   config.schema = schema;
   config.jsonOutput = undefined;
+  config.collections = [];
   await writeFile(path.join(root, "content/shared/studio.json"), JSON.stringify(callout));
 });
 
@@ -112,13 +113,16 @@ test("rejects invalid ids, payloads and broken references without writing", asyn
   expect(await readdir(path.join(root, "content/pages"))).toEqual([]);
 });
 
-test("requires same-origin writes, forbids deletes and rejects production or other backends", async () => {
+test("requires same-origin writes and deletes, rejects production or other backends", async () => {
   expect((await call("POST", { data: home }, "page:home", "https://evil.test")).status).toBe(403);
-  expect((await call("DELETE")).status).toBe(405);
+  expect((await call("DELETE", undefined, "page:home", "https://evil.test")).status).toBe(403);
+  expect((await call("DELETE", undefined, "page:home", "")).status).toBe(403);
+  expect((await call("DELETE")).status).toBe(404);
   const invalid = await POST({ params: { id: "page:home" }, request: new Request(origin, { method: "POST", headers: { Origin: origin }, body: "{" }) } as unknown as APIContext);
   expect(invalid.status).toBe(400);
   vi.stubEnv("PROD", true);
   expect((await call("POST")).status).toBe(404);
+  expect((await call("DELETE")).status).toBe(404);
   vi.stubEnv("PROD", false);
   config.backend = "github";
   expect((await call("POST")).status).toBe(404);
@@ -135,12 +139,71 @@ test("rejects documents over the size limit before writing", async () => {
   expect(await readdir(path.join(root, "content/pages"))).toEqual([]);
 });
 
+test("deletes unprotected pages without a request body and preserves malformed target handling", async () => {
+  expect((await call("POST")).status).toBe(204);
+  const response = await call("DELETE");
+  expect(response.status).toBe(204);
+  expect(await response.text()).toBe("");
+  expect((await call("GET")).status).toBe(404);
+  expect((await call("DELETE")).status).toBe(404);
+  for (const id of ["../escape", "page:../escape", "page:Bad Slug", "unknown:home", "%zz", "page:home:extra"]) {
+    expect((await call("DELETE", undefined, id)).status).toBe(400);
+  }
+});
+
+test("protects developer pages by filename even after editing public slugs", async () => {
+  config.schema = { ...schema, documents: schema.documents.map(type => ({ ...type, protectedSlugs: ["home"] })) };
+  expect((await call("POST")).status).toBe(204);
+  expect((await call("PUT", { data: { ...home, slug: "new-url" } })).status).toBe(204);
+  expect((await call("DELETE")).status).toBe(403);
+  expect((await call("DELETE", undefined, "callout:studio")).status).toBe(403);
+  expect((await call("POST", { data: { title: "Custom", slug: "home" } }, "page:custom")).status).toBe(204);
+  expect((await call("DELETE", undefined, "page:custom")).status).toBe(204);
+  expect((await call("GET")).status).toBe(200);
+});
+
+test("rejects references from remaining documents and collection reference fields", async () => {
+  expect((await call("POST")).status).toBe(204);
+  const reference = path.join(root, "content/shared/studio.json");
+  await writeFile(reference, JSON.stringify({ ...callout, nested: [{ _ref: "page:home" }] }));
+  expect((await call("DELETE")).status).toBe(409);
+  await writeFile(reference, JSON.stringify(callout));
+  const folder = path.join(root, "content/posts");
+  await mkdir(folder);
+  config.collections = [{ name: "posts", folder, fields: [{ key: "page", label: "Page", type: "reference", to: "page", multiple: true }] }];
+  const post = path.join(folder, "first.json");
+  await writeFile(post, JSON.stringify({ frontmatter: { page: ["page:home"] } }));
+  expect((await call("DELETE")).status).toBe(409);
+  await writeFile(post, JSON.stringify({ frontmatter: { page: [] } }));
+  expect((await call("DELETE")).status).toBe(204);
+});
+
+test("collection reference checks reject unsafe paths without following symlinks", async () => {
+  expect((await call("POST")).status).toBe(204);
+  const folder = path.join(root, "content/posts");
+  await mkdir(folder);
+  config.collections = [{ name: "posts", folder, fields: [{ key: "page", label: "Page", type: "reference", to: "page" }] }];
+  const outside = path.join(root, "outside.json");
+  const bytes = JSON.stringify({ frontmatter: { page: "page:home" } });
+  await writeFile(outside, bytes);
+  await symlink(outside, path.join(folder, "linked.json"));
+  expect((await call("DELETE")).status).toBe(500);
+  expect(await readFile(outside, "utf8")).toBe(bytes);
+  await rm(folder, { recursive: true });
+  await symlink(root, folder);
+  expect((await call("DELETE")).status).toBe(500);
+  config.collections[0].folder = "../outside";
+  expect((await call("DELETE")).status).toBe(500);
+  expect((await call("GET")).status).toBe(200);
+});
+
 test("refuses symlinked document files and folders", async () => {
   const outside = path.join(root, "outside.json");
   await writeFile(outside, JSON.stringify(home));
   await symlink(outside, path.join(root, "content/pages/home.json"));
   expect((await call("GET")).status).toBe(500);
   expect((await call("PUT")).status).toBe(500);
+  expect((await call("DELETE")).status).toBe(409);
   expect(JSON.parse(await readFile(outside, "utf8"))).toEqual(home);
   await rm(path.join(root, "content/pages/home.json"));
   await rm(path.join(root, "content"), { recursive: true, force: true });
@@ -148,6 +211,7 @@ test("refuses symlinked document files and folders", async () => {
   try {
     await symlink(elsewhere, path.join(root, "content"));
     expect((await call("POST")).status).toBe(500);
+    expect((await call("DELETE")).status).toBe(500);
     expect(await readdir(elsewhere)).toEqual([]);
   } finally {
     await rm(elsewhere, { recursive: true, force: true });

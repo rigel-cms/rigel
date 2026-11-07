@@ -7,8 +7,11 @@
   import Icon from "./Icon.svelte";
   import Select from "./Select.svelte";
   import { effectiveSearchScope } from "../../manifest/search";
+  import { installedVersion } from "./updates";
+  import logo from "../assets/rigelcms-icon.png?url";
+  import { author, license } from "../../../package.json";
 
-  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose }: {
+  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose, onreindex, oncancelindex, onclearcache, canClearFileCache = false, fileCacheBusy = false, fileCacheMessage = "", reindexBusy = false, reindexMessage = "", collections = [], maintenanceDisabled = false }: {
     s: RigelSettings;
     search?: Manifest["search"];
     contentLocales?: Manifest["contentLocales"];
@@ -18,9 +21,19 @@
     saving: boolean;
     onerase: () => void;
     onclose: () => void;
+    onreindex?: () => void;
+    oncancelindex?: () => void;
+    onclearcache?: () => void;
+    canClearFileCache?: boolean;
+    fileCacheBusy?: boolean;
+    fileCacheMessage?: string;
+    reindexBusy?: boolean;
+    reindexMessage?: string;
+    collections?: NonNullable<Manifest["collections"]>;
+    maintenanceDisabled?: boolean;
   } = $props();
 
-  type PaneId = "interface" | "content" | "connection" | "media" | "advanced";
+  type PaneId = "interface" | "content" | "connection" | "media" | "advanced" | "about";
   let active: PaneId = $state("interface");
 
   const providerIds = Object.keys(STOCK_PROVIDERS) as (keyof typeof STOCK_PROVIDERS)[];
@@ -36,6 +49,7 @@
     { id: "media", label: $t("shell.media") },
 
     { id: "advanced", label: $t("shell.advanced") },
+    { id: "about", label: $t("shell.about") },
   ]);
 
   const PANE_ICONS = {
@@ -45,6 +59,7 @@
     media: "image",
 
     advanced: "wrench",
+    about: "info",
   } as const;
 
   $effect(() => {
@@ -84,7 +99,7 @@
         {/each}
       </nav>
 
-      <div class="settings-pane" role="region" aria-label={panes.find(p => p.id === active)?.label}>
+      <div class="settings-pane" class:about={active === "about"} role="region" aria-label={panes.find(p => p.id === active)?.label}>
         {#if active === "interface"}
 
           <fieldset>
@@ -184,6 +199,16 @@
           </section>
 
 
+        {:else if active === "about"}
+          <div class="about-brand">
+            <img src={logo} alt="" width="32" height="32" />
+            <h3>Rigel <span class="brand-suffix">CMS</span></h3>
+            <span class="about-version" data-rigel-version>v{installedVersion}</span>
+          </div>
+          <p>{#each $t("shell.aboutSource", { github: "{github}", website: "{website}" }).split(/(\{github\}|\{website\})/) as part}{#if part === "{github}"}<a href="https://github.com/rigel-cms/rigel" target="_blank" rel="noopener noreferrer">GitHub</a>{:else if part === "{website}"}<a href="https://rigelcms.dev" target="_blank" rel="noopener noreferrer">{$t("shell.website")}</a>{:else}{part}{/if}{/each}</p>
+          <p>{#each $t("shell.aboutAcknowledgements", { acknowledgements: "{acknowledgements}" }).split("{acknowledgements}") as part, index}{#if index}<a href="https://github.com/rigel-cms/rigel/blob/main/ACKNOWLEDGEMENTS.md" target="_blank" rel="noopener noreferrer">{$t("shell.acknowledgements")}</a>{/if}{part}{/each}</p>
+          <p>{#each $t("shell.aboutLegal", { terms: "{terms}", privacy: "{privacy}" }).split(/(\{terms\}|\{privacy\})/) as part}{#if part === "{terms}"}<a href="https://rigelcms.dev/terms/" target="_blank" rel="noopener noreferrer">{$t("shell.termsOfUse")}</a>{:else if part === "{privacy}"}<a href="https://rigelcms.dev/privacy/" target="_blank" rel="noopener noreferrer">{$t("shell.privacyPolicy")}</a>{:else}{part}{/if}{/each}</p>
+          <p class="about-credit">{#each $t("shell.aboutLicense", { license: "{license}" }).split("{license}") as part, index}{#if index}<a href="https://github.com/rigel-cms/rigel/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">{license}</a>{/if}{part}{/each} {#each $t("shell.createdBy", { name: "{name}" }).split("{name}") as part, index}{#if index}<a href="https://alex.zappa.dev/" target="_blank" rel="noopener noreferrer">{author.name}</a>{/if}{part}{/each}</p>
         {:else}
           <h3>{$t("shell.developerMode")}</h3>
           <label class="inline">
@@ -191,10 +216,29 @@
             <span>{$t("shell.enableDevMode")}</span>
           </label>
           <p class="hint">{$t("shell.devModeHint")}</p>
+          {#if collections.length}
+            <div class="clear-data">
+              <h3>{$t("shell.maintenance")}</h3>
+              <p class="hint">{$t("shell.reindexHint")}</p>
+              <button type="button" class="outlined" disabled={maintenanceDisabled || reindexBusy} onclick={onreindex}>{$t("shell.reindexCollections")}</button>
+              {#if reindexBusy}
+                <p role="status">{$t("shell.reindexWorking")}</p>
+                <div class="connection-loader" role="progressbar" aria-label={$t("shell.reindexWorking")}></div>
+                <button type="button" class="outlined" onclick={oncancelindex}>{$t("connection.cancel")}</button>
+              {/if}
+              {#if s.devMode}
+                {#each collections as collection (collection.name)}
+                  {#if collection.index}<p role="status">{collection.label} ({collection.name}): {$t(collection.index.state === "complete" ? "shell.indexReady" : "shell.indexingCollections", { loaded: collection.index.loaded, total: collection.index.total })}{#if collection.index.error} {collection.index.error}{/if}</p>{/if}
+                {/each}
+              {/if}
+              {#if reindexMessage}<p role="status">{reindexMessage}</p>{/if}
+            </div>
+          {/if}
           <div class="clear-data">
             <h3>{$t("shell.clearData")}</h3>
             <p class="hint">{$t("shell.fileCacheHint")}</p>
-            <button type="button" class="danger-btn" disabled>{$t("shell.clearFileCache")}</button>
+            <button type="button" class="outlined" disabled={!canClearFileCache || fileCacheBusy} onclick={onclearcache}>{$t("shell.clearFileCache")}</button>
+            {#if fileCacheMessage}<p role="status">{fileCacheMessage}</p>{/if}
             <p class="hint">{$t("shell.eraseAllDataHint")}</p>
             <button type="button" class="danger-btn" disabled={saving} onclick={() => {
               eraseError = "";

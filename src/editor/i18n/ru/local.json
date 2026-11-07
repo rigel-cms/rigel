@@ -4,6 +4,8 @@
   "local.unknownDocument": "Неизвестный документ",
   "local.readDocumentFailed": "Не удалось прочитать документ",
   "local.documentDeveloperOnly": "Документы создаёт и удаляет разработчик сайта",
+  "local.pageProtected": "Эта страница является частью сайта и не может быть удалена.",
+  "local.documentReferenced": "Другие материалы ссылаются на эту страницу, поэтому её нельзя удалить.",
   "local.unknownDocumentTarget": "Неизвестный тип документа или слаг",
   "local.saveDocumentFailed": "Не удалось сохранить документ",
   "local.unknownCollectionSlug": "Неизвестная коллекция или слаг",

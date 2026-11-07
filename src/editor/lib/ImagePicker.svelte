@@ -7,6 +7,7 @@
   import { getSettings, setSettings } from "./settings";
   import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName, matchesMediaAccept, safeFileUrl } from "../../media-types";
   import config from "virtual:rigel-config";
+  import { onMediaReset, refreshMediaPreviews, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
   import type { EmbedData } from "../blocks/embed";
   import type { VideoData } from "../blocks/video";
@@ -26,12 +27,13 @@
   } = $props();
   const id = $props.id();
   const maxFileSize = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  const demoMode = config.backend === "demo";
   let open = $state(false);
   let tab = $state<"library" | "upload" | "url" | EmbedProvider | StockSource>("library");
   const providerTab = $derived(tab === "youtube" || tab === "vimeo");
   const editing = $derived(!!embed || !!value);
   const stockKeys = $derived(open ? getSettings().apiKeys : null);
-  const tabs = $derived((kind === "file" ? ["library", "upload"] : kind === "video" ? ["library", "upload", "url", "youtube", "vimeo"] : ["library", "upload", "url", "picsum", ...Object.keys(STOCK_PROVIDERS).filter(source => stockKeys?.[source as keyof typeof STOCK_PROVIDERS]?.trim())]) as (typeof tab)[]);
+  const tabs = $derived((demoMode ? ["library"] : kind === "file" ? ["library", "upload"] : kind === "video" ? ["library", "upload", "url", "youtube", "vimeo"] : ["library", "upload", "url", "picsum", ...Object.keys(STOCK_PROVIDERS).filter(source => stockKeys?.[source as keyof typeof STOCK_PROVIDERS]?.trim())]) as (typeof tab)[]);
   let videoTitle = $state("");
   let privacy = $state(true);
   let muted = $state(false);
@@ -82,12 +84,11 @@
     if (inline) { tab = "library"; open = true; }
   }
   async function saveMetadata() {
-    if (!selected?.asset || savingMeta) return;
+    if (demoMode || !selected?.asset || !writable || savingMeta) return;
     const url = selected.asset.url;
     savingMeta = true; metaError = ""; metaNotice = "";
     try {
-      const response = await fetch("/rigel/api/local/media", { method: "PUT", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url, name: metaName.trim() || undefined, title: metaTitle.trim() || undefined, description: metaDescription.trim() || undefined, alt: selected.asset.type?.startsWith("image/") ? metaAlt : undefined }) });
-      if (!response.ok) { metaError = $t("media.metadataSaveFailedStatus", { status: response.status }); return; }
+      await saveMediaMetadata({ url, name: metaName.trim() || undefined, title: metaTitle.trim(), description: metaDescription.trim(), ...(selected.asset.type?.startsWith("image/") ? { alt: metaAlt } : {}) });
       await library();
       selected = { url, asset: assets.find(a => a.url === url) };
       metaNotice = $t("media.metadataSaved");
@@ -99,8 +100,7 @@
     const url = selected.asset.url;
     picking = true;
     try {
-      const response = await fetch("/rigel/api/local/media", { method: "DELETE", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url }) });
-      if (!response.ok) throw new Error($t("media.deleteFailed", { status: response.status }));
+      await deleteMedia(url);
       assets = assets.filter(asset => asset.url !== url);
       librarySelection = ""; notice = $t("media.fileDeleted");
       close();
@@ -115,21 +115,23 @@
     alt = (image.alt ?? altText).slice(0, 1000);
   }
 
-  async function library() {
-    const response = await fetch("/rigel/media.json", { cache: "no-store", headers: { "Accept-Language": $locale } });
-    if (!response.ok) throw new Error($t("media.listingUnavailable"));
-    const data = await response.json();
-    assets = (data.assets ?? data.images).filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
-    writable = data.writable === true;
+  async function library(refresh = false) {
+    const request = requestId, data = await listMedia(refresh);
+    if (request !== requestId) return;
+    assets = data.assets.filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
+    writable = !demoMode && data.writable === true;
     folder = data.folder;
   }
-  onMount(() => { if (inline) void run(); });
+  onMount(() => {
+    if (inline) void run();
+    return onMediaReset(() => { close(); assets = []; writable = false; }, () => { if (inline) void run(); });
+  });
   onDestroy(() => { requestId++; releaseFile(); });
   $effect(() => {
     if (open && dialog) { dialog.showModal(); cancel?.focus(); }
   });
   function releaseFile() { if (objectURL) URL.revokeObjectURL(objectURL); objectURL = ""; }
-  async function run() {
+  async function run(refresh = false) {
     if (picking) return;
     const request = ++requestId;
     error = "";
@@ -144,7 +146,7 @@
     }
     loading = true; results = []; searched = false;
     try {
-      if (tab === "library" || tab === "upload") await library();
+      if (tab === "library" || tab === "upload") { await library(refresh); if (refresh) refreshMediaPreviews(); }
       else {
         const found = await searchImages(tab as StockSource, query);
         if (request === requestId) results = found;
@@ -154,6 +156,7 @@
     finally { if (request === requestId) loading = false; }
   }
   async function confirm() {
+    if (demoMode && (tab !== "library" || !selected?.asset)) { error = $t("shell.demoMediaReadOnly"); return; }
     if (providerTab) {
       const ref = parseEmbedUrl(urlInput);
       if (!ref || ref.provider !== tab) { error = $t("media.pasteVideoUrl", { provider: tab === "youtube" ? "YouTube" : "Vimeo" }); return; }
@@ -168,13 +171,10 @@
     const metadata = metadataImport ? { title: metaTitle.trim(), description: metaDescription.trim(), ...(imageImport ? { alt: alt.trim() } : {}) } : null;
     picking = true; error = "";
     try {
-      const url = choice.file ? await uploadMedia(choice.file) : choice.stock ? await importStockImage(choice.stock) : needsImport ? await importImageUrl(choice.url) : choice.url;
+      const url = choice.file ? await uploadMedia(choice.file, metadata ?? {}) : choice.stock ? await importStockImage(choice.stock, metadata ?? {}) : needsImport ? await importImageUrl(choice.url, metadata ?? {}) : choice.url;
       if (!safeImageUrl(url)) throw new Error($t("media.unsafeMediaUrl"));
       if (kind === "file" && (!safeFileUrl(url) || !matchesMediaAccept(url, accept))) throw new Error($t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }));
-      if (metadata) {
-        const saved = await fetch("/rigel/api/local/media", { method: "PUT", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url, ...metadata }) });
-        if (!saved.ok) throw new Error($t("media.uploadedMetadataFailed", { status: saved.status }));
-      }
+      if (metadata && mediaBackend() !== "github") await saveMediaMetadata({ url, ...metadata }, "media.uploadedMetadataFailed");
       if (kind === "video" && mediaMetadata(new URL(url, location.origin).pathname)?.category !== "Video") throw new Error($t("media.chooseVideoUrl"));
       if (request === requestId) {
         if (inline) {
@@ -187,6 +187,7 @@
     finally { if (request === requestId) picking = false; }
   }
   function upload(file?: File) {
+    if (demoMode) return;
     if (!file || picking) return;
     error = "";
     const limit = maxFileSize;
@@ -204,6 +205,7 @@
     releaseFile(); onclose?.(); trigger?.focus();
   }
   function changeTab(next: typeof tab) {
+    if (demoMode) next = "library";
     alt = altText; metaTitle = ""; metaDescription = "";
     requestId++; releaseFile(); tab = next; results = []; selected = null; error = ""; searched = false; loading = false;
     if (next === "youtube" || next === "vimeo") {
@@ -220,7 +222,7 @@
 </script>
 
 {#if inline}
-  <div class="titlebar"><h2>{$t("media.heading")}</h2><button bind:this={trigger} type="button" class="primary" onclick={launch}>{$t("media.upload")}</button></div>
+  <div class="titlebar"><h2>{$t("media.heading")}</h2><button bind:this={trigger} type="button" class="primary" disabled={demoMode} onclick={launch}>{$t("media.upload")}</button></div>
   <div class="media-library">
     {@render libraryBrowser()}
     {#if notice}<p role="status">{notice}</p>{/if}
@@ -239,6 +241,7 @@
 {/if}
 
 {#snippet libraryBrowser()}
+  {#if demoMode}<p class="hint">{$t("shell.demoMediaReadOnly")}</p>{/if}
   <p class="hint">{$t(writable ? "media.repositoryWritable" : "media.repositorySnapshot", { folder: folder || "…" })}</p>
   <div class="media-tools">
     <div class="media-views" role="group" aria-label={$t("media.view")}>
@@ -251,7 +254,7 @@
     <div class="media-select">
       <Select ariaLabel={$t("media.modifiedMonth")} data-tooltip={$t("media.modifiedMonthHint")} value={month} onchange={next => { month = String(next); }} options={[{ value: "", label: $t("media.allModifiedDates") }, ...months.map(date => ({ value: date, label: new Date(date + "-01T00:00:00Z").toLocaleDateString($locale, { month: "long", year: "numeric", timeZone: "UTC" }) }))]} />
     </div>
-    <button type="button" class="outlined" onclick={() => { tab = "library"; void run(); }} disabled={loading || picking}>{$t("media.refresh")}</button>
+    <button type="button" class="outlined" onclick={() => { tab = "library"; void run(true); }} disabled={loading || picking}>{$t("media.refresh")}</button>
     {#if filter || format || month}<button type="button" class="outlined" onclick={resetFilters}>{$t("media.resetFilters")}</button>{/if}
     <input class="media-search" aria-label={$t("media.searchMedia")} type="search" bind:value={filter} placeholder={$t("media.searchMediaPlaceholder")} />
   </div>
@@ -287,10 +290,10 @@
           <div class="media-details">
           {#if (inline && selected.asset) || metadataImport}
             <div class="media-meta">
-              {#if inline && selected.asset}<label><span>{$t("media.displayName")}</span><input aria-label={$t("media.mediaDisplayName")} type="text" maxlength="120" bind:value={metaName} /></label>{/if}
-              {#if imageImport}<label><span>{$t("media.decorativeAlt")}</span><input aria-label={$t("media.imageAlt")} type="text" maxlength="1000" disabled={picking} bind:value={alt} /></label>{:else if selected.asset?.type?.startsWith("image/")}<label><span>{$t("media.alt")}</span><textarea aria-label={$t("media.mediaAlt")} rows="3" maxlength="1000" bind:value={metaAlt}></textarea></label>{/if}
-              <label><span>{$t("media.title")}</span><input aria-label={$t(imageImport ? "media.imageTitle" : "media.mediaTitle")} type="text" maxlength="200" disabled={picking} bind:value={metaTitle} /></label>
-              <label><span>{$t("media.description")}</span><textarea aria-label={$t(imageImport ? "media.imageDescription" : "media.mediaDescription")} rows="3" maxlength="1000" disabled={picking} bind:value={metaDescription}></textarea></label>
+              {#if inline && selected.asset}<label><span>{$t("media.displayName")}</span><input aria-label={$t("media.mediaDisplayName")} type="text" maxlength="120" readonly={demoMode} bind:value={metaName} /></label>{/if}
+              {#if imageImport}<label><span>{$t("media.decorativeAlt")}</span><input aria-label={$t("media.imageAlt")} type="text" maxlength="1000" disabled={picking} bind:value={alt} /></label>{:else if selected.asset?.type?.startsWith("image/")}<label><span>{$t("media.alt")}</span><textarea aria-label={$t("media.mediaAlt")} rows="3" maxlength="1000" readonly={demoMode} bind:value={metaAlt}></textarea></label>{/if}
+              <label><span>{$t("media.title")}</span><input aria-label={$t(imageImport ? "media.imageTitle" : "media.mediaTitle")} type="text" maxlength="200" readonly={demoMode} disabled={picking} bind:value={metaTitle} /></label>
+              <label><span>{$t("media.description")}</span><textarea aria-label={$t(imageImport ? "media.imageDescription" : "media.mediaDescription")} rows="3" maxlength="1000" readonly={demoMode} disabled={picking} bind:value={metaDescription}></textarea></label>
               {#if selected.asset}<p class="hint">{$t("media.author", { author: selected.asset.author || $t("media.localUser") })}</p>{:else if selected.file}<p class="hint">{selected.file.name}</p>{/if}
             </div>
           {:else if selected.file}
@@ -317,7 +320,7 @@
           <div class="media-button-actions">
           {#if inline && selected.asset}
             <button type="button" class="outlined" disabled={picking || savingMeta} onclick={close}>{$t("media.cancel")}</button>
-            <button type="button" class="primary" disabled={picking || savingMeta} onclick={saveMetadata}>{$t(savingMeta ? "media.saving" : "media.save")}</button>
+            <button type="button" class="primary" disabled={!writable || picking || savingMeta} onclick={saveMetadata}>{$t(savingMeta ? "media.saving" : "media.save")}</button>
           {:else}
             <button type="button" class="outlined" disabled={picking} onclick={() => { selected = null; releaseFile(); }}>{$t("media.back")}</button>
             {#if inline && tab === "library"}<button type="button" class="primary" onclick={close}>{$t("media.done")}</button>{:else}<button type="button" class="primary" disabled={picking || (needsImport && !writable)} onclick={confirm}>{$t(picking ? kind === "file" ? "media.uploadingFile" : kind === "video" ? "media.uploadingVideo" : "media.importingPhoto" : kind === "file" ? selected.file ? "media.uploadFile" : "media.useFile" : kind === "video" ? "media.useVideo" : !inline ? "media.insertImage" : selected.file && mediaMetadata(selected.file.name)?.category !== "Images" ? "media.uploadFile" : "media.importImage")}</button>{/if}
@@ -346,10 +349,10 @@
           {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
         {:else if tab === "url"}
           <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="url" bind:value={urlInput} placeholder={$t(kind === "video" ? "media.videoUrlPlaceholder" : "media.imageUrlPlaceholder")} /></label>
-          <button type="button" class="primary" onclick={run}>{$t("media.useUrl")}</button>
+          <button type="button" class="primary" onclick={() => run()}>{$t("media.useUrl")}</button>
         {:else}
           <p class="hint">{$t(tab === "picsum" ? "media.picsumHint" : tab === "unsplash" ? "media.unsplashHint" : "media.stockImportHint")}</p>
-          <div class="search-row"><input aria-label={$t("media.searchPhotos")} type="search" bind:value={query} placeholder={$t("media.searchPhotosPlaceholder")} onkeydown={e => e.key === "Enter" && run()} /><button type="button" class="primary" onclick={run} disabled={loading || picking}>{loading ? "…" : $t("media.search")}</button></div>
+          <div class="search-row"><input aria-label={$t("media.searchPhotos")} type="search" bind:value={query} placeholder={$t("media.searchPhotosPlaceholder")} onkeydown={e => e.key === "Enter" && run()} /><button type="button" class="primary" onclick={() => run()} disabled={loading || picking}>{loading ? "…" : $t("media.search")}</button></div>
           {#if searched && !results.length && !error}<p class="hint" role="status">{$t("media.noPhotos")}</p>{/if}
           <div class="grid">
             {#each results as r (r.url)}

@@ -48,6 +48,7 @@ export interface DocumentDef {
   singleton?: boolean;
   demo?: boolean;
   creatable?: boolean;
+  protectedSlugs?: string[];
   template?: DocumentTemplateSection[];
   initialValue?: Record<string, unknown>;
 }
@@ -58,6 +59,7 @@ export interface Schema {
 }
 
 export interface ContentDocument {
+  loaded?: "identity" | "metadata" | "complete";
   id: string;
   type: string;
   slug: string;

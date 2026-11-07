@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "Niet indexeren (noindex)",
+  "defaults.noindexHelp": "Instrueert zoekmachines om deze pagina niet te indexeren of in zoekresultaten te tonen. Robots kunnen de pagina nog steeds crawlen en de links volgen. De pagina wordt hierdoor niet privé.",
   "defaults.draft": "Concept",
   "defaults.seoTitle": "SEO-titel",
   "defaults.seoDescription": "SEO-beschrijving",

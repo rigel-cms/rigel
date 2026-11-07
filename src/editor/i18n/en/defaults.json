@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "No index (noindex)",
+  "defaults.noindexHelp": "Instruct search engines not to index this page or show it in search results. Robots can still crawl the page and follow its links. This does not make the page private.",
   "defaults.draft": "Draft",
   "defaults.seoTitle": "SEO title",
   "defaults.seoDescription": "SEO description",

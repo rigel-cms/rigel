@@ -4,6 +4,16 @@ import { compile } from "svelte/compiler";
 import { ICONS } from "./lib/icons";
 import { translate } from "./i18n";
 
+test("maintenance keeps counts in developer mode and wires a usable clear cache action", () => {
+  const source = readFileSync(new URL("./lib/Settings.svelte", import.meta.url), "utf8");
+  expect(source).toContain("{#if s.devMode}");
+  expect(source).toContain("({collection.name})");
+  expect(source).toContain('class="connection-loader"');
+  expect(source).toContain("onclick={onclearcache}");
+  expect(source).toContain("disabled={!canClearFileCache || fileCacheBusy}");
+  expect(() => compile(source, { filename: "Settings.svelte", generate: "client" })).not.toThrow();
+});
+
 test("sidebar Publish uses the Phosphor rocket-launch icon", () => {
   const source = readFileSync(new URL("./App.svelte", import.meta.url), "utf8");
   expect(source).toContain('<Icon name="rocketLaunch" size={18} /><span class="sidebar-label">{$t("shell.publish")}</span>');

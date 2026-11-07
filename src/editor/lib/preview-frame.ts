@@ -23,7 +23,7 @@ export async function fetchPreview(url: URL, signal: AbortSignal): Promise<strin
   const head = root.querySelector("head")!;
   const base = document.createElement("base"); base.href = url.href;
   const policy = document.createElement("meta"); policy.httpEquiv = "Content-Security-Policy";
-  policy.content = "default-src 'none'; script-src 'none'; style-src https: http: 'unsafe-inline'; img-src https: http: data: blob:; font-src https: http: data:; media-src https: http:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri " + url.origin;
+  policy.content = "default-src 'none'; script-src 'none'; style-src https: http: 'unsafe-inline'; img-src https: http: data: blob:; font-src https: http: data:; media-src https: http: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri " + url.origin;
   const referrer = document.createElement("meta"); referrer.name = "referrer"; referrer.content = "no-referrer";
   head.prepend(policy, referrer, base);
   return "<!doctype html>" + root.outerHTML;

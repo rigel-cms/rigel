@@ -4,6 +4,8 @@
   "local.unknownDocument": "Onbekend document",
   "local.readDocumentFailed": "Het document kon niet worden gelezen",
   "local.documentDeveloperOnly": "Documenten worden aangemaakt en verwijderd door de ontwikkelaar van de site",
+  "local.pageProtected": "Deze pagina maakt deel uit van de website en kan niet worden verwijderd.",
+  "local.documentReferenced": "Andere inhoud verwijst naar deze pagina, waardoor deze niet kan worden verwijderd.",
   "local.unknownDocumentTarget": "Onbekend documenttype of onbekende slug",
   "local.saveDocumentFailed": "Het document kon niet worden opgeslagen",
   "local.unknownCollectionSlug": "Onbekende collectie of slug",

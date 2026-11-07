@@ -3,12 +3,13 @@ import { requestTranslator } from "../editor/i18n/server";
 import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { applyValues } from "./serialize";
+import config from "virtual:rigel-config";
 
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request }) => {
   const t = requestTranslator(request);
-  if (import.meta.env.PROD) {
+  if (import.meta.env.PROD || config.backend !== "local") {
     return new Response("Local backend is dev-only", { status: 404 });
   }
 

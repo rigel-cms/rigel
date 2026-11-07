@@ -1,3 +1,5 @@
+import { clearFileCache } from "./file-cache";
+
 type SessionConfig = { authOrigin: string; repo: string; branch: string; appSlug: string };
 type Session = { accessToken: string; expiresAt: number };
 
@@ -6,6 +8,7 @@ function sessionScope(config: SessionConfig) {
 }
 
 export function clearSession() {
+  void clearFileCache().catch(() => {});
   try { localStorage.removeItem("rigelcms.session"); } catch {}
 }
 

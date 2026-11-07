@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parseConfig } from "../config";
+import { validateDocumentId } from "../schema/validate";
 import type { RigelConfig } from "../config";
 import type { GitHubBackendConfig } from "../manifest/types";
 
@@ -20,6 +21,9 @@ export function rigelManifestPlugin(cfg: RigelConfig, publicDir?: URL, root?: UR
     repo: cfg.repo!, branch: cfg.branch!, publishBranch: cfg.publishBranch!, repoRoot: cfg.repoRoot!, authOrigin: cfg.authOrigin!, appSlug: cfg.appSlug!, copyDir: cfg.copyDir,
     collections: collections.map(({ name, folder }) => ({ name, folder })),
     jsonOutput: cfg.jsonOutput,
+    publicDir: publicDir && root ? path.relative(fileURLToPath(root), fileURLToPath(publicDir)).split(path.sep).join("/") : "public",
+    mediaDir: cfg.mediaDir,
+    maxFileSize: cfg.maxFileSize,
     ...(cfg.menus ? { menus: { folder: cfg.menus.folder, maxDepth: cfg.menus.maxDepth! } } : {}),
   } : undefined;
 
@@ -30,7 +34,7 @@ ${documentTypes.map((type, index) => `const __rigelDoc${index} = import.meta.glo
 export const documentTypes = ${JSON.stringify(documentTypes.map((type) => ({ name: type.name, shared: Boolean(type.shared) })))};
 const __rigelRawDocuments = { ${documentTypes.map((type, index) => `${JSON.stringify(type.name)}: __rigelDoc${index}`).join(", ")} };
 export const documents = Object.entries(__rigelRawDocuments)
-  .flatMap(([type, modules]) => Object.entries(modules).map(([file, data]) => {
+  .flatMap(([type, modules]) => Object.entries(modules).filter(([file]) => !file.split("/").some(part => part.startsWith("."))).map(([file, data]) => {
     const slug = file.split("/").pop().replace(/\\.json$/, "");
     return { id: type + ":" + slug, type, slug, data: { ...data, _id: type + ":" + slug, _type: type } };
   }))
@@ -51,7 +55,7 @@ const __rigelReservedSlugs = new Set(documents.filter((doc) => !documentTypes.fi
     columns: ${JSON.stringify(c.columns ?? null)},
     posts: Object.entries(
       import.meta.glob(${JSON.stringify(`/${c.folder}/**/*.json`)}, { eager: true, query: "?raw", import: "default" })
-    ).map(([path, raw]) => {
+    ).filter(([path]) => !path.split("/").some(part => part.startsWith("."))).map(([path, raw]) => {
       const post = JSON.parse(raw);
       __rigelValidateBody(post.body);
       __rigelValidateCollectionValues(${JSON.stringify(c.fields)}, post.frontmatter, documents);
@@ -80,6 +84,18 @@ export const menus = {
     name: "rigel-manifest",
     enforce: "pre",
     configureServer(server) {
+      if (cfg.backend === "local" && cfg.schema && root) server.middlewares.use((request, response, next) => {
+        const match = /^\/rigel\/api\/local\/documents\/([^/?]+)(?:\?.*)?$/.exec(request.url ?? "");
+        if (request.method === "DELETE" && match) {
+          let id: string;
+          try { id = decodeURIComponent(match[1]); } catch { return next(); }
+          const target = validateDocumentId(cfg.schema!, id);
+          if (target) response.once("finish", () => {
+            if (response.statusCode === 204) server.watcher.emit("unlink", path.resolve(fileURLToPath(root), target.type.folder, `${target.slug}.json`));
+          });
+        }
+        next();
+      });
       const editors = new WeakSet<WebSocketClient>();
       server.ws.on("rigel:editor-ready", (_data, client) => editors.add(client));
       const hot = server.environments.client.hot;
@@ -122,6 +138,8 @@ export const menus = {
         }
         if (this.environment.name === "client") {
           this.environment.hot.send({ type: "custom", event: isMenu ? "rigel:menus-updated" : isCollection ? "rigel:collections-updated" : "rigel:content-updated", data: {} });
+        } else {
+          this.environment.hot.send("astro:content-changed", {});
         }
         return [];
       },
@@ -219,7 +237,7 @@ ${collectionCode}
 ];
 for (const collection of collections) __rigelAssertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })));
 ${menuCode}
-export default { pages, collections, documents, search: ${JSON.stringify(cfg.search)}${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
+export default { pages, collections, documents, search: ${JSON.stringify(cfg.search)}${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : cfg.backend === "demo" ? ', backend: "demo"' : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
 `;
     },
   };

@@ -19,6 +19,16 @@ function raw(cfg: RigelConfig): RawPlugin {
 
 const cfg: RigelConfig = { copyDir: "src/content/copy", backend: "local" };
 
+test("demo manifest carries its backend without GitHub identity or auth configuration", () => {
+  const plugin = raw({ ...cfg, backend: "demo", repo: "ignored/repo", users: ["private-user"] });
+  const code = plugin.load("\0virtual:rigel-manifest")!;
+  expect(code).toContain('backend: "demo"');
+  expect(code).not.toContain("github:");
+  expect(code).not.toContain("ignored/repo");
+  expect(code).not.toContain("private-user");
+  expect(JSON.parse(plugin.load("\0virtual:rigel-config")!.slice("export default ".length, -1)).backend).toBe("demo");
+});
+
 test("extensions are isolated static default imports relative to Astro root", async () => {
   const plugin = rigelManifestPlugin({ ...cfg, extensions: ["./src/notes.ts", "./custom/other.js"] }, undefined, new URL("file:///site%20root/")) as unknown as RawPlugin;
   expect(plugin.resolveId("virtual:rigel-extensions")).toBe("\0virtual:rigel-extensions");
@@ -78,9 +88,31 @@ test("github manifest projects only public remote configuration", () => {
   const plugin = raw({ ...cfg, backend: "github", repo: "owner/repo", users: ["private-user"], collections: [{ name: "blog", folder: "src/content/blog", fields: [] }], menus: { folder: "src/content/menus" } });
   const code = plugin.load("\0virtual:rigel-manifest")!;
   expect(code).toContain('backend: "github"');
-  expect(code).toContain('github: {"repo":"owner/repo","branch":"drafts","publishBranch":"main","repoRoot":"","authOrigin":"https://auth.rigelcms.dev","appSlug":"rigel-cms","copyDir":"src/content/copy","collections":[{"name":"blog","folder":"src/content/blog"}],"jsonOutput":"pretty","menus":{"folder":"src/content/menus","maxDepth":3}}');
+  expect(code).toContain('github: {"repo":"owner/repo","branch":"drafts","publishBranch":"main","repoRoot":"","authOrigin":"https://auth.rigelcms.dev","appSlug":"rigel-cms","copyDir":"src/content/copy","collections":[{"name":"blog","folder":"src/content/blog"}],"jsonOutput":"pretty","publicDir":"public","maxFileSize":2097152,"menus":{"folder":"src/content/menus","maxDepth":3}}');
   expect(code).not.toContain("private-user");
   expect(raw(cfg).load("\0virtual:rigel-manifest")).not.toContain("github:");
+});
+
+test("successful page deletion explicitly invalidates the watched file", () => {
+  const plugin = rigelManifestPlugin({ ...cfg, schema: { objects: [], documents: [{ name: "page", title: "Pages", type: "document", folder: "src/content/pages", fields: [{ key: "title", label: "Title", type: "string" }] }] } }, undefined, new URL("file:///site/"));
+  const use = vi.fn(), emit = vi.fn();
+  const server = { middlewares: { use }, watcher: { emit }, ws: { on: vi.fn(), clients: new Set() }, environments: { client: { hot: { send: vi.fn() } } } };
+  (plugin.configureServer as (server: unknown) => void)(server);
+  for (const [method, url, status, expected] of [
+    ["DELETE", "/rigel/api/local/documents/page%3Aextra", 204, true],
+    ["DELETE", "/rigel/api/local/documents/page%3Ahome", 403, false],
+    ["GET", "/rigel/api/local/documents/page%3Aextra", 200, false],
+    ["DELETE", "/rigel/api/local/documents/page%3A..%2Fextra", 204, false],
+    ["DELETE", "/rigel/api/local/documents/%", 204, false],
+  ] as const) {
+    emit.mockClear();
+    const once = vi.fn(), next = vi.fn();
+    use.mock.calls[0][0]({ method, url }, { statusCode: status, once }, next);
+    expect(next).toHaveBeenCalledOnce();
+    for (const [, finish] of once.mock.calls) finish();
+    expect(emit).toHaveBeenCalledTimes(expected ? 1 : 0);
+    if (expected) expect(emit).toHaveBeenCalledWith("unlink", "/site/src/content/pages/extra.json");
+  }
 });
 
 test("Astro content-store reloads reach public pages but not mounted editor clients", () => {
@@ -113,6 +145,9 @@ test("collection Markdown HMR invalidates the manifest without reloading the edi
   send.mockClear();
   expect(handler.call(context, { file: "/site/src/content/blog-other/post.md", modules: [], timestamp: 2 })).toBeUndefined();
   expect(send).not.toHaveBeenCalled();
+  const astro = { environment: { ...context.environment, name: "astro" } };
+  expect(handler.call(astro, { file: "/site/src/content/blog/nested/post.md", modules: [], timestamp: 3 })).toEqual([]);
+  expect(send).toHaveBeenCalledWith("astro:content-changed", {});
 });
 
 test.each([

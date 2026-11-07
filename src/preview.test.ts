@@ -1,8 +1,20 @@
-import { expect, test } from "vitest";
-import { anchorValue, previewPath, safePreviewUrl } from "./preview";
+import { expect, test, vi } from "vitest";
+import { anchorValue, bindPreviewDocument, previewPath, safePreviewUrl } from "./preview";
 import { rigel } from "./index";
 import { parseConfig } from "./config";
 import { previewUrl } from "./preview";
+
+test("schema templates bind primary anchors inside nested templates without changing shared owners", () => {
+  const primary = { nodeType: 1, children: [], getAttribute: () => "$document", setAttribute: vi.fn() };
+  const nested = { ...primary, setAttribute: vi.fn() };
+  const shared = { ...primary, getAttribute: () => "settings:site", setAttribute: vi.fn() };
+  const template = { nodeType: 1, tagName: "TEMPLATE", getAttribute: () => null, children: [], content: { nodeType: 11, children: [nested] } };
+  const doc = { documentElement: { nodeType: 1, getAttribute: () => null, children: [primary, shared, template] } };
+  bindPreviewDocument(doc as unknown as Document, "page:new-page");
+  expect(primary.setAttribute).toHaveBeenCalledExactlyOnceWith("data-rigel-doc", "page:new-page");
+  expect(nested.setAttribute).toHaveBeenCalledExactlyOnceWith("data-rigel-doc", "page:new-page");
+  expect(shared.setAttribute).not.toHaveBeenCalled();
+});
 
 test("live and draft bases resolve independently without changing route mappings", () => {
   const config = parseConfig({ preview: { liveUrl: "https://sunnypixels.io", draftUrl: "https://drafts.example.test/site", pages: { about: "/about/" }, documents: { page: { url: "/{slug}/", index: "/" } }, collections: { blog: { url: "/blog/{slug}/", new: "/preview/blog/" } } } }).preview!;

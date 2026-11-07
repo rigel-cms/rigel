@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "不编入索引（noindex）",
+  "defaults.noindexHelp": "指示搜索引擎不要将此页面编入索引或显示在搜索结果中。机器人仍可抓取此页面并跟踪其中的链接。此设置不会将页面设为私密。",
   "defaults.draft": "草稿",
   "defaults.seoTitle": "SEO 标题",
   "defaults.seoDescription": "SEO 描述",

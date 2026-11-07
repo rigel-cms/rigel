@@ -13,6 +13,7 @@ The integration adds missing declarations for these top-level keys to non-shared
 | `metaTitle` | `string` | SEO title |
 | `description` | `text` | SEO description |
 | `ogImage` | `image` | Social image |
+| `noindex` | `boolean` | No index (noindex) |
 
 Existing declarations with the same key are retained rather than duplicated, and configuration parsing does not rewrite saved content. Keep the native key/type shape if you declare these fields yourself. Shared records, such as authors or site settings, do not receive the automatic SEO fields. Legacy copy fields need their own declarations and host rendering.
 
@@ -41,8 +42,9 @@ interface Props {
   metaTitle?: string;
   description?: string;
   ogImage?: string;
+  noindex?: boolean;
 }
-const { title, metaTitle, description, ogImage } = Astro.props;
+const { title, metaTitle, description, ogImage, noindex } = Astro.props;
 const headTitle = metaTitle?.trim() || title;
 const headDescription = description?.trim() || "Notes from the observatory.";
 const imageUrl = ogImage?.trim()
@@ -58,6 +60,7 @@ const socialImage = imageUrl && ["https:", "http:"].includes(imageUrl.protocol)
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{headTitle}</title>
     <meta name="description" content={headDescription} />
+    {noindex === true && <meta name="robots" content="noindex" />}
     {socialImage && <>
       <meta property="og:image" content={socialImage} />
       <meta name="twitter:card" content="summary_large_image" />
@@ -77,6 +80,12 @@ Canonical links, social title/description tags, structured data, sitemaps and la
 SEO title and description show live character counts and length meters. Titles target 50 to 60 characters; descriptions target 120 to 160. Empty values are neutral, short values approach the target in yellow, the recommended range is green, and very short or over-target values are red. These are editing hints, not ranking scores or hard limits. Values remain editable and saveable outside the suggested range. Host-added title suffixes are not counted, and actual snippets vary by query, device and available width.
 
 Social image uses the native [media picker](media.md) and supports removal. Its preview uses a centered 1200 × 628 crop within the sidebar. That display does not resize or crop the stored image bytes. Supply an image suitable for social sharing rather than assuming a page-section or article-cover image will be used automatically.
+
+## Control indexing
+
+The SEO tab's **No index (noindex)** switch is off by default. `noindex: true` requests exclusion from search results; `false` or a missing value leaves ordinary indexing unchanged. It does not change the page URL, prevent direct access, or make content private. Changes require explicit Save and the host's usual publishing process.
+
+The Astro starter passes saved page and article values, including localized variants, to its shared layout and emits one `<meta name="robots" content="noindex">` only when enabled. Links remain followable. Other hosts must implement this head output themselves. Keep flagged URLs out of any sitemap your host generates; the starter does not currently generate a sitemap. Do not add a `robots.txt` Disallow rule for these URLs: crawlers must fetch the page to see its noindex directive. Search engines decide when to recrawl and remove an indexed URL.
 
 ## Keep drafts out of public builds
 

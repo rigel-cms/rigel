@@ -1,6 +1,8 @@
 <script lang="ts">
   import { t, locale } from "./i18n";
-  import { onMount, tick } from "svelte";
+  import { onMount, onDestroy, tick, untrack } from "svelte";
+  import { selectionHash, resolveHash, createHashNavigation } from "./lib/hash-navigation";
+  import { draftSnapshot, updateDraftField, contentCatalog, selectContent, replaceArticleBody, registerDraftTools, type DraftModelContext } from "./lib/webmcp";
   import { tooltipRoot } from "./lib/tooltip";
   onMount(() => tooltipRoot(document.body).destroy);
   import type {
@@ -11,7 +13,26 @@
   import Field from "./lib/Field.svelte";
   import SitePreview from "./lib/SitePreview.svelte";
   import ImagePicker from "./lib/ImagePicker.svelte";
+  import { configureMediaBackend, resetMediaPreviews, refreshMediaPreviews, mediaPreviews } from "./lib/media-backend";
+  onDestroy(configureMediaBackend(() => ({ ctx: requireGitContext(), manifest }), handleAuthError, () => manifest.backend));
   import Settings from "./lib/Settings.svelte";
+  import UpdateNotice from "./lib/UpdateNotice.svelte";
+  import { checkUpdate, dismissUpdate, isUpdateDismissed } from "./lib/updates";
+
+  let updateVersion = $state<string | null>(null);
+  onMount(() => {
+    const controller = new AbortController();
+    void checkUpdate(undefined, controller.signal).then(version => {
+      if (!controller.signal.aborted && version && !isUpdateDismissed(version)) updateVersion = version;
+    });
+    return () => controller.abort();
+  });
+
+  function dismissVersion() {
+    if (updateVersion) dismissUpdate(updateVersion);
+    updateVersion = null;
+    document.querySelector<HTMLAnchorElement>(".brand")?.focus({ preventScroll: true });
+  }
   import { effectiveSearchScope } from "../manifest/search";
   import TopBar from "./lib/TopBar.svelte";
   import Select from "./lib/Select.svelte";
@@ -24,7 +45,7 @@
   import SchemaPanel from "./lib/SchemaPanel.svelte";
   import { collectionPreviewValues, referenceLabel, referenceOptions } from "../manifest/references";
   import { isSeoField } from "../manifest/seo";
-  import { initialCollectionValues } from "../manifest/collections";
+  import { initialCollectionValues, validateCollectionValues } from "../manifest/collections";
   import { slugify } from "./lib/slugify";
   import { effectiveSlug, normalizeUrlSlug } from "../slugs";
   import Icon from "./lib/Icon.svelte";
@@ -37,13 +58,18 @@
   import UnsavedChanges from "./lib/UnsavedChanges.svelte";
   import ActionDialog from "./lib/ActionDialog.svelte";
   import PublishDialog from "./lib/PublishDialog.svelte";
+  import { validateDemoSelection } from "./lib/demo-backend";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
+  import { isProtectedDocument, assertDocumentUnreferenced } from "../schema/deletion";
   import { previewUrl, previewPath } from "../preview";
   import type { ContentDocument, DocumentDef, Schema } from "../schema/types";
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
-  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
+  import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
+  import { readRemotePost, reauthorizeRemoteContent, remoteSelectionReady, readRemoteSelection, indexRemoteDocuments, hasRemoteFileCache, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./lib/github-backend";
+  import { readLocalArticle, cacheLocalArticle, resetLocalArticles, hasLocalArticles } from "./lib/local-articles";
+  import { clearFileCache, hasFileCache, fileCacheChanges } from "./lib/file-cache";
 
   type Sel = Selection;
 
@@ -64,6 +90,7 @@
   let sessionExpiresAt = $state(0);
   let tokenExpired = $state(false);
   const githubMode = $derived(manifest.backend === "github");
+  const demoMode = $derived(manifest.backend === "demo");
   let sel = $state<Sel | null>(null);
   const previewTarget = $derived(sel?.kind === "page" ? sel : null);
   let draft = $state<Record<string, unknown>>({});
@@ -73,6 +100,86 @@
   let saveState = $state<"idle" | "saving" | "saved" | "error">("idle");
   let saveTask: Promise<boolean> | null = null;
   let saveError = $state("");
+  let articleLoading = $state(false);
+  let articleError = $state("");
+  let articleRevision = 0;
+  let documentIndexLoading = $state(false);
+  let documentIndexError = $state("");
+  let indexController = new AbortController();
+  let reindexBusy = $state(false);
+  let reindexMessage = $state("");
+  let fileCacheMessage = $state("");
+  const canClearFileCache = $derived.by(() => { $fileCacheChanges; return hasRemoteFileCache(manifest) || hasLocalArticles() || hasFileCache(); });
+  const fileCacheBusy = $derived(connectionBusy || reindexBusy || articleLoading || documentIndexLoading || saveState === "saving" || publishBusy);
+
+  function clearFiles() {
+    if (fileCacheBusy || !canClearFileCache) return;
+    actionDialog = {
+      title: $t("shell.clearFileCache"), description: $t("shell.clearFileCacheConfirm"), confirmLabel: $t("shell.clearFileCache"),
+      onconfirm: async () => {
+        if (fileCacheBusy) return;
+        resetRemoteCollectionCache(manifest); resetLocalArticles(); resetMediaPreviews();
+        try { await clearFileCache(); fileCacheMessage = $t("shell.fileCacheCleared"); }
+        catch { fileCacheMessage = $t("shell.fileCacheClearError"); }
+      },
+    };
+  }
+
+  function sessionContext(token: string, repo: string, branch: string): GitContext {
+    const context: GitContext = { token, repo, branch, assertActive: () => {
+      if (gitContext !== context || githubAccess?.status !== "ready" || Date.now() >= sessionExpiresAt - 30_000) throw new Error($t("shell.sessionExpiredRetry"));
+    } };
+    return context;
+  }
+
+  function indexCollections(name?: string) {
+    if (!name || !githubMode || !gitContext || !connected) return;
+    const context = gitContext, current = manifest;
+    void indexRemoteCollections(context, current, name, () => {}, indexController.signal).catch(handleAuthError);
+  }
+
+  function reindexCollections() {
+    if (demoMode || reindexBusy || dirty || saveTask || publishOpen || publishBusy) return;
+    actionDialog = {
+      title: $t("shell.reindexCollections"), description: $t(githubMode ? "shell.reindexConfirmGithub" : "shell.reindexConfirmLocal"), confirmLabel: $t("shell.reindexCollections"),
+      onconfirm: () => { void rebuildCollections(); },
+    };
+  }
+
+  async function rebuildCollections() {
+    reindexBusy = true; reindexMessage = "";
+    try {
+      if (githubMode) await reindexRemoteCollections(requireGitContext(), manifest, () => {}, indexController.signal);
+      else {
+        const response = await fetch("/rigel/api/local/reindex", { method: "POST", headers: { "Accept-Language": $locale }, signal: indexController.signal });
+        if (!response.ok) throw new Error(await response.text());
+        const results = await response.json() as { name: string; count: number }[];
+        for (const collection of manifest.collections ?? []) {
+          const result = results.find(result => result.name === collection.name);
+          if (!result) throw new Error($t("shell.saveChangesError"));
+          collection.index = { state: "complete", loaded: result.count, total: result.count };
+        }
+      }
+      reindexMessage = $t("shell.reindexComplete");
+    } catch (error) { handleAuthError(error); reindexMessage = error instanceof Error ? error.message : $t("shell.saveChangesError"); }
+    finally { reindexBusy = false; }
+  }
+
+  function cancelIndexing() { indexController.abort(); indexController = new AbortController(); }
+
+  function refreshCollections() {
+    if (connectionBusy || reindexBusy || saveTask || publishBusy) return;
+    requestNavigation(() => { void (async () => {
+      try {
+        const context = requireGitContext(), hash = currentHash();
+        resetRemoteCollectionCache(manifest); cancelIndexing(); connectionBusy = true;
+        const remote = await loadManifestRemote(context, blueprint!, false, { deferCollections: true, deferContent: true });
+        if (gitContext !== context) return;
+        manifest = remote; restoreHash(hash);
+      } catch (error) { handleAuthError(error); connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
+      finally { connectionBusy = false; }
+    })(); });
+  }
   let publishOpen = $state(false);
   let publishLoading = $state(false);
   let publishBusy = $state(false);
@@ -96,6 +203,12 @@
 
   async function reviewPublish() {
     if (publishBusy || publishLoading) return;
+    if (demoMode) {
+      publishOpen = true;
+      publishMessage = "";
+      publishError = dirty ? $t("shell.saveBeforeReview") : "";
+      return;
+    }
     publishOpen = true;
     publishReview = null;
     publishError = "";
@@ -116,6 +229,11 @@
   }
 
   async function publish() {
+    if (demoMode) {
+      if (dirty || saveTask || saveState === "saving") { publishError = $t("shell.saveBeforeReview"); return; }
+      publishMessage = $t("shell.demoPublished");
+      return;
+    }
     if (publishBusy || publishLoading || !publishReview) return;
     publishBusy = true;
     publishError = "";
@@ -149,9 +267,12 @@
   let newDocument = $state<{ type: string; id: string; slug: string } | null>(null);
   let docBase = $state<Record<string, unknown> | null>(null);
   let documentReload = $state(0);
-  if (import.meta.hot) import.meta.hot.on("rigel:content-updated", () => { if (!githubMode) documentReload += 1; });
+  if (import.meta.hot) import.meta.hot.on("rigel:content-updated", () => { if (!githubMode && !demoMode) documentReload += 1; });
+  if (import.meta.hot) import.meta.hot.on("rigel:collections-updated", resetLocalArticles);
 
   async function loadBlueprint() {
+    untrack(() => resetRemoteCollectionCache(manifest));
+    resetLocalArticles();
     loadError = "";
     ready = false;
     try {
@@ -166,7 +287,7 @@
       if (data.backend === "github" && data.github) {
         const session = readSession(data.github);
         if (session) {
-          gitContext = { token: session.accessToken, repo: data.github.repo, branch: data.github.branch };
+          gitContext = sessionContext(session.accessToken, data.github.repo, data.github.branch);
           sessionExpiresAt = session.expiresAt;
           await recheckGitHub();
         }
@@ -195,12 +316,21 @@
         invalidateSession();
         throw new Error($t("shell.sessionExpiredCheckAccess"));
       }
+      githubAccess = null;
       const access = await checkGitHubAccess(context.token, config.repo, config.appSlug);
       if (gitContext !== context) return;
       githubAccess = access;
-      if (access.status !== "ready") return;
+      if (access.status !== "ready") { resetRemoteCollectionCache(manifest); resetMediaPreviews(); try { clearFileCache(); } catch {} return; }
+      if (context.cacheAccount && context.cacheAccount !== access.user.login.toLowerCase()) {
+        resetRemoteCollectionCache(manifest); resetMediaPreviews(); cancelIndexing(); articleRevision++;
+        sel = null; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false; newEntry = null; newDocument = null; connected = false;
+      }
+      context.cacheAccount = access.user.login.toLowerCase();
+      if (connected && !reauthorizeRemoteContent(context, manifest)) {
+        sel = null; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false; newEntry = null; newDocument = null; connected = false;
+      }
       if (!connected && blueprint) {
-        const remote = await loadManifestRemote(context, blueprint);
+        const remote = await loadManifestRemote(context, blueprint, true, { deferCollections: true, deferContent: true });
         if (gitContext !== context) return;
         manifest = remote;
         connected = true;
@@ -212,6 +342,10 @@
   }
 
   function invalidateSession() {
+    resetRemoteCollectionCache(manifest);
+    resetLocalArticles();
+    cancelIndexing(); articleRevision++; articleLoading = false; articleError = "";
+    resetMediaPreviews();
     closePublish();
     authRevision += 1;
     clearSession();
@@ -234,7 +368,11 @@
     try {
       const session = await startGitHubLogin(manifest.github.authOrigin);
       if (revision !== authRevision) return;
-      gitContext = { token: session.accessToken, repo: manifest.github.repo, branch: manifest.github.branch };
+      resetMediaPreviews();
+      resetRemoteCollectionCache(manifest);
+      const previousAccount = gitContext?.cacheAccount;
+      gitContext = sessionContext(session.accessToken, manifest.github.repo, manifest.github.branch);
+      gitContext.cacheAccount = previousAccount;
       githubAccess = null;
       sessionExpiresAt = session.expiresAt;
       writeSession(manifest.github, session);
@@ -243,6 +381,7 @@
       connectionError = error instanceof Error ? error.message : $t("shell.githubConnectionError");
     } finally {
       connectionBusy = false;
+      if (connected && githubAccess?.status === "ready" && !connectionError) refreshMediaPreviews();
     }
   }
 
@@ -252,7 +391,10 @@
     connectionError = "";
     try { await verifyGitHub(); }
     catch (error) { connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
-    finally { connectionBusy = false; }
+    finally {
+      connectionBusy = false;
+      if (connected && githubAccess?.status === "ready" && !connectionError) refreshMediaPreviews();
+    }
   }
 
   function signOut() {
@@ -289,7 +431,7 @@
   });
 
   function save(): Promise<boolean> {
-    if (publishOpen || publishBusy) return Promise.resolve(false);
+    if (publishOpen || publishBusy || articleLoading || articleError || reindexBusy) return Promise.resolve(false);
     if (saveTask) return saveTask;
     saveTask = (async () => {
       if (dirty) {
@@ -307,7 +449,10 @@
             values.slug = normalizeUrlSlug(values.slug, $t);
             draft.slug = values.slug;
           }
-          if (githubMode) {
+          if (demoMode) {
+            if (!selection) throw new Error($t("shell.selectBeforeSaving"));
+            validateDemoSelection(manifest, selection, values, body, !!creating || creatingDoc);
+          } else if (githubMode) {
             if (!selection) throw new Error($t("shell.selectBeforeSaving"));
             await saveRemoteSelection(requireGitContext(), manifest, selection, values, body, !!creating || creatingDoc);
           } else {
@@ -326,9 +471,12 @@
             newDocument = null;
             docBase = JSON.parse(JSON.stringify(values));
           } else if (m) { m.title = values.title; m.items = values.items; }
-          else if (po) { po.frontmatter = values; po.body = body; bodyBase = body; }
+          else if (po) {
+            po.frontmatter = values; if (demoMode) po.body = body; bodyBase = body;
+            if (!githubMode && !demoMode && c) cacheLocalArticle(c.name, po.slug, { frontmatter: values, body });
+          }
           else if (p) p.values = values;
-          if (creating && po && c) c.posts.push(po);
+          if (creating && po && c) { if (!demoMode) delete po.body; c.posts.push(po); }
           newEntry = null;
           dirty = JSON.stringify({ fm: draft, body: bodyDraft }) !== JSON.stringify({ fm: docSel ? docBase : values, body });
           saveState = dirty ? "idle" : "saved";
@@ -350,10 +498,10 @@
 
   let settings = $state(getSettings());
   let settingsError = $state("");
-  const userName = $derived(githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? $t("shell.githubUser") : $t("shell.localUser"));
+  const userName = $derived(demoMode ? $t("shell.demoUser") : githubMode ? githubAccess?.user.name ?? githubAccess?.user.login ?? $t("shell.githubUser") : $t("shell.localUser"));
   const userAvatar = $derived(githubMode && /^https:\/\/avatars\.githubusercontent\.com\//.test(githubAccess?.user.avatar_url ?? "") ? githubAccess!.user.avatar_url : "");
   let failedAvatar = $state("");
-  const userLogin = $derived(githubMode && githubAccess ? `@${githubAccess.user.login}` : $t("shell.localMode"));
+  const userLogin = $derived(demoMode ? $t("shell.demoMode") : githubMode && githubAccess ? `@${githubAccess.user.login}` : $t("shell.localMode"));
   let content: HTMLDivElement;
   let contentWidth = $state(0);
   let resizing = $state(false);
@@ -483,7 +631,7 @@
   });
 
   const sidebar = $derived(buildSidebar(visibleContent, $t));
-  let pagesFilter = $state<string | null>(null);
+  let pagesFilter = $state<string | null>("");
   let pagesQuery = $state("");
   let collectionQueries = $state<Record<string, string>>({});
   const tableQuery = $derived(sel?.kind === "collection" ? Object.hasOwn(collectionQueries, sel.name) ? collectionQueries[sel.name] : "" : pagesQuery);
@@ -521,7 +669,7 @@
     return map;
   });
   function documentPreview(mode: "draft" | "website") {
-    if (sel?.kind !== "document" || (mode === "draft" && newDocument?.id === sel.id)) return null;
+    if (sel?.kind !== "document" || (mode === "draft" && newDocument?.id === sel.id && !manifest.preview?.documents?.[sel.type]?.template)) return null;
     const storedSlug = activeDocument ? effectiveSlug(activeDocument.data, activeDocument.slug) : sel.id.slice(sel.type.length + 1);
     return previewUrl(manifest.preview ?? {}, { kind: "document", type: sel.type, slug: storedSlug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, mode);
   }
@@ -544,6 +692,10 @@
     return String(key === "title" ? doc.data.title ?? doc.data.name ?? doc.slug : key === "slug" ? activeDocType?.shared ? doc.slug : effectiveSlug(doc.data, doc.slug) : doc.data[key] ?? "");
   }
   const typeDocuments = $derived((visibleContent.documents ?? []).filter((doc) => doc.type === docTypeName(sel)).sort((a, b) => documentCell(a, sortBy).localeCompare(documentCell(b, sortBy)) * sortDir));
+  const documentListIndex = $derived.by(() => {
+    const documents = sel?.kind === "documents" ? typeDocuments : pageDocuments.filter(doc => inPageCategory(docTypes.find(type => type.name === doc.type)?.category, pageCategory));
+    return { loaded: documents.filter(doc => doc.loaded !== "identity").length, total: documents.length };
+  });
 
 
   const menu = $derived.by(() => { const slug = sel?.kind === "menu" ? sel.slug : null; return manifest.menus?.entries.find((m) => m.slug === slug); });
@@ -564,6 +716,38 @@
 
   $effect(() => {
     void loadBlueprint();
+  });
+
+  let hashNavigation: ReturnType<typeof createHashNavigation> | null = null;
+  function currentHash() {
+    const selection = sel?.kind === "pages" ? { kind: "pages" as const, ...(pagesFilter !== null ? { category: pagesFilter } : {}) } : sel;
+    const hash = selectionHash(selection, contentLocale === manifest.contentLocales?.defaultLocale ? undefined : contentLocale);
+    return sel?.kind === "pages" && pagesFilter === null ? `${hash}${hash.includes("?") ? "&" : "?"}all=1` : hash;
+  }
+
+  function restoreHash(hash: string) {
+    const route = resolveHash(hash, manifest);
+    selectedContentLocale = route.locale;
+    entryList = null;
+    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? (new URLSearchParams(hash.split("?")[1]).get("all") === "1" ? null : "") : "";
+    pagesQuery = "";
+    openSelection(route.selection);
+    hashNavigation?.write(currentHash(), true);
+  }
+
+  $effect(() => {
+    if (!ready || (githubMode && !connected)) return;
+    return untrack(() => {
+      const navigation = createHashNavigation(restoreHash, requestNavigation, () => dirty || saveState === "saving" || publishOpen || publishBusy);
+      hashNavigation = navigation;
+      restoreHash(location.hash);
+      return () => { navigation.destroy(); hashNavigation = null; };
+    });
+  });
+
+  $effect(() => {
+    const hash = currentHash();
+    if (ready && (!githubMode || connected)) hashNavigation?.write(hash);
   });
 
   $effect(() => {
@@ -659,7 +843,7 @@
     if (sel && next && sameSel(sel, next) && !resetPages && !resetCollection) return;
     requestNavigation(() => {
       if (resetPages) {
-        pagesFilter = next.category ?? null;
+        pagesFilter = next.category ?? "";
         pagesQuery = "";
       }
       if (resetCollection) collectionQueries[next.name] = "";
@@ -668,12 +852,37 @@
   }
 
   function openSelection(next: Sel | null) {
+    const revision = ++articleRevision;
+    cancelIndexing();
+    if ((next?.kind === "document" || next?.kind === "page") && (sel?.kind === "pages" || sel?.kind === "documents")) entryList = sel;
+    articleLoading = false; articleError = "";
+    if (githubMode && next && !(next.kind === "document" && newDocument?.id === next.id) && !remoteSelectionReady(gitContext!, manifest, next)) {
+      sel = next; articleLoading = true; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false;
+      const context = gitContext, current = manifest;
+      void readRemoteSelection(context!, current, next).then(() => {
+        if (revision === articleRevision && gitContext === context && manifest === current) openSelection(next);
+      }).catch(error => {
+        handleAuthError(error);
+        if (revision === articleRevision) { articleError = error instanceof Error ? error.message : $t("shell.saveChangesError"); articleLoading = false; }
+      });
+      return;
+    }
+    draftRevision += 1;
     if (next?.kind === "page" || next?.kind === "document") {
       if (sel?.kind === "pages" || sel?.kind === "documents") entryList = sel;
       else if (sel?.kind !== "page" && sel?.kind !== "document") entryList = null;
     }
     if (next?.kind === "pages" && next.category !== undefined) pagesFilter = next.category;
     sel = next;
+    if (next?.kind === "collection") indexCollections(next.name);
+    if (githubMode && (next?.kind === "pages" || next?.kind === "documents")) {
+      const names = docTypes.filter(type => next.kind === "documents" ? type.name === next.type : !type.shared && inPageCategory(type.category, next.category ?? pagesFilter)).map(type => type.name);
+      const context = gitContext!, current = manifest;
+      documentIndexLoading = true; documentIndexError = "";
+      void indexRemoteDocuments(context, current, names, () => {}, indexController.signal).catch(error => {
+        if (revision === articleRevision && error?.name !== "AbortError") { handleAuthError(error); documentIndexError = error instanceof Error ? error.message : $t("shell.saveChangesError"); }
+      }).finally(() => { if (revision === articleRevision) documentIndexLoading = false; });
+    } else { documentIndexLoading = false; documentIndexError = ""; }
     saveError = "";
     sortBy = "";
     sortDir = 1;
@@ -701,11 +910,27 @@
       bodyBase = "";
     } else if (next?.kind === "post") {
       const po = post;
+      if (!demoMode && !newEntry) {
+        articleLoading = true; draft = {}; bodyDraft = ""; bodyBase = ""; dirty = false;
+        const context = gitContext, current = manifest;
+        const request = githubMode ? readRemotePost(context!, current, next.collection, next.slug) : readLocalArticle(next.collection, next.slug);
+        void request.then(article => {
+          if (revision !== articleRevision || gitContext !== context || manifest !== current) return;
+          draft = JSON.parse(JSON.stringify(article.frontmatter));
+          if (po) po.frontmatter = article.frontmatter;
+          else manifest.collections?.find(c => c.name === next.collection)?.posts.push({ slug: next.slug, frontmatter: article.frontmatter });
+          bodyDraft = article.body; bodyBase = article.body; saveState = "idle";
+        }).catch(error => {
+          handleAuthError(error);
+          if (revision === articleRevision) articleError = error instanceof Error ? error.message : $t("shell.saveChangesError");
+        }).finally(() => { if (revision === articleRevision) articleLoading = false; });
+        return;
+      }
       if (!po) return;
       const fm: Record<string, unknown> = { ...po.frontmatter };
       draft = JSON.parse(JSON.stringify(fm));
-      bodyDraft = po.body;
-      bodyBase = po.body;
+      bodyDraft = po.body ?? "";
+      bodyBase = po.body ?? "";
     }
     dirty = newEntry !== null || (newDocument !== null && next?.kind === "document");
     saveState = "idle";
@@ -726,6 +951,7 @@
       if (!selectionInContent(destination, entryList)) entryList = null;
       if (!selectionInContent(destination, sel)) openSelection(null);
       if (target && selectionInContent(destination, target)) openSelection(target);
+      else if (sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "collection") openSelection(sel);
       focusContentLocale();
     }, focusContentLocale);
   }
@@ -743,7 +969,50 @@
     }
   }
 
+  let draftRevision = 0;
+  const draftInstance = `${Date.now()}-${Math.random()}`;
+  const draftContext = () => JSON.stringify([draftInstance, sel ? navigationKey(sel) : null, contentLocale ?? null, draftRevision, authRevision]);
+
+  function draftToolGuard() {
+    if (!ready || demoMode) throw new Error("Draft tools are unavailable in this editor mode.");
+    if (githubMode) {
+      requireGitContext();
+      if (connectionError) throw new Error("Reconnect GitHub and verify editing access first.");
+    }
+    const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open';
+    const overlay = [document, ...[...document.querySelectorAll('iframe')].map(frame => frame.contentDocument)].some(doc => doc && [...doc.querySelectorAll(blocked)].some(element => element.getClientRects().length > 0 && doc.defaultView?.getComputedStyle(element).visibility !== "hidden"));
+    if (articleLoading || articleError || reindexBusy || connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
+  }
+
+  $effect(() => {
+    if (!ready || demoMode) return;
+    if (githubMode && (!connected || connectionBusy || connectionError || tokenExpired || githubAccess?.status !== "ready")) return;
+    return registerDraftTools((document as Document & { modelContext?: DraftModelContext }).modelContext, {
+      guard: draftToolGuard,
+      read: () => draftSnapshot(manifest, sel, contentLocale, draftContext(), draft, bodyDraft),
+      update: (input) => updateDraft(updateDraftField(manifest, sel, contentLocale, draftContext(), draft, input)),
+      body: input => updateBody(replaceArticleBody(sel, draftContext(), input)),
+      list: () => contentCatalog(manifest, contentLocale, draftContext()),
+      select: input => {
+        select(selectContent(contentCatalog(manifest, contentLocale, draftContext()), input));
+        return { pendingConfirmation: !!pendingNavigation };
+      },
+      settled: tick,
+    });
+  });
+
+  function updateBody(next: ArticleBody) {
+    bodyDraft = next;
+    touch();
+  }
+
+  function updateDraft(next: Record<string, unknown>) {
+    draft = next;
+    touch();
+  }
+
   function touch() {
+    draftRevision += 1;
     if (sel?.kind === "document") {
       dirty = JSON.stringify(draft) !== JSON.stringify(docBase);
       if (saveState !== "saving") saveState = "idle";
@@ -771,6 +1040,7 @@
   }
 
   function newPage(type = pageDocType, chooseTemplate = false) {
+    if (articleLoading || articleError) return;
     if (chooseTemplate) type = templates.find(type => inPageCategory(type.category, pageCategory)) ?? templates[0];
     if (!type || !schema || type.creatable === false || type.singleton) return;
     actionDialog = {
@@ -794,6 +1064,7 @@
   }
 
   function newPost(c: ManifestCollection) {
+    if (articleLoading || articleError) return;
     actionDialog = {
       title: $t("shell.addToCollection", { name: c.label }), description: $t("shell.newPostDescription"), fieldLabel: $t("shell.title"), confirmLabel: $t("shell.createDraft"),
       onconfirm: (title) => {
@@ -805,20 +1076,55 @@
     };
   }
 
+  function deletePage() {
+    if (articleLoading || articleError) return;
+    if (publishOpen || publishBusy || saveState === "saving" || sel?.kind !== "document" || !activeDocType || !schema) return;
+    const id = sel.id, type = activeDocType, slug = id.slice(type.name.length + 1), back = documentBack, pageSchema = schema;
+    if (isProtectedDocument(type, slug)) return;
+    const unsaved = newDocument?.id === id;
+    actionDialog = {
+      title: $t("shell.deletePostTitle", { name: String(draft.title ?? slug) }), confirmLabel: $t("shell.deletePage"), danger: true,
+      description: $t(unsaved ? "shell.discardNewPageDescription" : "shell.deletePageDescription"),
+      onconfirm: async () => {
+        if (!unsaved) {
+          assertDocumentUnreferenced(pageSchema, manifest.documents ?? [], id, $t);
+          const remaining = (manifest.documents ?? []).filter(doc => doc.id !== id);
+          for (const collection of manifest.collections ?? []) for (const post of collection.posts) {
+            validateCollectionValues(collection.fields, post.frontmatter, manifest.documents ?? [], $t);
+            try { validateCollectionValues(collection.fields, post.frontmatter, remaining, $t); }
+            catch { throw new Error($t("local.documentReferenced")); }
+          }
+          if (githubMode) {
+            try { await deleteRemoteDocument(requireGitContext(), manifest, id); }
+            catch (error) { handleAuthError(error); throw error; }
+          } else if (!demoMode) {
+            const response = await fetch(`/rigel/api/local/documents/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "Accept-Language": $locale } });
+            if (!response.ok) throw new Error((await response.text()) || $t("shell.deleteFailedStatus", { status: response.status }));
+          }
+          manifest.documents = (manifest.documents ?? []).filter(doc => doc.id !== id);
+        }
+        newDocument = null;
+        docBase = null;
+        openSelection(back);
+      },
+    };
+  }
+
   function deletePost() {
+    if (articleLoading || articleError) return;
     if (publishOpen || publishBusy) return;
     const current = post, collection = coll, unsaved = newEntry !== null;
     if (!current || !collection) return;
     actionDialog = {
       title: $t("shell.deletePostTitle", { name: String(current.frontmatter.title ?? current.slug) }), confirmLabel: $t("shell.delete"), danger: true,
-      description: unsaved ? $t("shell.discardNewPostDescription") : githubMode ? $t("shell.deleteRemotePostDescription", { slug: current.slug, branch: String(manifest.github?.branch) }) : $t("shell.deleteLocalPostDescription", { slug: current.slug }),
+      description: unsaved ? $t("shell.discardNewPostDescription") : demoMode ? $t("shell.demoDelete") : githubMode ? $t("shell.deleteRemotePostDescription", { slug: current.slug, branch: String(manifest.github?.branch) }) : $t("shell.deleteLocalPostDescription", { slug: current.slug }),
       onconfirm: async () => {
         if (!unsaved) {
           if (githubMode) {
             try { await deleteRemotePost(requireGitContext(), manifest, collection.name, current.slug); }
             catch (error) { handleAuthError(error); throw error; }
           }
-          else {
+          else if (!demoMode) {
           const res = await fetch(`/rigel/api/local/${collection.name}/${encodeURIComponent(current.slug)}`, { method: "DELETE", headers: { "Accept-Language": $locale } });
           if (!res.ok) throw new Error((await res.text()) || $t("shell.deleteFailedStatus", { status: res.status }));
           }
@@ -845,6 +1151,9 @@
 
 <svelte:window
   onstorage={(event) => {
+    if (event.key === "rigelcms.cache.files" && event.newValue === null) {
+      resetRemoteCollectionCache(manifest); resetLocalArticles(); resetMediaPreviews(); try { clearFileCache(); } catch {}
+    }
     if ((event.key === "rigelcms.session" || event.key === null) && blueprint?.github && !readSession(blueprint.github)) {
       invalidateSession();
       connectionError = $t("shell.signedOutAnotherTab");
@@ -867,9 +1176,12 @@
 />
 {#if !ready || (githubMode && !connected)}
 <div class="rigel connection-shell">
-  <main id="github-connection" class="connection-card" aria-busy={connectionBusy}>
+  <main id="github-connection" class="connection-card" aria-busy={(!ready && !loadError) || connectionBusy}>
     <div class="connection-brand"><img src={logo} alt="" width="64" height="64" /><span>Rigel <span class="brand-suffix">CMS</span></span></div>
     <h1>{!ready ? $t("shell.loadingEditor") : $t("shell.connectGithub")}</h1>
+    {#if (!ready && !loadError) || connectionBusy}
+      <div class="connection-loader" role="progressbar" aria-label={!ready ? $t("shell.loadingConfiguration") : !sessionExpiresAt ? $t("shell.signingIn") : $t("shell.checkingAccess")}></div>
+    {/if}
     {#if !ready}
       {#if loadError}<p class="connection-error" role="alert">{loadError}</p><button class="primary" onclick={loadBlueprint}>{$t("shell.retryLoading")}</button>
       {:else}<p role="status">{$t("shell.loadingConfiguration")}</p>{/if}
@@ -899,13 +1211,13 @@
   </main>
 </div>
 {:else}
-<div class="rigel" class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
+<div class="rigel" use:mediaPreviews class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
   <aside id="rigel-sidebar" data-tooltip-position="right">
     <a class="brand" href="/rigel/" role="button" aria-label={$t("shell.welcome")} onclick={(event) => { event.preventDefault(); goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
-    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} />
+    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>
         {#key localeControlRevision}
@@ -941,8 +1253,8 @@
       {/each}
     </nav>
 
-    {#if githubMode && manifest.github?.publishBranch}
-      <button id="publish-button" class="sidebar-publish" aria-label={$t("shell.publish")} data-tooltip={dirty ? $t("shell.saveBeforePublishing") : $t("shell.publishSavedChanges")} disabled={publishBusy || publishLoading || saveState === "saving" || connectionBusy || tokenExpired || githubAccess?.status !== "ready"} onclick={reviewPublish}>
+    {#if demoMode || (githubMode && manifest.github?.publishBranch)}
+      <button id="publish-button" class="sidebar-publish" aria-label={$t("shell.publish")} data-tooltip={dirty ? $t("shell.saveBeforePublishing") : $t("shell.publishSavedChanges")} disabled={publishBusy || publishLoading || saveState === "saving" || (!demoMode && (connectionBusy || tokenExpired || githubAccess?.status !== "ready"))} onclick={reviewPublish}>
         <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">{$t("shell.publish")}</span>
       </button>
     {/if}
@@ -951,7 +1263,7 @@
     </button>
     <div class="aside-foot">
       <div class="user-menu-wrap">
-        <button class="user-btn" aria-label={githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} data-tooltip={githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
+        <button class="user-btn" aria-label={demoMode ? $t("shell.demoUser") : githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} data-tooltip={demoMode ? $t("shell.demoUser") : githubMode ? $t("shell.githubUserMenu") : $t("shell.localUserMenu")} aria-haspopup="menu" aria-expanded={userOpen} onclick={() => (userOpen = !userOpen)}>
           {@render avatar()}
           <span class="user-details"><span class="uname">{userName}</span><small>{userLogin}</small></span>
           <span class="user-menu-icon"><Icon name="dotsThreeOutlineVertical" size={18} /></span>
@@ -981,11 +1293,11 @@
             <a role="menuitem" href={githubAccess?.installUrl} target="_blank" rel="noopener noreferrer">{$t("shell.configureGithubAccess")}</a>
             <button role="menuitem" class="github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={() => { userOpen = false; void connectGitHub(); }}>{$t("shell.reconnectGithub")}</button>
             {/if}
-            <button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? $t("shell.signOutTooltip") : $t("shell.localMode")} onclick={signOut}>
+            {#if !demoMode}<button id={githubMode ? "github-sign-out" : undefined} role="menuitem" class:muted={!githubMode} disabled={!githubMode || saveState === "saving" || connectionBusy} data-tooltip={githubMode ? $t("shell.signOutTooltip") : $t("shell.localMode")} onclick={signOut}>
               <Icon name="signOut" size={13} />
               {$t("shell.signOut")}
               {#if !githubMode}<span class="soon">{$t("shell.githubBackendHint")}</span>{/if}
-            </button>
+            </button>{/if}
           </div>
         {/if}
       </div>
@@ -1000,6 +1312,7 @@
           <button class="primary" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{connectionBusy ? $t("shell.connecting") : $t("shell.reconnectGithub")}</button>
         </div>
       {/if}
+      {#if demoMode}<p class="github-session" role="status">{$t("shell.demoBanner")}</p>{/if}
       {#if settingsError}<p role="alert">{settingsError}</p>{/if}
       {#if ready && sel && sel.kind !== "media"}
         {#if sel.kind === "page" || sel.kind === "post" || sel.kind === "menu" || sel.kind === "document"}
@@ -1025,16 +1338,17 @@
           <h2>{sel.kind === "page" ? page?.label : sel.kind === "menu" ? String(draft.title || menu?.slug || "") : sel.kind === "post" ? String(draft.title || post?.slug || "") : sel.kind === "document" ? activeDocType?.singleton ? activeDocType.title : String(draft.title || draft.name || activeDocument?.slug || sel.id) : listTitle}</h2>
         {#if sel.kind === "pages"}
           {#if templates.length}
-            <button class="primary" onclick={() => newPage(pageDocType, true)}>{$t("shell.addNew")}</button>
+            <button class="primary" disabled={articleLoading || !!articleError} onclick={() => newPage(pageDocType, true)}>{$t("shell.addNew")}</button>
           {/if}
         {/if}
         {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
-          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
+          <button class="primary" disabled={articleLoading || !!articleError} onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
         {/if}
+        {#if githubMode && sel.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
         {#if sel.kind === "pages" || (sel.kind === "collection" && coll)}
           <div class="pages-controls">
           {#if sel.kind === "pages" && categories.length}
-            <Select ariaLabel={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); select({ kind: "pages" }); } }} />
+            <Select ariaLabel={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); openSelection({ kind: "pages" }); } }} />
           {/if}
             <div class="pages-search">
               <Icon name="magnifier" size={18} />
@@ -1044,11 +1358,6 @@
               {/if}
             </div>
           </div>
-        {/if}
-        {#if sel?.kind === "post" && post}
-          <button class="icon-btn" aria-label={$t("shell.deletePost")} data-tooltip={$t("shell.deletePost")} disabled={saveState === "saving"} onclick={deletePost}>
-            <Icon name="trash" size={15} />
-          </button>
         {/if}
         </div>
       {/if}
@@ -1065,7 +1374,12 @@
       {/if}
       {#if !ready}
         <p>{$t("shell.loading")}</p>
-
+      {:else if articleLoading}
+        <p role="status">{$t("shell.loading")}</p>
+        <div class="connection-loader" role="progressbar" aria-label={$t("shell.loading")}></div>
+      {:else if articleError}
+        <p role="alert">{articleError}</p>
+        <button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>
       {:else if sel?.kind === "media"}
         <ImagePicker inline />
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
@@ -1106,16 +1420,23 @@
                   {/each}
                 </tr>
               {:else}
-                <tr><td colspan={columns.length}>{$t((sel?.kind === "pages" || sel?.kind === "collection") && tableQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
+                <tr><td colspan={columns.length}>{$t(sel?.kind === "collection" && coll?.index && coll.index.state !== "complete" ? "shell.indexIncomplete" : (sel?.kind === "pages" || sel?.kind === "collection") && tableQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
               {/each}
             </tbody>
           </table>
         </div>
+        {#if (sel?.kind === "pages" || sel?.kind === "documents") && documentIndexLoading}<p role="status">{$t("shell.indexingCollections", documentListIndex)}</p>{/if}
+        {#if documentIndexError}<p role="alert">{documentIndexError}</p><button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>{/if}
+        {#if sel?.kind === "collection" && coll?.index && coll.index.state !== "complete"}
+          <p role="status">{$t("shell.indexingCollections", { loaded: coll.index.loaded, total: coll.index.total })}</p>
+          {#if coll.index.error}<p role="alert">{coll.index.error}</p><button onclick={() => indexCollections(coll!.name)}>{$t("shell.retryLoading")}</button>{/if}
+          {#if coll.index.state === "indexing"}<button onclick={cancelIndexing}>{$t("connection.cancel")}</button>{/if}
+        {/if}
 
       {:else if sel?.kind === "document" && schema && activeDocType}
         {#if standaloneDocument}
           <div class="document-form">
-            <SchemaPanel {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={(next) => { draft = next; touch(); }} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
+            <SchemaPanel {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={updateDraft} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
           </div>
         {:else}
         <VisualEditor
@@ -1126,6 +1447,8 @@
           documents={draftDocuments}
           previewPath={documentPreview("draft")}
           websitePath={documentPreview("website")}
+          ondelete={deletePage}
+          deleteDisabled={saveState === "saving" || publishBusy || publishOpen}
           bodyInline={settings.userPref.editorExperience === "inline"}
           creating={newDocument?.id === sel.id}
           devMode={settings.devMode}
@@ -1134,7 +1457,7 @@
             const doc = manifest.documents?.find((entry) => entry.id === id);
             if (doc) select({ kind: "document", type: doc.type, id: doc.id });
           }}
-          onchange={(next: Record<string, unknown>) => { draft = next; touch(); }}
+          onchange={updateDraft}
         />
         {/if}
 
@@ -1165,7 +1488,12 @@
             {/each}
           </section>
         {/each}
-
+        {#if !page.shared}
+          <section>
+            <button type="button" class="danger-btn" disabled aria-describedby="page-delete-notice">{$t("shell.deletePage")}</button>
+            <p id="page-delete-notice" class="hint">{$t("local.pageProtected")}</p>
+          </section>
+        {/if}
 
       {:else if sel?.kind === "post" && coll && post}
         {#key `${coll.name}/${post.slug}`}
@@ -1175,15 +1503,15 @@
             previewValues={collectionPreviewValues(coll.fields, draft, manifest.documents ?? [], $t)}
             body={bodyDraft}
             bodyInline={settings.userPref.editorExperience === "inline"}
-            onbody={(value) => { bodyDraft = value; touch(); }}
+            onbody={updateBody}
             previewPath={manifest.preview ? previewUrl(manifest.preview, sel, "draft", !!newEntry) : null}
             websitePath={manifest.preview ? previewUrl(manifest.preview, { ...sel, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null}
             creating={!!newEntry}
             devMode={settings.devMode}
-            onchange={(next) => { draft = next; touch(); }}
+            onchange={updateDraft}
           >
             {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading, inlineFields, oneditfield)}
-              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={(value) => { bodyDraft = value; touch(); }} />
+              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
             {/snippet}
           </VisualEditor>
         {/key}
@@ -1194,6 +1522,7 @@
           <h2>{$t("shell.welcomeTitle")}</h2>
           <p>{$t("shell.welcomeTagline")}</p>
           <p class="welcome-hint">{$t("shell.welcomeHint")}</p>
+          {#if updateVersion}<UpdateNotice version={updateVersion} ondismiss={dismissVersion} />{/if}
         </div>
       {/if}
       {#if settings.devMode && (sel?.kind === "page" || sel?.kind === "post" || sel?.kind === "menu" || sel?.kind === "document")}
@@ -1212,7 +1541,7 @@
 {/if}
 
 {#if settingsOpen}
-  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} />
+  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} onreindex={reindexCollections} oncancelindex={cancelIndexing} onclearcache={clearFiles} {canClearFileCache} {fileCacheBusy} {fileCacheMessage} {reindexBusy} {reindexMessage} collections={manifest.collections ?? []} maintenanceDisabled={demoMode || dirty || saveState === "saving" || publishBusy} />
 {/if}
 {#if shortcutsOpen}
   <Shortcuts onclose={() => (shortcutsOpen = false)} />
@@ -1224,5 +1553,5 @@
   <ActionDialog {...actionDialog} onclose={() => { actionDialog = null; }} />
 {/if}
 {#if publishOpen}
-  <PublishDialog review={publishReview} loading={publishLoading} busy={publishBusy} error={publishError} message={publishMessage} onrefresh={reviewPublish} onconfirm={publish} onclose={closePublish} />
+  <PublishDialog demo={demoMode} review={publishReview} loading={publishLoading} busy={publishBusy} error={publishError} message={publishMessage} onrefresh={reviewPublish} onconfirm={publish} onclose={closePublish} />
 {/if}

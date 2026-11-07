@@ -2,6 +2,7 @@
   import { t } from "../i18n";
   import { tick, untrack } from "svelte";
   import { fetchPreview } from "./preview-frame";
+  import { mediaPreviews } from "./media-backend";
   import { subscribeMediaLabels } from "./embed-preview";
 
   let { url, title, frame = $bindable(), reloadToken = 0, onload, onloading, onerror }: {
@@ -25,6 +26,7 @@
     const controller = new AbortController();
     const { signal } = controller;
     let stopMediaLabels: (() => void) | undefined;
+    let stopMediaPreviews: (() => void) | undefined;
     source = null;
     loading = true;
     revealed = false;
@@ -62,6 +64,8 @@
         if (signal.aborted || iframe !== frame) return;
         stopMediaLabels?.();
         stopMediaLabels = subscribeMediaLabels(doc.body);
+        stopMediaPreviews?.();
+        stopMediaPreviews = mediaPreviews(doc.body).destroy;
         clearTimeout(timeout);
         loading = false;
         revealed = true;
@@ -76,7 +80,7 @@
     }).catch(cause => {
       fail(cause instanceof Error ? cause.message : $t("richtext.previewUnavailable"));
     });
-    return () => { stopMediaLabels?.(); controller.abort(); clearTimeout(timeout); };
+    return () => { stopMediaPreviews?.(); stopMediaLabels?.(); controller.abort(); clearTimeout(timeout); };
   });
 </script>
 

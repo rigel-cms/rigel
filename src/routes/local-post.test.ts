@@ -1,5 +1,10 @@
 import { afterAll, expect, test, vi } from "vitest";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rename: vi.fn(actual.rename) };
+});
 import path from "node:path";
 import type { APIContext } from "astro";
 import { emptyBody } from "../article-body";
@@ -20,14 +25,57 @@ test("local saves apply registered validation before writes and preserve unknown
   expect(await response.text()).toContain("Note requires text");
   expect(await readFile(file, "utf8")).toBe(before);
 });
-vi.mock("virtual:rigel-config", () => ({ default: { collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [
+vi.mock("virtual:rigel-config", () => ({ default: { backend: "local", collections: [{ name: "blog", folder: path.resolve("_temp/article-route-check"), fields: [
   { key: "title", label: "Title", type: "string", required: true },
   { key: "description", label: "Description", type: "text" },
   { key: "date", label: "Date", type: "date" },
   { key: "tags", label: "Tags", type: "tags" },
   { key: "author", label: "Author", type: "reference", options: [{ value: "alex", label: "Alex" }] },
 ] }] } }));
-const { POST } = await import("./local-post");
+const { POST, GET } = await import("./local-post");
+const { POST: reindex } = await import("./local-reindex");
+test("local metadata ledger tracks exact Git blob SHAs, reindex preserves articles, selection hydrates one", async () => {
+  expect((await save("indexed", { title: "Indexed" })).status).toBe(204);
+  const article = await readFile(path.join(folder, "indexed.json"));
+  const { createHash } = await import("node:crypto");
+  const sha = createHash("sha1").update(`blob ${article.length}\0`).update(article).digest("hex");
+  const ledgerPath = path.join(folder, ".rigel-collection.json");
+  expect(JSON.parse(await readFile(ledgerPath, "utf8")).entries).toContainEqual({ slug: "indexed", sha, frontmatter: { title: "Indexed" } });
+  const response = await GET({ params: { collection: "blog", slug: "indexed" }, request: new Request("http://localhost/") } as unknown as APIContext);
+  expect(await response.json()).toEqual(JSON.parse(article.toString()));
+  expect((await reindex({ request: new Request("http://localhost/", { method: "POST" }) } as unknown as APIContext)).status).toBe(200);
+  expect(await readFile(path.join(folder, "indexed.json"))).toEqual(article);
+});
+test("failed ledger replacement leaves the saved article readable and reindex repairs its SHA", async () => {
+  expect((await save("recoverable", { title: "Original" })).status).toBe(204);
+  const ledgerPath = path.join(folder, ".rigel-collection.json");
+  const before = await readFile(ledgerPath, "utf8");
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  vi.mocked(rename).mockImplementationOnce(actual.rename).mockRejectedValueOnce(new Error("Ledger rename failed"));
+  await expect(save("recoverable", { title: "Persisted despite index failure" })).rejects.toThrow("Ledger rename failed");
+  expect(await readFile(ledgerPath, "utf8")).toBe(before);
+  const article = await readFile(path.join(folder, "recoverable.json"));
+  const response = await GET({ params: { collection: "blog", slug: "recoverable" }, request: new Request("http://localhost/") } as unknown as APIContext);
+  expect((await response.json()).frontmatter.title).toBe("Persisted despite index failure");
+  expect((await readdir(folder)).filter(name => name.endsWith(".tmp"))).toEqual([]);
+  expect((await reindex({ request: new Request("http://localhost/", { method: "POST" }) } as unknown as APIContext)).status).toBe(200);
+  expect(await readFile(path.join(folder, "recoverable.json"))).toEqual(article);
+  const { createHash } = await import("node:crypto");
+  const sha = createHash("sha1").update(`blob ${article.length}\0`).update(article).digest("hex");
+  expect(JSON.parse(await readFile(ledgerPath, "utf8")).entries).toContainEqual({ slug: "recoverable", sha, frontmatter: { title: "Persisted despite index failure" } });
+});
+
+test("local ledger preflight rejects invalid source articles before changing a saved article", async () => {
+  expect((await save("preflight", { title: "Original" })).status).toBe(204);
+  const original = await readFile(path.join(folder, "preflight.json"));
+  const broken = path.join(folder, "broken.json");
+  await writeFile(broken, JSON.stringify({ frontmatter: { title: "Broken" }, body: "invalid" }));
+  try {
+    expect((await save("preflight", { title: "Must not persist" })).status).toBe(400);
+    expect(await readFile(path.join(folder, "preflight.json"))).toEqual(original);
+  } finally { await rm(broken); }
+});
+
 afterAll(() => rm(folder, { recursive: true, force: true }));
 
 function save(slug: string, frontmatter: Record<string, unknown>, body: unknown = emptyBody(), creating = false) {

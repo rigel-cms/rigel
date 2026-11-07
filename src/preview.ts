@@ -99,6 +99,12 @@ function rebindTree(root: Element | DocumentFragment, update: (element: Element)
   }
 }
 
+export function bindPreviewDocument(doc: Document, id: string) {
+  rebindTree(doc.documentElement, element => {
+    if (element.getAttribute("data-rigel-doc") === "$document") element.setAttribute("data-rigel-doc", id);
+  });
+}
+
 export function patchPreview(doc: Document, values: Record<string, unknown>, body: "" | import("./article-body").ArticleBody, options: PatchDocuments = {}) {
   if (!doc.documentElement) return;
   let previews = extensionPreviews.get(doc);
@@ -217,7 +223,22 @@ export function patchPreview(doc: Document, values: Record<string, unknown>, bod
     if (blocks) previews.set(el, mountExtensionPreviews(el));
     rendered.set(el, source);
   }
-  for (const [anchor, attr, tag] of [["image", "src", "IMG"], ["alt", "alt", "IMG"], ["href", "href", "A"]]) {
+  for (const el of doc.querySelectorAll<HTMLImageElement>("[data-rigel-image]")) {
+    if (el.tagName !== "IMG") continue;
+    const result = get(el, el.getAttribute("data-rigel-image")!);
+    if (!result.found) continue;
+    const value = result.value === null || result.value === undefined ? "" : String(result.value);
+    const safe = safePreviewUrl(value, true);
+    if (el.hasAttribute("data-rigel-src")) {
+      el.removeAttribute("srcset");
+      el.removeAttribute("sizes");
+      for (const source of el.closest("picture")?.querySelectorAll("source") ?? []) { source.removeAttribute("srcset"); source.removeAttribute("sizes"); }
+      if (safe) el.setAttribute("data-rigel-src", value);
+    }
+    if (safe) { if (el.getAttribute("src") !== value) el.setAttribute("src", value); }
+    else el.removeAttribute("src");
+  }
+  for (const [anchor, attr, tag] of [["alt", "alt", "IMG"], ["href", "href", "A"]]) {
     for (const el of doc.querySelectorAll(`[data-rigel-${anchor}]`)) {
       if (el.tagName !== tag) continue;
       const result = get(el, el.getAttribute(`data-rigel-${anchor}`)!);

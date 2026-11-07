@@ -1,4 +1,6 @@
 {
+  "defaults.noindex": "No indexar (noindex)",
+  "defaults.noindexHelp": "Indica a los motores de búsqueda que no indexen esta página ni la muestren en los resultados. Los robots pueden seguir rastreando la página y sus enlaces. Esto no hace que la página sea privada.",
   "defaults.draft": "Borrador",
   "defaults.seoTitle": "Título SEO",
   "defaults.seoDescription": "Descripción SEO",

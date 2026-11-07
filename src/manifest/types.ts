@@ -31,6 +31,9 @@ export interface GitHubBackendConfig {
   authOrigin: string;
   appSlug: string;
   copyDir: string;
+  publicDir?: string;
+  mediaDir?: string;
+  maxFileSize?: number;
   jsonOutput?: import("../json-output").JsonOutput;
   collections: { name: string; folder: string }[];
   menus?: { folder: string; maxDepth: number };
@@ -39,7 +42,7 @@ export interface GitHubBackendConfig {
 export interface Manifest {
   contentLocales?: import("../config").ContentLocalesConfig;
   search?: { scope: import("../config").SearchScope };
-  backend?: "github";
+  backend?: "github" | "demo";
   github?: GitHubBackendConfig;
   sidebar?: import("./navigation").SidebarEntry[];
   preview?: import("../preview").PreviewConfig;
@@ -48,6 +51,7 @@ export interface Manifest {
   menus?: { maxDepth: number; entries: MenuDocument[] };
   schema?: import("../schema/types").Schema;
   documents?: import("../schema/types").ContentDocument[];
+  contentIndex?: { state: "pending" | "indexing" | "complete" | "error"; error?: string };
 }
 
 export interface CollectionField {
@@ -64,10 +68,12 @@ export interface CollectionField {
 export interface CollectionPost {
   slug: string;
   frontmatter: Record<string, unknown>;
-  body: import("../article-body").ArticleBody;
+  body?: import("../article-body").ArticleBody;
 }
 
 export interface ManifestCollection {
+  storageSlugs?: string[];
+  index?: { state: "pending" | "indexing" | "complete" | "error"; loaded: number; total: number; error?: string };
   name: string;
   locale?: string;
   label: string;

@@ -19,7 +19,7 @@ function editor(manifest: Manifest, selection: unknown, dirty = true) {
   const code = transpileModule(functions, { compilerOptions: { target: 99 } }).outputText;
   return new Function("manifest", "sel", "dirty", "contentForLocale", "selectionInContent", "slugify", "validateDocumentSlugs", "newDocumentFromTemplate", "$t", "pageCategories", `
     let contentLocale = 'en', selectedContentLocale = 'en', localeControlRevision = 0;
-    let pagesFilter = null, entryList = null;
+    let pagesFilter = null, entryList = null, articleLoading = false, articleError = '';
     let pendingNavigation = null, pendingNavigationCancel = null, publishOpen = false, publishBusy = false, saveState = 'idle';
     let newEntry = null, newDocument = null, succeeds = true, saves = 0;
     let draft = { title: 'Unsaved edits' }, docBase = null, actionDialog = null;

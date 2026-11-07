@@ -8,7 +8,10 @@ export const GET: APIRoute = async () => {
     collections: manifest.collections?.map(collection => ({ ...collection, posts: [] })),
     documents: [],
     ...(manifest.menus ? { menus: { ...manifest.menus, entries: [] } } : {}),
-  } : manifest;
+  } : manifest.backend === "demo" ? manifest : {
+    ...manifest,
+    collections: manifest.collections?.map(collection => ({ ...collection, posts: collection.posts.map(({ slug, frontmatter }) => ({ slug, frontmatter })) })),
+  };
   return new Response(JSON.stringify(editorManifest), {
     headers: { "Content-Type": "application/json" },
   });

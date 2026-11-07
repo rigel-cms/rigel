@@ -4,7 +4,7 @@ import frenchMessages from "../editor/i18n/fr/local.json" with { type: "json" };
 import germanMessages from "../editor/i18n/de/local.json" with { type: "json" };
 import dutchMessages from "../editor/i18n/nl/local.json" with { type: "json" };
 
-vi.mock("virtual:rigel-config", () => ({ default: {} }));
+vi.mock("virtual:rigel-config", () => ({ default: { backend: "local" } }));
 
 const { requestTranslator } = await import("../editor/i18n/server");
 const { POST } = await import("./local-media");

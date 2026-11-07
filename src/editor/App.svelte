@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t, locale } from "./i18n";
-  import { onMount, tick, untrack } from "svelte";
+  import { onMount, onDestroy, tick, untrack } from "svelte";
   import { selectionHash, resolveHash, createHashNavigation } from "./lib/hash-navigation";
   import { draftSnapshot, updateDraftField, contentCatalog, selectContent, replaceArticleBody, registerDraftTools, type DraftModelContext } from "./lib/webmcp";
   import { tooltipRoot } from "./lib/tooltip";
@@ -13,7 +13,26 @@
   import Field from "./lib/Field.svelte";
   import SitePreview from "./lib/SitePreview.svelte";
   import ImagePicker from "./lib/ImagePicker.svelte";
+  import { configureMediaBackend, resetMediaPreviews, refreshMediaPreviews, mediaPreviews } from "./lib/media-backend";
+  onDestroy(configureMediaBackend(() => ({ ctx: requireGitContext(), manifest }), handleAuthError, () => manifest.backend));
   import Settings from "./lib/Settings.svelte";
+  import UpdateNotice from "./lib/UpdateNotice.svelte";
+  import { checkUpdate, dismissUpdate, isUpdateDismissed } from "./lib/updates";
+
+  let updateVersion = $state<string | null>(null);
+  onMount(() => {
+    const controller = new AbortController();
+    void checkUpdate(undefined, controller.signal).then(version => {
+      if (!controller.signal.aborted && version && !isUpdateDismissed(version)) updateVersion = version;
+    });
+    return () => controller.abort();
+  });
+
+  function dismissVersion() {
+    if (updateVersion) dismissUpdate(updateVersion);
+    updateVersion = null;
+    document.querySelector<HTMLAnchorElement>(".brand")?.focus({ preventScroll: true });
+  }
   import { effectiveSearchScope } from "../manifest/search";
   import TopBar from "./lib/TopBar.svelte";
   import Select from "./lib/Select.svelte";
@@ -228,6 +247,7 @@
   }
 
   function invalidateSession() {
+    resetMediaPreviews();
     closePublish();
     authRevision += 1;
     clearSession();
@@ -250,6 +270,7 @@
     try {
       const session = await startGitHubLogin(manifest.github.authOrigin);
       if (revision !== authRevision) return;
+      resetMediaPreviews();
       gitContext = { token: session.accessToken, repo: manifest.github.repo, branch: manifest.github.branch };
       githubAccess = null;
       sessionExpiresAt = session.expiresAt;
@@ -259,6 +280,7 @@
       connectionError = error instanceof Error ? error.message : $t("shell.githubConnectionError");
     } finally {
       connectionBusy = false;
+      if (connected && githubAccess?.status === "ready" && !connectionError) refreshMediaPreviews();
     }
   }
 
@@ -268,7 +290,10 @@
     connectionError = "";
     try { await verifyGitHub(); }
     catch (error) { connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
-    finally { connectionBusy = false; }
+    finally {
+      connectionBusy = false;
+      if (connected && githubAccess?.status === "ready" && !connectionError) refreshMediaPreviews();
+    }
   }
 
   function signOut() {
@@ -1026,7 +1051,7 @@
   </main>
 </div>
 {:else}
-<div class="rigel" class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
+<div class="rigel" use:mediaPreviews class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
   <aside id="rigel-sidebar" data-tooltip-position="right">
     <a class="brand" href="/rigel/" role="button" aria-label={$t("shell.welcome")} onclick={(event) => { event.preventDefault(); goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
@@ -1324,6 +1349,7 @@
           <h2>{$t("shell.welcomeTitle")}</h2>
           <p>{$t("shell.welcomeTagline")}</p>
           <p class="welcome-hint">{$t("shell.welcomeHint")}</p>
+          {#if updateVersion}<UpdateNotice version={updateVersion} ondismiss={dismissVersion} />{/if}
         </div>
       {/if}
       {#if settings.devMode && (sel?.kind === "page" || sel?.kind === "post" || sel?.kind === "menu" || sel?.kind === "document")}

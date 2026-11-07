@@ -7,6 +7,7 @@
   import { getSettings, setSettings } from "./settings";
   import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName, matchesMediaAccept, safeFileUrl } from "../../media-types";
   import config from "virtual:rigel-config";
+  import { onMediaReset, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
   import type { EmbedData } from "../blocks/embed";
   import type { VideoData } from "../blocks/video";
@@ -87,8 +88,7 @@
     const url = selected.asset.url;
     savingMeta = true; metaError = ""; metaNotice = "";
     try {
-      const response = await fetch("/rigel/api/local/media", { method: "PUT", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url, name: metaName.trim() || undefined, title: metaTitle.trim() || undefined, description: metaDescription.trim() || undefined, alt: selected.asset.type?.startsWith("image/") ? metaAlt : undefined }) });
-      if (!response.ok) { metaError = $t("media.metadataSaveFailedStatus", { status: response.status }); return; }
+      await saveMediaMetadata({ url, name: metaName.trim() || undefined, title: metaTitle.trim(), description: metaDescription.trim(), ...(selected.asset.type?.startsWith("image/") ? { alt: metaAlt } : {}) });
       await library();
       selected = { url, asset: assets.find(a => a.url === url) };
       metaNotice = $t("media.metadataSaved");
@@ -100,8 +100,7 @@
     const url = selected.asset.url;
     picking = true;
     try {
-      const response = await fetch("/rigel/api/local/media", { method: "DELETE", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url }) });
-      if (!response.ok) throw new Error($t("media.deleteFailed", { status: response.status }));
+      await deleteMedia(url);
       assets = assets.filter(asset => asset.url !== url);
       librarySelection = ""; notice = $t("media.fileDeleted");
       close();
@@ -117,14 +116,15 @@
   }
 
   async function library() {
-    const response = await fetch("/rigel/media.json", { cache: "no-store", headers: { "Accept-Language": $locale } });
-    if (!response.ok) throw new Error($t("media.listingUnavailable"));
-    const data = await response.json();
-    assets = (data.assets ?? data.images).filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
+    const data = await listMedia();
+    assets = data.assets.filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
     writable = !demoMode && data.writable === true;
     folder = data.folder;
   }
-  onMount(() => { if (inline) void run(); });
+  onMount(() => {
+    if (inline) void run();
+    return onMediaReset(() => { close(); assets = []; writable = false; }, () => { if (inline) void run(); });
+  });
   onDestroy(() => { requestId++; releaseFile(); });
   $effect(() => {
     if (open && dialog) { dialog.showModal(); cancel?.focus(); }
@@ -170,13 +170,10 @@
     const metadata = metadataImport ? { title: metaTitle.trim(), description: metaDescription.trim(), ...(imageImport ? { alt: alt.trim() } : {}) } : null;
     picking = true; error = "";
     try {
-      const url = choice.file ? await uploadMedia(choice.file) : choice.stock ? await importStockImage(choice.stock) : needsImport ? await importImageUrl(choice.url) : choice.url;
+      const url = choice.file ? await uploadMedia(choice.file, metadata ?? {}) : choice.stock ? await importStockImage(choice.stock, metadata ?? {}) : needsImport ? await importImageUrl(choice.url, metadata ?? {}) : choice.url;
       if (!safeImageUrl(url)) throw new Error($t("media.unsafeMediaUrl"));
       if (kind === "file" && (!safeFileUrl(url) || !matchesMediaAccept(url, accept))) throw new Error($t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }));
-      if (metadata) {
-        const saved = await fetch("/rigel/api/local/media", { method: "PUT", headers: { "Content-Type": "application/json", "Accept-Language": $locale }, body: JSON.stringify({ url, ...metadata }) });
-        if (!saved.ok) throw new Error($t("media.uploadedMetadataFailed", { status: saved.status }));
-      }
+      if (metadata && mediaBackend() !== "github") await saveMediaMetadata({ url, ...metadata }, "media.uploadedMetadataFailed");
       if (kind === "video" && mediaMetadata(new URL(url, location.origin).pathname)?.category !== "Video") throw new Error($t("media.chooseVideoUrl"));
       if (request === requestId) {
         if (inline) {

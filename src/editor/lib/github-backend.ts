@@ -1,4 +1,8 @@
 import { translate } from "../i18n";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, safeFileUrl } from "../../media-types";
+import { validateMetaUpdate, META_KEYS, type MediaMeta } from "../../media-metadata";
+import { validMediaBytes } from "../../routes/media-validation";
+import type { MediaAsset } from "./media-library";
 import extensions from "virtual:rigel-extensions";
 import { resolveExtensions, validateExtensionBlocks } from "../../extensions";
 import type { Manifest } from "../../manifest/types";
@@ -12,10 +16,11 @@ import { documentIndex, isPlainObject, validateDocument, validateDocumentId, val
 import { applyValues, readValues } from "../../routes/serialize";
 import { assertUniqueUrlSlugs, normalizeUrlSlug, validateDocumentSlugs } from "../../slugs";
 
-export interface GitContext { token: string; repo: string; branch: string }
+export interface GitContext { token: string; repo: string; branch: string; assertActive?: () => void }
 
 type FileSnapshot = { sha: string; text: string; mode: string };
-type PendingWrite = { sha: string; text: string | null; creating: boolean; head: string; mode: string };
+type MediaChange = { path: string; text: string | null; sha?: string; mode?: string };
+type PendingWrite = { sha: string; text: string | null; creating: boolean; head: string; mode: string; changes?: MediaChange[] };
 type Snapshot = { target: string; head: string; writes: Promise<void>; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite> };
 const REMOTE_SNAPSHOT = Symbol("rigel-remote-snapshot");
 const SHA = /^[a-f0-9]{40}$/;
@@ -60,12 +65,14 @@ function filePath(ctx: GitContext, manifest: Manifest, folder: string, slug: str
 }
 
 async function gh(ctx: GitContext, path: string, init: RequestInit = {}): Promise<any> {
+  ctx.assertActive?.();
   let response: Response;
   try {
     response = await fetch(`https://api.github.com/repos/${ctx.repo}${path}`, {
       ...init, headers: {Authorization: `Bearer ${ctx.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28", "Content-Type":"application/json"}, redirect:"error", cache:"no-store", credentials:"omit", signal:AbortSignal.timeout(15000),
     });
   } catch { throw new Error(translate("connection.requestFailed")); }
+  ctx.assertActive?.();
   if (!response.ok) {
     const rateLimited = response.status === 429 || response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after");
     const key = rateLimited ? "connection.requestRateLimited" : ({401:"connection.requestSessionExpired",403:"connection.requestAccessDenied",404:"connection.requestUnavailable",409:"connection.requestConflict",422:"connection.requestRejected"} as Record<number,string>)[response.status] ?? "connection.requestError";
@@ -113,19 +120,24 @@ function parseJson(text: string): unknown {
   try { return JSON.parse(text); } catch { throw new Error(translate("connection.invalidRemoteJson")); }
 }
 
-export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, createDraft = true): Promise<Manifest> {
-  const cfg = config(ctx, blueprint);
-  const head = await draftHead(ctx, blueprint, createDraft);
+async function remoteTree(ctx: GitContext, head: string) {
   const tree = await gh(ctx, `/git/trees/${head}?recursive=1`);
   if (!tree || tree.truncated !== false || !Array.isArray(tree.tree)) throw new Error(translate("connection.incompleteTree"));
-  const manifest = structuredClone(blueprint);
-  const snapshot: Snapshot = {target:target(ctx,manifest),head,writes:Promise.resolve(),files:new Map(),paths:new Set(),pending:new Map()};
   const entries = new Map<string, any>();
   for (const entry of tree.tree) {
     if (!entry || typeof entry.path !== "string" || entry.path.split("/").some((part: string) => !part || part === "." || part === "..") || /[\\\u0000-\u001f]/.test(entry.path) || !["blob","tree","commit"].includes(entry.type) || !SHA.test(entry.sha) || !["100644","100755","120000","040000","160000"].includes(entry.mode)) throw new Error(translate("connection.malformedTreeEntry"));
     if (entries.has(entry.path)) throw new Error(translate("connection.duplicateTreePath"));
-    entries.set(entry.path, entry); snapshot.paths.add(entry.path);
+    entries.set(entry.path, entry);
   }
+  return entries;
+}
+
+export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, createDraft = true): Promise<Manifest> {
+  const cfg = config(ctx, blueprint);
+  const head = await draftHead(ctx, blueprint, createDraft);
+  const entries = await remoteTree(ctx, head);
+  const manifest = structuredClone(blueprint);
+  const snapshot: Snapshot = {target:target(ctx,manifest),head,writes:Promise.resolve(),files:new Map(),paths:new Set(entries.keys()),pending:new Map()};
   const folders = [cfg.copyDir, ...cfg.collections.map(c => c.folder), ...(manifest.schema?.documents.map(d => d.folder) ?? []), ...(cfg.menus ? [cfg.menus.folder] : [])];
   for (const folder of folders) {
     const parts = [cfg.repoRoot,folder].filter(Boolean).join("/").split("/");
@@ -196,7 +208,7 @@ function loaded(ctx: GitContext, manifest: Manifest): Snapshot {
   return snapshot;
 }
 
-async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean) {
+async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean, additional: MediaChange[] = []) {
   const snapshot = loaded(ctx,manifest);
   const head = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
   const uncertain = snapshot.pending.get(path);
@@ -221,22 +233,40 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
       if (verified?.type !== "file" || sha(verified.sha) !== pending.sha || decode(verified) !== pending.text) throw new Error(translate("connection.saveChanged"));
       snapshot.files.set(path,{sha:pending.sha,text:pending.text,mode:pending.mode}); snapshot.paths.add(path);
     }
+    const entries = pending.changes?.length ? await remoteTree(ctx, pending.head) : undefined;
+    for (const change of pending.changes ?? []) {
+      const entry = entries!.get(change.path);
+      if (change.text === null) {
+        if (entry) throw new Error(translate("connection.deletionUnverified"));
+        snapshot.files.delete(change.path); snapshot.paths.delete(change.path);
+      } else {
+        if (entry?.type !== "blob" || entry.mode !== change.mode || entry.sha !== change.sha) throw new Error(translate("connection.saveChanged"));
+        const payload = await gh(ctx, `/git/blobs/${change.sha}`);
+        if (sha(payload?.sha) !== change.sha || bytesBase64(decodeMedia(payload, manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE)) !== change.text) throw new Error(translate("connection.saveChanged"));
+        snapshot.files.set(change.path, { sha: change.sha!, text: change.text, mode: change.mode! }); snapshot.paths.add(change.path);
+      }
+    }
+    if (pending.changes?.length && sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha) !== pending.head) throw new Error(translate("connection.draftConflict"));
     snapshot.head = pending.head;
     snapshot.pending.delete(path);
   };
   if (uncertain) {
     await verify(uncertain);
-    if (uncertain.text === text && (!creating || uncertain.creating)) return;
+    if (uncertain.text === text && (!creating || uncertain.creating) && JSON.stringify((uncertain.changes ?? []).map(({ path, text }) => [path, text])) === JSON.stringify(additional.map(({ path, text }) => [path, text]))) return;
     if (creating && uncertain.creating) creating = false;
   }
   const previous = snapshot.files.get(path);
   if (creating ? snapshot.paths.has(path) : !previous) throw new Error(creating ? translate("connection.contentExists") : translate("connection.reloadContent"));
   const blob = text === null ? null : sha((await gh(ctx, "/git/blobs", { method: "POST", body: JSON.stringify({ content: encode(text), encoding: "base64" }) }))?.sha);
   const mode = previous?.mode ?? "100644";
+  for (const change of additional) {
+    change.mode = snapshot.files.get(change.path)?.mode ?? "100644";
+    change.sha = change.text === null ? undefined : sha((await gh(ctx, "/git/blobs", { method: "POST", body: JSON.stringify({ content: change.text, encoding: "base64" }) }))?.sha);
+  }
   const base = sha((await gh(ctx, `/git/commits/${snapshot.head}`))?.tree?.sha);
-  const tree = sha((await gh(ctx, "/git/trees", { method: "POST", body: JSON.stringify({ base_tree: base, tree: [{ path, mode, type: "blob", sha: blob }] }) }))?.sha);
+  const tree = sha((await gh(ctx, "/git/trees", { method: "POST", body: JSON.stringify({ base_tree: base, tree: [{ path, mode, type: "blob", sha: blob }, ...additional.map(change => ({ path: change.path, mode: change.mode, type: "blob", sha: change.sha ?? null }))] }) }))?.sha);
   const commit = sha((await gh(ctx, "/git/commits", { method: "POST", body: JSON.stringify({ message: `rigel: ${text === null ? "delete" : "save"} ${path}`, tree, parents: [snapshot.head] }) }))?.sha);
-  const pending = {sha:blob ?? previous!.sha,text,creating,head:commit,mode};
+  const pending = {sha:blob ?? previous!.sha,text,creating,head:commit,mode,changes:additional};
   snapshot.pending.set(path,pending);
   await verify(pending);
 }
@@ -297,6 +327,131 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     path = filePath(ctx,manifest,cfg.menus.folder,selection.slug);
   } else throw new Error(translate("connection.selectContent"));
   await mutate(ctx,manifest,path,serializeContentJson(data,cfg.jsonOutput),creating);
+}
+
+function bytesBase64(bytes: Uint8Array) {
+  let value = "";
+  for (const byte of bytes) value += String.fromCharCode(byte);
+  return btoa(value);
+}
+
+function decodeMedia(payload: any, limit: number): Uint8Array<ArrayBuffer> {
+  const content = typeof payload?.content === "string" ? payload.content.replace(/[\r\n]/g, "") : "";
+  if (payload?.encoding !== "base64" || content.length > Math.ceil(limit / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(content)) throw new Error(translate("connection.invalidPayload"));
+  const bytes = Uint8Array.from(atob(content), char => char.charCodeAt(0));
+  if (bytes.length > limit) throw new Error(translate("connection.contentTooLarge"));
+  return bytes;
+}
+
+function mediaPaths(ctx: GitContext, manifest: Manifest) {
+  const cfg = config(ctx, manifest), folder = safePath(cfg.mediaDir ?? "rigel-media");
+  const directory = [cfg.repoRoot, safePath(cfg.publicDir ?? "public"), folder].filter(Boolean).join("/");
+  return { folder, directory, ledger: directory + "/.rigel-media.json", prefix: "/" + folder.split("/").map(encodeURIComponent).join("/") + "/" };
+}
+
+async function remoteMedia(ctx: GitContext, manifest: Manifest) {
+  const snapshot = loaded(ctx, manifest), paths = mediaPaths(ctx, manifest);
+  const head = await draftHead(ctx, manifest, false), entries = await remoteTree(ctx, head);
+  for (const path of entries.keys()) if (path === paths.directory || paths.directory.startsWith(path + "/")) {
+    const entry = entries.get(path);
+    if (entry.type !== "tree" || entry.mode !== "040000") throw new Error(translate("connection.invalidDirectory"));
+  }
+  const read = async (path: string, limit = MAX_BYTES) => {
+    const entry = entries.get(path);
+    if (!entry || entry.type !== "blob" || !["100644", "100755"].includes(entry.mode)) throw new Error(translate("connection.invalidFile"));
+    const blob = await gh(ctx, `/git/blobs/${entry.sha}`);
+    if (sha(blob?.sha) !== entry.sha) throw new Error(translate("connection.blobShaMismatch"));
+    return decodeMedia(blob, limit);
+  };
+  let record: Record<string, MediaMeta> = {};
+  const ledger = entries.get(paths.ledger);
+  if (ledger) {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(await read(paths.ledger));
+    const data = parseJson(text);
+    if (!isPlainObject(data) || Object.values(data).some(meta => !isPlainObject(meta) || Object.entries(meta).some(([key, value]) => !Object.hasOwn(META_KEYS, key) || typeof value !== "string" || value.length > META_KEYS[key] || /[\u0000-\u001f\u007f]/.test(value)))) throw new Error(translate("connection.invalidRemoteJson"));
+    record = data as Record<string, MediaMeta>;
+    if (head === snapshot.head) snapshot.files.set(paths.ledger, { sha: ledger.sha, text, mode: ledger.mode });
+  }
+  const assets: MediaAsset[] = [];
+  for (const [path, entry] of entries) {
+    if (!path.startsWith(paths.directory + "/") || entry.type !== "blob" || !["100644", "100755"].includes(entry.mode)) continue;
+    const relative = path.slice(paths.directory.length + 1);
+    if (relative.split("/").some(part => part.startsWith(".") || !safePath(part)) || !safeMediaName(relative.split("/").at(-1)!)) continue;
+    const parents = path.split("/");
+    if (parents.slice(0, -1).some((_, index) => { const parent = entries.get(parents.slice(0, index + 1).join("/")); return parent && (parent.type !== "tree" || parent.mode !== "040000"); })) continue;
+    const url = paths.prefix + relative.split("/").map(encodeURIComponent).join("/");
+    assets.push({ ...record[url], url, name: record[url]?.name ?? relative, type: mediaMetadata(relative)!.type, ...(Number.isSafeInteger(entry.size) && entry.size >= 0 ? { size: entry.size } : {}) });
+  }
+  return { ...paths, snapshot, head, entries, record, assets: assets.sort((a, b) => a.name.localeCompare(b.name)), read };
+}
+
+export async function listRemoteMedia(ctx: GitContext, manifest: Manifest): Promise<MediaAsset[]> {
+  return (await remoteMedia(ctx, manifest)).assets;
+}
+
+export async function readRemoteMedia(ctx: GitContext, manifest: Manifest, url: string): Promise<Blob> {
+  const media = await remoteMedia(ctx, manifest);
+  if (!safeFileUrl(url) || !media.assets.some(asset => asset.url === url)) throw new Error(translate("local.unknownAsset"));
+  const metadata = mediaMetadata(url)!;
+  const bytes = await media.read(media.directory + "/" + url.slice(media.prefix.length).split("/").map(decodeURIComponent).join("/"), manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE);
+  if (!bytes.length || !validMediaBytes(bytes, metadata.extension)) throw new Error(translate("local.mediaBytesMismatch"));
+  return new Blob([bytes], { type: metadata.type === "text/plain" ? "text/plain; charset=utf-8" : metadata.type });
+}
+
+function queueRemoteWrite<T>(ctx: GitContext, manifest: Manifest, operation: () => Promise<T>): Promise<T> {
+  const key = writeKey(ctx);
+  if (publishing.has(key)) return Promise.reject(new Error(translate("connection.waitBeforeSaving")));
+  const snapshot = loaded(ctx, manifest);
+  saving.set(key, (saving.get(key) ?? 0) + 1);
+  const result = snapshot.writes.then(operation);
+  snapshot.writes = result.then(() => {}, () => {});
+  return result.finally(() => saving.set(key, (saving.get(key) ?? 1) - 1));
+}
+
+const mediaUploads = new WeakMap<Blob, string>();
+export async function uploadRemoteMedia(ctx: GitContext, manifest: Manifest, file: File, metadata: MediaMeta = {}): Promise<string> {
+  const info = mediaMetadata(file.name), limit = manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  if (!safeMediaName(file.name) || !info || (file.type && file.type !== info.type) || !file.size || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!validMediaBytes(bytes, info.extension)) throw new Error(translate("local.mediaBytesMismatch"));
+  const filename = mediaUploads.get(file) ?? `${crypto.randomUUID()}.${info.extension === "jpeg" ? "jpg" : info.extension}`;
+  mediaUploads.set(file, filename);
+  return queueRemoteWrite(ctx, manifest, async () => {
+    const media = await remoteMedia(ctx, manifest), url = media.prefix + filename, path = media.directory + "/" + filename;
+    if (media.head !== media.snapshot.head && media.head !== media.snapshot.pending.get(media.ledger)?.head) throw new Error(translate("connection.draftConflictUnsaved"));
+    const valid = validateMetaUpdate({ url, ...Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== "author")) }, new Set([url]), translate);
+    if (!valid.ok) throw new Error(valid.error);
+    const { url: _, ...patch } = valid.value;
+    const author = metadata.author?.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80);
+    const record = { ...media.record, [url]: { name: file.name.slice(0, 120), ...patch, ...(author ? { author } : {}) } };
+    if (media.entries.has(path) && !media.snapshot.pending.has(media.ledger)) throw new Error(translate("connection.contentExists"));
+    await mutate(ctx, manifest, media.ledger, JSON.stringify(record, null, 2), !media.entries.has(media.ledger), [{ path, text: bytesBase64(bytes) }]);
+    return url;
+  });
+}
+
+export function updateRemoteMedia(ctx: GitContext, manifest: Manifest, body: unknown): Promise<void> {
+  return queueRemoteWrite(ctx, manifest, async () => {
+    const media = await remoteMedia(ctx, manifest);
+    const valid = validateMetaUpdate(body, new Set(media.assets.map(asset => asset.url)), translate);
+    if (!valid.ok) throw new Error(valid.error);
+    const { url, ...patch } = valid.value;
+    await mutate(ctx, manifest, media.ledger, JSON.stringify({ ...media.record, [url]: { ...media.record[url], ...patch } }, null, 2), !media.entries.has(media.ledger));
+  });
+}
+
+export function deleteRemoteMedia(ctx: GitContext, manifest: Manifest, url: string): Promise<void> {
+  return queueRemoteWrite(ctx, manifest, async () => {
+    const paths = mediaPaths(ctx, manifest), pending = loaded(ctx, manifest).pending.get(paths.ledger);
+    if (safeFileUrl(url) && url.startsWith(paths.prefix) && pending?.changes?.some(change => change.text === null && change.path === paths.directory + "/" + url.slice(paths.prefix.length).split("/").map(decodeURIComponent).join("/"))) {
+      await mutate(ctx, manifest, paths.ledger, pending.text, pending.creating, pending.changes);
+      return;
+    }
+    const media = await remoteMedia(ctx, manifest);
+    if (!safeFileUrl(url) || !media.assets.some(asset => asset.url === url)) throw new Error(translate("local.unknownAsset"));
+    const record = { ...media.record }; delete record[url];
+    await mutate(ctx, manifest, media.ledger, JSON.stringify(record, null, 2), !media.entries.has(media.ledger), [{ path: media.directory + "/" + url.slice(media.prefix.length).split("/").map(decodeURIComponent).join("/"), text: null }]);
+  });
 }
 
 export interface PublishFile { filename: string; status: "added" | "modified" | "removed" | "renamed"; previous_filename?: string }
@@ -490,12 +645,10 @@ export async function deleteRemoteDocument(ctx: GitContext, manifest: Manifest, 
 }
 
 export async function deleteRemotePost(ctx: GitContext, manifest: Manifest, collection: string, slug: string): Promise<void> {
-  const key = writeKey(ctx);
-  if (publishing.has(key)) throw new Error(translate("connection.waitBeforeDeleting"));
-  const cfg = config(ctx,manifest);
-  const folder = cfg.collections.find(c => c.name === collection)?.folder;
-  if (!folder || !manifest.collections?.some(c => c.name === collection)) throw new Error(translate("connection.unknownCollection"));
-  saving.set(key, (saving.get(key) ?? 0) + 1);
-  try { await mutate(ctx,manifest,filePath(ctx,manifest,folder,slug,"json",POST_SLUG),null,false); }
-  finally { saving.set(key, (saving.get(key) ?? 1) - 1); }
+  return queueRemoteWrite(ctx, manifest, async () => {
+    const cfg = config(ctx,manifest);
+    const folder = cfg.collections.find(c => c.name === collection)?.folder;
+    if (!folder || !manifest.collections?.some(c => c.name === collection)) throw new Error(translate("connection.unknownCollection"));
+    await mutate(ctx,manifest,filePath(ctx,manifest,folder,slug,"json",POST_SLUG),null,false);
+  });
 }

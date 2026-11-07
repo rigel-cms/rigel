@@ -1,4 +1,8 @@
 {
+  "shell.updateAvailable": "Rigel {version} is beschikbaar",
+  "shell.updateInstructions": "Vraag je ontwikkelaar om Rigel bij te werken en de site opnieuw te bouwen.",
+  "shell.updateReleaseNotes": "Releaseopmerkingen",
+  "shell.dismissUpdate": "Updatemelding sluiten",
   "shell.demoUser": "Demobezoeker",
   "shell.demoMode": "Demomodus",
   "shell.demoBanner": "Openbare demo — wijzigingen blijven in het geheugen en verdwijnen bij vernieuwen. Er worden geen bestanden geschreven.",

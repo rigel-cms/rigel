@@ -1,6 +1,6 @@
 {
   "name": "@rigel-cms/rigel",
-  "version": "1.5.0-rc.4",
+  "version": "1.5.0-rc.5",
   "description": "A CMS for Astro sites. You edit the text, Git keeps the history.",
   "keywords": [
     "astro",

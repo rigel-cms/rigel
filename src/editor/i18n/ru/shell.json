@@ -1,4 +1,8 @@
 {
+  "shell.updateAvailable": "Доступна версия Rigel {version}",
+  "shell.updateInstructions": "Попросите разработчика обновить Rigel и пересобрать сайт.",
+  "shell.updateReleaseNotes": "Что нового",
+  "shell.dismissUpdate": "Скрыть уведомление об обновлении",
   "shell.demoUser": "Посетитель демо",
   "shell.demoMode": "Деморежим",
   "shell.demoBanner": "Публичное демо: изменения хранятся в памяти и сбрасываются при обновлении страницы. Файлы не изменяются.",

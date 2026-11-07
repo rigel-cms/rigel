@@ -1,4 +1,8 @@
 {
+  "shell.updateAvailable": "Rigel {version} ist verfügbar",
+  "shell.updateInstructions": "Bitte deinen Entwickler, Rigel zu aktualisieren und die Website neu zu bauen.",
+  "shell.updateReleaseNotes": "Versionshinweise",
+  "shell.dismissUpdate": "Update-Hinweis schließen",
   "shell.demoUser": "Demobesucher",
   "shell.demoMode": "Demomodus",
   "shell.demoBanner": "Öffentliche Demo — Änderungen bleiben im Speicher und werden beim Neuladen zurückgesetzt. Keine Dateien werden geschrieben.",

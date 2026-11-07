@@ -109,4 +109,10 @@ A confirmed publish means the PR merged into `publishBranch`, not that your site
 
 In GitHub mode, the public editor manifest includes schemas and configuration rather than build-time document, article, menu or copy values. Schemas and initial values are still public configuration; keep credentials out of them. Your website templates decide which content reaches public pages.
 
-The media library is a build-time snapshot in GitHub mode. GitHub media uploads and imports are unavailable; manage media through your repository and rebuild the site when needed.
+## Media in the repository
+
+The media library reads the authenticated workspace branch, including files uploaded since the last site build. Uploads and downloaded image imports go into Astro's public directory under `mediaDir` (default `rigel-media`), relative to `repoRoot`. Rigel creates the folder and its `.rigel-media.json` metadata file on the first upload. Each upload commits the file and metadata together. Media metadata saves and confirmed deletions also commit immediately; they do not save an open article or publish the site.
+
+The editor previews and downloads repository files through authenticated GitHub requests, including private repositories and assets that your host has not built yet. Temporary preview URLs stay in the browser and are released when their views close or the session changes. Stored content keeps the normal public media path. Modified dates are absent when GitHub supplies no file history.
+
+Contents read/write permission covers media as well as content. You do not need another Worker, upload server or storage account. The existing file types and `maxFileSize` limit apply. Unsplash selections remain hotlinks under Unsplash's provider rules; other supported stock-photo imports are downloaded into the repository after confirmation. Use Publish separately to include saved media changes in the public site build.

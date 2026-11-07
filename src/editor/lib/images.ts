@@ -3,6 +3,8 @@ import { translate, locale } from "../i18n";
 import { get } from "svelte/store";
 import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, storedMediaFile } from "../../media-types";
 import config from "virtual:rigel-config";
+import { mediaBackend, uploadRepositoryMedia } from "./media-backend";
+import type { MediaMeta } from "../../media-metadata";
 export function getKeys(): StockKeys { return getSettings().apiKeys; }
 export function setKeys(keys: StockKeys) { setSettings({ apiKeys: keys }); }
 
@@ -117,7 +119,7 @@ export async function searchImages(
   throw new Error(translate("media.unknownStockProvider"));
 }
 
-export async function importStockImage(image: StockResult): Promise<string> {
+export async function importStockImage(image: StockResult, metadata: MediaMeta = {}): Promise<string> {
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const url = new URL(image.url);
   const hosts = {
@@ -136,10 +138,10 @@ export async function importStockImage(image: StockResult): Promise<string> {
     if (!tracked.ok) throw new Error(translate("media.unsplashTrackingFailed", { status: tracked.status }));
     return image.url;
   }
-  return importImageUrl(image.url);
+  return importImageUrl(image.url, metadata);
 }
 
-export async function importImageUrl(value: string): Promise<string> {
+export async function importImageUrl(value: string, metadata: MediaMeta = {}): Promise<string> {
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   if (!safeImageUrl(value)) throw new Error(translate("media.unsafeImageUrl"));
   if (!value.startsWith("/") && new URL(value).protocol !== "https:") throw new Error(translate("media.remoteRequiresHttps"));
@@ -165,7 +167,7 @@ export async function importImageUrl(value: string): Promise<string> {
       chunks.push(new Uint8Array(chunk));
     }
   } finally { reader.releaseLock(); }
-  return uploadImage(new Blob(chunks, { type }));
+  return uploadImage(new Blob(chunks, { type }), metadata);
 }
 
 export function safeImageUrl(value: string): boolean {
@@ -186,11 +188,12 @@ export function currentAuthor(): string {
   } catch { return "Local user"; }
 }
 
-export async function uploadMedia(file: File): Promise<string> {
+export async function uploadMedia(file: File, meta: MediaMeta = {}): Promise<string> {
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const metadata = mediaMetadata(file.name);
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  if (mediaBackend() === "github") return uploadRepositoryMedia(file, { ...meta, author: currentAuthor() });
   const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "Accept-Language": get(locale), "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
   if (!response.ok) throw new Error(translate("media.uploadFailed", { status: response.status, body: await response.text() }));
   const result = await response.json();
@@ -198,10 +201,15 @@ export async function uploadMedia(file: File): Promise<string> {
   return result.url;
 }
 
-export async function uploadImage(blob: Blob): Promise<string> {
+export async function uploadImage(blob: Blob, metadata: MediaMeta = {}): Promise<string> {
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   if (blob.size > limit) throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 }));
+  if (mediaBackend() === "github") {
+    const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[blob.type];
+    if (!extension) throw new Error(translate("media.chooseImageFormat"));
+    return uploadRepositoryMedia(new File([blob], `image.${extension}`, { type: blob.type }), { ...metadata, author: currentAuthor() });
+  }
   const saved = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Accept-Language": get(locale) }, body: blob });
   if (saved.status === 404) throw new Error(translate("media.localImportRequired"));
   if (!saved.ok) throw new Error(translate("media.photoImportFailedStatus", { status: saved.status }));

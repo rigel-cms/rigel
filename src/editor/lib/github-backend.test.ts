@@ -3,7 +3,127 @@ import { readFileSync } from "node:fs";
 import type { Manifest } from "../../manifest/types";
 import { emptyBody } from "../../article-body";
 import { readValues } from "../../routes/serialize";
-import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument } from "./github-backend";
+import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, listRemoteMedia, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, readRemoteMedia } from "./github-backend";
+
+test("repository media initializes file and ledger atomically, previews bytes and preserves content Save", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  expect(await listRemoteMedia(ctx, m)).toEqual([]);
+  const url = await uploadRemoteMedia(ctx, m, new File(["Draft attachment"], "notes.txt", { type: "text/plain" }), { author: "Alex" });
+  expect(url).toMatch(/^\/rigel-media\/[a-f0-9-]+\.txt$/);
+  const tree = s.calls.filter(call => call.path === "/git/trees" && call.method === "POST").at(-1)!;
+  expect(tree.body.tree.map((entry: any) => entry.path).sort()).toEqual([`playground/public${url}`, "playground/public/rigel-media/.rigel-media.json"].sort());
+  expect(await listRemoteMedia(ctx, m)).toEqual([{ url, name: "notes.txt", type: "text/plain", size: 16, author: "Alex" }]);
+  expect(await (await readRemoteMedia(ctx, m, url)).text()).toBe("Draft attachment");
+  await updateRemoteMedia(ctx, m, { url, name: "Renamed", title: "Draft file", description: "Description" });
+  expect((await listRemoteMedia(ctx, m))[0]).toMatchObject({ name: "Renamed", title: "Draft file", description: "Description" });
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Unsaved article" }, emptyBody(), false);
+  await deleteRemoteMedia(ctx, m, url);
+  expect(await listRemoteMedia(ctx, m)).toEqual([]);
+  expect(JSON.parse(s.files.get("playground/public/rigel-media/.rigel-media.json")!.text)).toEqual({});
+  expect(s.files.has(`playground/public${url}`)).toBe(false);
+});
+
+test("media rejects invalid bytes, MIME, size, unsafe folders and symlinks without writes", async () => {
+  const s = server(), original = blueprint(), m = await loadManifestRemote(ctx, original);
+  const before = s.calls.filter(call => call.method !== "GET").length;
+  for (const file of [new File(["not png"], "image.png", { type: "image/png" }), new File(["text"], "file.txt", { type: "text/html" }), new File(["text"], "../file.txt"), new File([new Uint8Array(2097153)], "big.txt"), new File([], "empty.txt")]) await expect(uploadRemoteMedia(ctx, m, file)).rejects.toThrow();
+  expect(s.calls.filter(call => call.method !== "GET")).toHaveLength(before);
+  for (const folder of ["../escape", "/escape", "media//files", "media\\files"]) {
+    const malformed = blueprint(); malformed.github!.mediaDir = folder;
+    const loaded = await loadManifestRemote(ctx, malformed);
+    await expect(listRemoteMedia(ctx, loaded)).rejects.toThrow();
+  }
+  s.put("playground/public/rigel-media", "symlink");
+  s.files.get("playground/public/rigel-media")!.mode = "120000";
+  const linked = await loadManifestRemote(ctx, original);
+  await expect(listRemoteMedia(ctx, linked)).rejects.toThrow(/directory/);
+});
+
+test("media listing reads current draft head without adopting rival writes or fabricated modified dates", async () => {
+  const s = server(), original = blueprint();
+  original.github!.publicDir = "static assets"; original.github!.mediaDir = "uploads/files";
+  const m = await loadManifestRemote(ctx, original);
+  s.put("playground/static assets/uploads/files/current.txt", "remote");
+  const assets = await listRemoteMedia(ctx, m);
+  expect(assets).toEqual([{ url: "/uploads/files/current.txt", name: "current.txt", type: "text/plain", size: 6 }]);
+  expect(assets[0]).not.toHaveProperty("modified");
+  await expect(uploadRemoteMedia(ctx, m, new File(["local"], "file.txt"))).rejects.toThrow(/conflict/);
+  await expect(updateRemoteMedia(ctx, m, { url: assets[0].url, title: "local" })).rejects.toThrow(/conflict/);
+  expect(s.calls.filter(call => call.method !== "GET")).toEqual([]);
+});
+
+test("media and content writes share the draft queue and preserve both assets", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  const urls = await Promise.all([uploadRemoteMedia(ctx, m, new File(["first"], "first.txt")), uploadRemoteMedia(ctx, m, new File(["second"], "second.txt")), saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Saved together" }, emptyBody(), false)]);
+  expect((await listRemoteMedia(ctx, m)).map(asset => asset.url).sort()).toEqual(urls.slice(0, 2).sort());
+  expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter.title).toBe("Saved together");
+});
+
+test("media retries verify the complete atomic commit after lost upload or deletion readback", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint()), original = fetch;
+  const file = new File(["Retry file"], "retry.txt");
+  let fail = true;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (fail && url.includes("/contents/")) { fail = false; throw new Error("Lost readback"); }
+    return original(url, init);
+  });
+  await expect(uploadRemoteMedia(ctx, m, file)).rejects.toThrow();
+  const url = await uploadRemoteMedia(ctx, m, file);
+  expect((await listRemoteMedia(ctx, m)).map(asset => asset.url)).toEqual([url]);
+  expect(s.calls.filter(call => call.path === "/git/commits" && call.method === "POST")).toHaveLength(1);
+  fail = true;
+  await expect(deleteRemoteMedia(ctx, m, url)).rejects.toThrow();
+  await deleteRemoteMedia(ctx, m, url);
+  expect(await listRemoteMedia(ctx, m)).toEqual([]);
+  expect(s.calls.filter(call => call.path === "/git/commits" && call.method === "POST")).toHaveLength(2);
+});
+
+test("post deletion waits for an in-flight media commit on the shared draft queue", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint()), original = fetch;
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const writing = new Promise<void>(resolve => { started = resolve; });
+  let first = true;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (first && url.endsWith("/git/blobs") && init?.method === "POST") { first = false; started(); await held; }
+    return original(url, init);
+  });
+  const upload = uploadRemoteMedia(ctx, m, new File(["queued"], "queue.txt"));
+  await writing;
+  const deletion = deleteRemotePost(ctx, m, "blog", "hello");
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const writesWhileBlocked = s.calls.filter(call => call.method === "PATCH").length;
+  release();
+  await Promise.all([upload, deletion]);
+  expect(writesWhileBlocked).toBe(0);
+  expect(await listRemoteMedia(ctx, m)).toHaveLength(1);
+  expect(s.files.has("playground/src/content/blog/hello.json")).toBe(false);
+});
+
+test("reconciling an uncertain legacy deletion does not acknowledge a different file deletion", async () => {
+  const s = server();
+  s.put("playground/public/rigel-media/first.txt", "first");
+  s.put("playground/public/rigel-media/second.txt", "second");
+  const m = await loadManifestRemote(ctx, blueprint()), original = fetch;
+  let fail = true;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (fail && url.includes("/contents/")) { fail = false; throw new Error("Lost readback"); }
+    return original(url, init);
+  });
+  await expect(deleteRemoteMedia(ctx, m, "/rigel-media/first.txt")).rejects.toThrow();
+  await deleteRemoteMedia(ctx, m, "/rigel-media/second.txt");
+  expect(await listRemoteMedia(ctx, m)).toEqual([]);
+  expect(s.files.has("playground/public/rigel-media/second.txt")).toBe(false);
+});
+
+test("media larger than the content decoder limit uses Git blobs for binary readback", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  const bytes = "x".repeat(1024 * 1024 + 32);
+  const url = await uploadRemoteMedia(ctx, m, new File([bytes], "large.txt", { type: "text/plain" }));
+  expect(await (await readRemoteMedia(ctx, m, url)).text()).toBe(bytes);
+  expect(s.calls.some(call => call.path.startsWith("/contents/") && call.path.endsWith(url))).toBe(false);
+  expect((await listRemoteMedia(ctx, m))[0].size).toBe(bytes.length);
+});
 
 vi.mock("virtual:rigel-extensions", () => ({ default: [{ name: "notes", blocks: [{ name: "note", label: "Note", editor() {}, render() {}, validate(data: Record<string, unknown>) { if (typeof data.text !== "string") throw new Error("Note requires text"); } }] }] }));
 const ctx = { token: "secret-token", repo: "owner/site", branch: "drafts" };
@@ -58,7 +178,7 @@ function server() {
     if (path === "/git/refs" && method === "POST") { state.exists = true; state.head = body.sha; return state.race ? json({}, 422) : json({ ref: body.ref, object: { sha: body.sha } }, 201); }
     if (path.startsWith("/git/trees/")) {
       const key = path.slice(11), tree = trees.get(commits.get(key)?.tree ?? key);
-      return tree ? json({ truncated: state.truncated, tree: [...tree].map(([path, file]) => ({ path, sha: file.sha, type: "blob", mode: file.mode ?? "100644" })) }) : json({}, 404);
+      return tree ? json({ truncated: state.truncated, tree: [...tree].map(([path, file]) => ({ path, sha: file.sha, type: "blob", mode: file.mode ?? "100644", size: Buffer.byteLength(file.text) })) }) : json({}, 404);
     }
     if (path.startsWith("/git/blobs/")) { const sha = path.slice(11), text = blobs.get(sha); return text !== undefined ? json({ sha, encoding: "base64", content: state.malformed ? "%%%" : Buffer.from(text).toString("base64") }) : json({}, 404); }
     if (path.startsWith("/git/commits/")) { const commit = commits.get(path.slice(13)); return commit ? json({ tree: { sha: commit.tree }, parents: commit.parents.map(sha => ({ sha })) }) : json({}, 404); }

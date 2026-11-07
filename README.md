@@ -36,6 +36,14 @@ Register your own slash commands, toolbar buttons and saved article blocks with 
 
 Browsers with the experimental native WebMCP API can offer agents access to existing pages, blog/news articles, menus and shared content. Tools read and edit supported drafts, including structured fields and article bodies. Changes stay unsaved until you review them and press Save. See [setup and limits](docs/webmcp.md).
 
+## Update notices
+
+When the editor opens, it checks the public npm `latest` metadata for `@rigel-cms/rigel` over HTTPS. npm receives the browser's IP address; the request omits credentials and the referrer and sends no user content. Sites with a Content Security Policy must allow `https://registry.npmjs.org` in `connect-src` for this check to work.
+
+Rigel compares the stable release against the installed package version embedded when the site was built. A newer version appears as a dismissible notice on the welcome screen, with a link to the project's GitHub release notes. The check runs once per editor mount, times out after five seconds and fails quietly without blocking editing or sign-in. Successful results and failed attempts are cached in this browser for 24 hours, separately for each installed version. If browser storage is unavailable, each editor mount may check again. Dismissing a notice hides that version, not future versions; clearing Rigel's browser data clears the cache and dismissal.
+
+Updates are manual. Ask your developer to update `@rigel-cms/rigel`, review the release notes, and rebuild and redeploy the site. The editor never installs packages or updates the site itself.
+
 ## License
 
 [Apache-2.0](LICENSE). Copyright 2026 [Alex Zappa](https://alex.zappa.dev/) ([FreshJuice](https://freshjuice.dev/)).

@@ -21,6 +21,9 @@ export function rigelManifestPlugin(cfg: RigelConfig, publicDir?: URL, root?: UR
     repo: cfg.repo!, branch: cfg.branch!, publishBranch: cfg.publishBranch!, repoRoot: cfg.repoRoot!, authOrigin: cfg.authOrigin!, appSlug: cfg.appSlug!, copyDir: cfg.copyDir,
     collections: collections.map(({ name, folder }) => ({ name, folder })),
     jsonOutput: cfg.jsonOutput,
+    publicDir: publicDir && root ? path.relative(fileURLToPath(root), fileURLToPath(publicDir)).split(path.sep).join("/") : "public",
+    mediaDir: cfg.mediaDir,
+    maxFileSize: cfg.maxFileSize,
     ...(cfg.menus ? { menus: { folder: cfg.menus.folder, maxDepth: cfg.menus.maxDepth! } } : {}),
   } : undefined;
 

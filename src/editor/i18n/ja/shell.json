@@ -1,4 +1,8 @@
 {
+  "shell.updateAvailable": "Rigel {version} が利用可能です",
+  "shell.updateInstructions": "開発者に Rigel の更新とサイトの再ビルドを依頼してください。",
+  "shell.updateReleaseNotes": "リリースノート",
+  "shell.dismissUpdate": "更新通知を閉じる",
   "shell.demoUser": "デモ訪問者",
   "shell.demoMode": "デモモード",
   "shell.demoBanner": "公開デモ：変更はメモリ内にのみ保存され、再読み込みでリセットされます。ファイルは書き込まれません。",

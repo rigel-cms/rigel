@@ -1,4 +1,8 @@
 {
+  "shell.updateAvailable": "Rigel {version} è disponibile",
+  "shell.updateInstructions": "Chiedi al tuo sviluppatore di aggiornare Rigel e ricompilare il sito.",
+  "shell.updateReleaseNotes": "Note di rilascio",
+  "shell.dismissUpdate": "Nascondi avviso di aggiornamento",
   "shell.demoUser": "Visitatore demo",
   "shell.demoMode": "Modalità demo",
   "shell.demoBanner": "Demo pubblica: le modifiche restano in memoria e si azzerano ricaricando. Nessun file viene scritto.",

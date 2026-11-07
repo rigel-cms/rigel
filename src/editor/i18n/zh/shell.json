@@ -79,7 +79,6 @@
   "shell.showKey": "显示 {name}",
   "shell.keyFormatError": "请检查 {name} 的格式。",
   "shell.editorInterfaceLanguage": "编辑器界面语言",
-
   "shell.developerMode": "开发者模式",
   "shell.enableDevMode": "启用开发者模式",
   "shell.devModeHint": "显示当前草稿的原始 JSON，并在标签旁显示字段键名。",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "从侧边栏选择页面或集合，开始编辑。",
   "shell.currentDraft": "当前草稿",
   "shell.editorPreviewWidth": "编辑器与预览宽度",
-  "shell.editorWidthPercent": "编辑器宽度 {percent}%"
+  "shell.editorWidthPercent": "编辑器宽度 {percent}%",
+  "shell.maintenance": "维护",
+  "shell.reindexCollections": "重新索引集合",
+  "shell.reindexHint": "重建元数据，不修改文章。",
+  "shell.reindexConfirmGithub": "将重建的索引提交到草稿分支？此操作不会发布网站。",
+  "shell.reindexConfirmLocal": "重建磁盘上的元数据索引？文章不会更改。",
+  "shell.reindexComplete": "集合索引已保存。",
+  "shell.loadingArticle": "正在加载文章…",
+  "shell.indexingCollections": "正在索引元数据：{loaded}/{total}。完成前结果不完整。",
+  "shell.indexIncomplete": "元数据索引未完成，可能缺少部分结果。",
+  "shell.indexReady": "元数据已就绪：{total} 条。"
 }

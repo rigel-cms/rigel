@@ -67,6 +67,8 @@
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
   import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
+  import { readRemotePost, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./lib/github-backend";
+  import { readLocalArticle, cacheLocalArticle, resetLocalArticles } from "./lib/local-articles";
 
   type Sel = Selection;
 
@@ -97,6 +99,73 @@
   let saveState = $state<"idle" | "saving" | "saved" | "error">("idle");
   let saveTask: Promise<boolean> | null = null;
   let saveError = $state("");
+  let articleLoading = $state(false);
+  let articleError = $state("");
+  let articleRevision = 0;
+  let indexController = new AbortController();
+  let reindexBusy = $state(false);
+  let reindexMessage = $state("");
+
+  function sessionContext(token: string, repo: string, branch: string): GitContext {
+    const context: GitContext = { token, repo, branch, assertActive: () => {
+      if (gitContext !== context || Date.now() >= sessionExpiresAt - 30_000) throw new Error($t("shell.sessionExpiredRetry"));
+    } };
+    return context;
+  }
+
+  function indexCollections(name?: string) {
+    if (!githubMode || !gitContext || !connected) return;
+    const context = gitContext, current = manifest;
+    void indexRemoteCollections(context, current, name, () => {}, indexController.signal).catch(handleAuthError);
+  }
+
+  function reindexCollections() {
+    if (demoMode || reindexBusy || dirty || saveTask || publishOpen || publishBusy) return;
+    actionDialog = {
+      title: $t("shell.reindexCollections"), description: $t(githubMode ? "shell.reindexConfirmGithub" : "shell.reindexConfirmLocal"), confirmLabel: $t("shell.reindexCollections"),
+      onconfirm: () => { void rebuildCollections(); },
+    };
+  }
+
+  async function rebuildCollections() {
+    reindexBusy = true; reindexMessage = "";
+    try {
+      if (githubMode) await reindexRemoteCollections(requireGitContext(), manifest, () => {}, indexController.signal);
+      else {
+        for (const collection of manifest.collections ?? []) {
+          collection.index = { state: "indexing", loaded: 0, total: collection.posts.length };
+          try {
+            const response = await fetch(`/rigel/api/local/reindex?collection=${encodeURIComponent(collection.name)}`, { method: "POST", headers: { "Accept-Language": $locale }, signal: indexController.signal });
+            if (!response.ok) throw new Error(await response.text());
+            const [result] = await response.json() as { name: string; count: number }[];
+            collection.index = { state: "complete", loaded: result.count, total: result.count };
+          } catch (error) {
+            collection.index.state = "error";
+            collection.index.error = error instanceof Error ? error.message : $t("shell.saveChangesError");
+            throw error;
+          }
+        }
+      }
+      reindexMessage = $t("shell.reindexComplete");
+    } catch (error) { handleAuthError(error); reindexMessage = error instanceof Error ? error.message : $t("shell.saveChangesError"); }
+    finally { reindexBusy = false; }
+  }
+
+  function cancelIndexing() { indexController.abort(); indexController = new AbortController(); }
+
+  function refreshCollections() {
+    if (connectionBusy || reindexBusy || saveTask || publishBusy) return;
+    requestNavigation(() => { void (async () => {
+      try {
+        const context = requireGitContext(), hash = currentHash();
+        resetRemoteCollectionCache(manifest); cancelIndexing(); connectionBusy = true;
+        const remote = await loadManifestRemote(context, blueprint!, false, { deferCollections: true });
+        if (gitContext !== context) return;
+        manifest = remote; restoreHash(hash);
+      } catch (error) { handleAuthError(error); connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
+      finally { connectionBusy = false; }
+    })(); });
+  }
   let publishOpen = $state(false);
   let publishLoading = $state(false);
   let publishBusy = $state(false);
@@ -185,8 +254,11 @@
   let docBase = $state<Record<string, unknown> | null>(null);
   let documentReload = $state(0);
   if (import.meta.hot) import.meta.hot.on("rigel:content-updated", () => { if (!githubMode && !demoMode) documentReload += 1; });
+  if (import.meta.hot) import.meta.hot.on("rigel:collections-updated", resetLocalArticles);
 
   async function loadBlueprint() {
+    untrack(() => resetRemoteCollectionCache(manifest));
+    resetLocalArticles();
     loadError = "";
     ready = false;
     try {
@@ -201,7 +273,7 @@
       if (data.backend === "github" && data.github) {
         const session = readSession(data.github);
         if (session) {
-          gitContext = { token: session.accessToken, repo: data.github.repo, branch: data.github.branch };
+          gitContext = sessionContext(session.accessToken, data.github.repo, data.github.branch);
           sessionExpiresAt = session.expiresAt;
           await recheckGitHub();
         }
@@ -235,7 +307,7 @@
       githubAccess = access;
       if (access.status !== "ready") return;
       if (!connected && blueprint) {
-        const remote = await loadManifestRemote(context, blueprint);
+        const remote = await loadManifestRemote(context, blueprint, true, { deferCollections: true });
         if (gitContext !== context) return;
         manifest = remote;
         connected = true;
@@ -247,6 +319,9 @@
   }
 
   function invalidateSession() {
+    resetRemoteCollectionCache(manifest);
+    resetLocalArticles();
+    cancelIndexing(); articleRevision++; articleLoading = false; articleError = "";
     resetMediaPreviews();
     closePublish();
     authRevision += 1;
@@ -271,7 +346,7 @@
       const session = await startGitHubLogin(manifest.github.authOrigin);
       if (revision !== authRevision) return;
       resetMediaPreviews();
-      gitContext = { token: session.accessToken, repo: manifest.github.repo, branch: manifest.github.branch };
+      gitContext = sessionContext(session.accessToken, manifest.github.repo, manifest.github.branch);
       githubAccess = null;
       sessionExpiresAt = session.expiresAt;
       writeSession(manifest.github, session);
@@ -330,7 +405,7 @@
   });
 
   function save(): Promise<boolean> {
-    if (publishOpen || publishBusy) return Promise.resolve(false);
+    if (publishOpen || publishBusy || articleLoading || articleError || reindexBusy) return Promise.resolve(false);
     if (saveTask) return saveTask;
     saveTask = (async () => {
       if (dirty) {
@@ -370,9 +445,12 @@
             newDocument = null;
             docBase = JSON.parse(JSON.stringify(values));
           } else if (m) { m.title = values.title; m.items = values.items; }
-          else if (po) { po.frontmatter = values; po.body = body; bodyBase = body; }
+          else if (po) {
+            po.frontmatter = values; if (demoMode) po.body = body; bodyBase = body;
+            if (!githubMode && !demoMode && c) cacheLocalArticle(c.name, po.slug, { frontmatter: values, body });
+          }
           else if (p) p.values = values;
-          if (creating && po && c) c.posts.push(po);
+          if (creating && po && c) { if (!demoMode) delete po.body; c.posts.push(po); }
           newEntry = null;
           dirty = JSON.stringify({ fm: draft, body: bodyDraft }) !== JSON.stringify({ fm: docSel ? docBase : values, body });
           saveState = dirty ? "idle" : "saved";
@@ -743,6 +821,8 @@
   }
 
   function openSelection(next: Sel | null) {
+    const revision = ++articleRevision;
+    articleLoading = false; articleError = "";
     draftRevision += 1;
     if (next?.kind === "page" || next?.kind === "document") {
       if (sel?.kind === "pages" || sel?.kind === "documents") entryList = sel;
@@ -750,6 +830,7 @@
     }
     if (next?.kind === "pages" && next.category !== undefined) pagesFilter = next.category;
     sel = next;
+    if (next?.kind === "collection") indexCollections(next.name);
     saveError = "";
     sortBy = "";
     sortDir = 1;
@@ -777,11 +858,27 @@
       bodyBase = "";
     } else if (next?.kind === "post") {
       const po = post;
+      if (!demoMode && !newEntry) {
+        articleLoading = true; draft = {}; bodyDraft = ""; bodyBase = ""; dirty = false;
+        const context = gitContext, current = manifest;
+        const request = githubMode ? readRemotePost(context!, current, next.collection, next.slug) : readLocalArticle(next.collection, next.slug);
+        void request.then(article => {
+          if (revision !== articleRevision || gitContext !== context || manifest !== current) return;
+          draft = JSON.parse(JSON.stringify(article.frontmatter));
+          if (po) po.frontmatter = article.frontmatter;
+          else manifest.collections?.find(c => c.name === next.collection)?.posts.push({ slug: next.slug, frontmatter: article.frontmatter });
+          bodyDraft = article.body; bodyBase = article.body; saveState = "idle";
+        }).catch(error => {
+          handleAuthError(error);
+          if (revision === articleRevision) articleError = error instanceof Error ? error.message : $t("shell.saveChangesError");
+        }).finally(() => { if (revision === articleRevision) articleLoading = false; });
+        return;
+      }
       if (!po) return;
       const fm: Record<string, unknown> = { ...po.frontmatter };
       draft = JSON.parse(JSON.stringify(fm));
-      bodyDraft = po.body;
-      bodyBase = po.body;
+      bodyDraft = po.body ?? "";
+      bodyBase = po.body ?? "";
     }
     dirty = newEntry !== null || (newDocument !== null && next?.kind === "document");
     saveState = "idle";
@@ -831,7 +928,7 @@
     }
     const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open';
     const overlay = document.querySelector(blocked) || [...document.querySelectorAll('iframe')].some(frame => frame.contentDocument?.querySelector(blocked));
-    if (connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
+    if (articleLoading || articleError || reindexBusy || connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
   }
 
   $effect(() => {
@@ -842,7 +939,7 @@
       read: () => draftSnapshot(manifest, sel, contentLocale, draftContext(), draft, bodyDraft),
       update: (input) => updateDraft(updateDraftField(manifest, sel, contentLocale, draftContext(), draft, input)),
       body: input => updateBody(replaceArticleBody(sel, draftContext(), input)),
-      list: () => contentCatalog(manifest, contentLocale, draftContext()),
+      list: () => { indexCollections(); return contentCatalog(manifest, contentLocale, draftContext()); },
       select: input => {
         select(selectContent(contentCatalog(manifest, contentLocale, draftContext()), input));
         return { pendingConfirmation: !!pendingNavigation };
@@ -1057,7 +1154,7 @@
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
-    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} />
+    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} onindex={() => indexCollections()} oncancelindex={cancelIndexing} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>
         {#key localeControlRevision}
@@ -1213,12 +1310,22 @@
       {/if}
       {#if !ready}
         <p>{$t("shell.loading")}</p>
-
+      {:else if articleLoading}
+        <p role="status">{$t("shell.loadingArticle")}</p>
+      {:else if articleError}
+        <p role="alert">{articleError}</p>
+        <button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>
       {:else if sel?.kind === "media"}
         <ImagePicker inline />
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
 
         <div class="table-card">
+          {#if githubMode && sel?.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
+          {#if sel?.kind === "collection" && coll?.index && coll.index.state !== "complete"}
+            <p role="status">{$t("shell.indexingCollections", { loaded: coll.index.loaded, total: coll.index.total })}</p>
+            {#if coll.index.error}<p role="alert">{coll.index.error}</p><button onclick={() => indexCollections(coll!.name)}>{$t("shell.retryLoading")}</button>{/if}
+            {#if coll.index.state === "indexing"}<button onclick={cancelIndexing}>{$t("connection.cancel")}</button>{/if}
+          {/if}
           <table>
             <thead>
               <tr>
@@ -1254,7 +1361,7 @@
                   {/each}
                 </tr>
               {:else}
-                <tr><td colspan={columns.length}>{$t((sel?.kind === "pages" || sel?.kind === "collection") && tableQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
+                <tr><td colspan={columns.length}>{$t(sel?.kind === "collection" && coll?.index && coll.index.state !== "complete" ? "shell.indexIncomplete" : (sel?.kind === "pages" || sel?.kind === "collection") && tableQuery.trim() ? "shell.noResults" : "shell.noEntries")}</td></tr>
               {/each}
             </tbody>
           </table>
@@ -1368,7 +1475,7 @@
 {/if}
 
 {#if settingsOpen}
-  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} />
+  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} onreindex={reindexCollections} oncancelindex={cancelIndexing} {reindexBusy} {reindexMessage} collections={manifest.collections ?? []} maintenanceDisabled={demoMode || dirty || saveState === "saving" || publishBusy} />
 {/if}
 {#if shortcutsOpen}
   <Shortcuts onclose={() => (shortcutsOpen = false)} />

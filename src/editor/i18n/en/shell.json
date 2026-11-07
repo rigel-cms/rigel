@@ -79,7 +79,6 @@
   "shell.showKey": "Show {name}",
   "shell.keyFormatError": "Check the {name} format.",
   "shell.editorInterfaceLanguage": "Editor interface language",
-
   "shell.developerMode": "Developer Mode",
   "shell.enableDevMode": "Enable dev mode",
   "shell.devModeHint": "Shows raw JSON of the current draft + field keys next to labels.",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "Select a page or collection from the sidebar to start editing.",
   "shell.currentDraft": "Current draft",
   "shell.editorPreviewWidth": "Editor and preview width",
-  "shell.editorWidthPercent": "{percent}% editor width"
+  "shell.editorWidthPercent": "{percent}% editor width",
+  "shell.maintenance": "Maintenance",
+  "shell.reindexCollections": "Reindex collections",
+  "shell.reindexHint": "Rebuild collection metadata without changing articles.",
+  "shell.reindexConfirmGithub": "Commit rebuilt metadata ledgers to the drafts branch? This does not publish your site.",
+  "shell.reindexConfirmLocal": "Rebuild collection metadata ledgers on disk? Articles will not change.",
+  "shell.reindexComplete": "Collection ledgers saved.",
+  "shell.loadingArticle": "Loading article…",
+  "shell.indexingCollections": "Indexing metadata: {loaded} of {total}. Results are partial until indexing finishes.",
+  "shell.indexIncomplete": "Metadata index incomplete. Results may be missing.",
+  "shell.indexReady": "Metadata ready: {total} entries."
 }

@@ -79,7 +79,6 @@
   "shell.showKey": "Показать {name}",
   "shell.keyFormatError": "Проверьте формат: {name}.",
   "shell.editorInterfaceLanguage": "Язык интерфейса редактора",
-
   "shell.developerMode": "Режим разработчика",
   "shell.enableDevMode": "Включить режим разработчика",
   "shell.devModeHint": "Показывает исходный JSON текущего черновика и ключи полей рядом с подписями.",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "Выберите страницу или коллекцию на боковой панели, чтобы начать редактирование.",
   "shell.currentDraft": "Текущий черновик",
   "shell.editorPreviewWidth": "Ширина редактора и предпросмотра",
-  "shell.editorWidthPercent": "Ширина редактора: {percent}%"
+  "shell.editorWidthPercent": "Ширина редактора: {percent}%",
+  "shell.maintenance": "Обслуживание",
+  "shell.reindexCollections": "Переиндексировать коллекции",
+  "shell.reindexHint": "Пересоздать метаданные, не изменяя статьи.",
+  "shell.reindexConfirmGithub": "Сохранить новые индексы в ветке черновиков? Сайт не будет опубликован.",
+  "shell.reindexConfirmLocal": "Пересоздать индексы на диске? Статьи не изменятся.",
+  "shell.reindexComplete": "Индексы коллекций сохранены.",
+  "shell.loadingArticle": "Загрузка статьи…",
+  "shell.indexingCollections": "Индексация: {loaded} из {total}. До завершения результаты неполные.",
+  "shell.indexIncomplete": "Индекс метаданных неполный. Некоторые результаты могут отсутствовать.",
+  "shell.indexReady": "Метаданные готовы: {total} записей."
 }

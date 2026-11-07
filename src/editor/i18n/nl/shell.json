@@ -79,7 +79,6 @@
   "shell.showKey": "{name} tonen",
   "shell.keyFormatError": "Controleer de indeling van {name}.",
   "shell.editorInterfaceLanguage": "Taal van de editorinterface",
-
   "shell.developerMode": "Ontwikkelaarsmodus",
   "shell.enableDevMode": "Ontwikkelaarsmodus inschakelen",
   "shell.devModeHint": "Toont de onbewerkte JSON van het huidige concept en veldsleutels naast de labels.",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "Selecteer een pagina of collectie in de zijbalk om te beginnen met bewerken.",
   "shell.currentDraft": "Huidig concept",
   "shell.editorPreviewWidth": "Breedte van editor en voorbeeld",
-  "shell.editorWidthPercent": "{percent}% editorbreedte"
+  "shell.editorWidthPercent": "{percent}% editorbreedte",
+  "shell.maintenance": "Onderhoud",
+  "shell.reindexCollections": "Collecties opnieuw indexeren",
+  "shell.reindexHint": "Bouw metadata opnieuw op zonder artikelen te wijzigen.",
+  "shell.reindexConfirmGithub": "Herbouwde indexen vastleggen op de conceptbranch? Dit publiceert de site niet.",
+  "shell.reindexConfirmLocal": "Metadata-indexen op schijf opnieuw opbouwen? Artikelen blijven ongewijzigd.",
+  "shell.reindexComplete": "Collectie-indexen opgeslagen.",
+  "shell.loadingArticle": "Artikel laden…",
+  "shell.indexingCollections": "Indexeren: {loaded} van {total}. Resultaten zijn onvolledig totdat dit klaar is.",
+  "shell.indexIncomplete": "Metadata-index onvolledig. Resultaten kunnen ontbreken.",
+  "shell.indexReady": "Metadata gereed: {total} items."
 }

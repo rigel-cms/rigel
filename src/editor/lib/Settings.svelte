@@ -8,7 +8,7 @@
   import Select from "./Select.svelte";
   import { effectiveSearchScope } from "../../manifest/search";
 
-  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose }: {
+  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose, onreindex, oncancelindex, reindexBusy = false, reindexMessage = "", collections = [], maintenanceDisabled = false }: {
     s: RigelSettings;
     search?: Manifest["search"];
     contentLocales?: Manifest["contentLocales"];
@@ -18,6 +18,12 @@
     saving: boolean;
     onerase: () => void;
     onclose: () => void;
+    onreindex?: () => void;
+    oncancelindex?: () => void;
+    reindexBusy?: boolean;
+    reindexMessage?: string;
+    collections?: NonNullable<Manifest["collections"]>;
+    maintenanceDisabled?: boolean;
   } = $props();
 
   type PaneId = "interface" | "content" | "connection" | "media" | "advanced";
@@ -191,6 +197,18 @@
             <span>{$t("shell.enableDevMode")}</span>
           </label>
           <p class="hint">{$t("shell.devModeHint")}</p>
+          {#if s.devMode && collections.length}
+            <section class="clear-data">
+              <h3>{$t("shell.maintenance")}</h3>
+              <p class="hint">{$t("shell.reindexHint")}</p>
+              <button type="button" disabled={maintenanceDisabled || reindexBusy} onclick={onreindex}>{$t("shell.reindexCollections")}</button>
+              {#if reindexBusy}<button type="button" onclick={oncancelindex}>{$t("connection.cancel")}</button>{/if}
+              {#each collections as collection (collection.name)}
+                {#if collection.index}<p role="status">{collection.label}: {$t(collection.index.state === "complete" ? "shell.indexReady" : "shell.indexingCollections", { loaded: collection.index.loaded, total: collection.index.total })}{#if collection.index.error} {collection.index.error}{/if}</p>{/if}
+              {/each}
+              {#if reindexMessage}<p role="status">{reindexMessage}</p>{/if}
+            </section>
+          {/if}
           <div class="clear-data">
             <h3>{$t("shell.clearData")}</h3>
             <p class="hint">{$t("shell.fileCacheHint")}</p>

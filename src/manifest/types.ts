@@ -67,10 +67,12 @@ export interface CollectionField {
 export interface CollectionPost {
   slug: string;
   frontmatter: Record<string, unknown>;
-  body: import("../article-body").ArticleBody;
+  body?: import("../article-body").ArticleBody;
 }
 
 export interface ManifestCollection {
+  storageSlugs?: string[];
+  index?: { state: "pending" | "indexing" | "complete" | "error"; loaded: number; total: number; error?: string };
   name: string;
   locale?: string;
   label: string;

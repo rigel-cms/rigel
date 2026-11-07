@@ -6,6 +6,7 @@ import type { MediaAsset } from "./media-library";
 import extensions from "virtual:rigel-extensions";
 import { resolveExtensions, validateExtensionBlocks } from "../../extensions";
 import type { Manifest } from "../../manifest/types";
+import { COLLECTION_LEDGER, readCollectionLedger, serializeCollectionLedger, type CollectionLedgerEntry } from "../../manifest/collection-ledger";
 import { serializeContentJson } from "../../json-output";
 import { isProtectedDocument, assertDocumentUnreferenced } from "../../schema/deletion";
 import type { Selection } from "../../manifest/navigation";
@@ -21,12 +22,14 @@ export interface GitContext { token: string; repo: string; branch: string; asser
 type FileSnapshot = { sha: string; text: string; mode: string };
 type MediaChange = { path: string; text: string | null; sha?: string; mode?: string };
 type PendingWrite = { sha: string; text: string | null; creating: boolean; head: string; mode: string; changes?: MediaChange[] };
-type Snapshot = { target: string; head: string; writes: Promise<void>; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite> };
+type CollectionSnapshot = { ledger: string; files: Map<string, { path: string; sha: string; mode: string }>; metadata: Map<string, CollectionLedgerEntry>; task?: Promise<void> };
+type Snapshot = { account: string; reset: () => void; target: string; head: string; writes: Promise<void>; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite>; collections: Map<string, CollectionSnapshot>; read: (path: string) => Promise<string>; articles: Map<string, { sha: string; mode: string }>; cache: Map<string, number> };
 const REMOTE_SNAPSHOT = Symbol("rigel-remote-snapshot");
 const SHA = /^[a-f0-9]{40}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const POST_SLUG = /^[a-z0-9][a-z0-9_-]*$/;
 const MAX_BYTES = 1024 * 1024;
+const MAX_LEDGER_BYTES = 16 * MAX_BYTES;
 
 class GitError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -97,20 +100,20 @@ async function draftHead(ctx: GitContext, manifest: Manifest, create = true): Pr
   return sha((await gh(ctx, ref))?.object?.sha);
 }
 
-function decode(payload: any): string {
+function decode(payload: any, limit = MAX_BYTES): string {
   if (!payload || payload.encoding !== "base64" || typeof payload.content !== "string") throw new Error(translate("connection.malformedPayload"));
   const base64 = payload.content.replace(/[\r\n]/g, "");
-  if (base64.length > Math.ceil(MAX_BYTES / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) throw new Error(translate("connection.invalidPayload"));
+  if (base64.length > Math.ceil(limit / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) throw new Error(translate("connection.invalidPayload"));
   try {
     const bytes = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
-    if (bytes.length > MAX_BYTES) throw new Error();
+    if (bytes.length > limit) throw new Error();
     return new TextDecoder("utf-8", {fatal:true}).decode(bytes);
   } catch { throw new Error(translate("connection.invalidUtf8")); }
 }
 
-function encode(text: string): string {
+function encode(text: string, limit = MAX_BYTES): string {
   const bytes = new TextEncoder().encode(text);
-  if (bytes.length > MAX_BYTES) throw new Error(translate("connection.contentTooLarge"));
+  if (bytes.length > limit) throw new Error(translate("connection.contentTooLarge"));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
@@ -132,12 +135,17 @@ async function remoteTree(ctx: GitContext, head: string) {
   return entries;
 }
 
-export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, createDraft = true): Promise<Manifest> {
+export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, createDraft = true, options: { deferCollections?: boolean } = {}): Promise<Manifest> {
   const cfg = config(ctx, blueprint);
   const head = await draftHead(ctx, blueprint, createDraft);
   const entries = await remoteTree(ctx, head);
   const manifest = structuredClone(blueprint);
-  const snapshot: Snapshot = {target:target(ctx,manifest),head,writes:Promise.resolve(),files:new Map(),paths:new Set(entries.keys()),pending:new Map()};
+  const snapshot: Snapshot = {account:ctx.token,reset:() => {},target:target(ctx,manifest),head,writes:Promise.resolve(),files:new Map(),paths:new Set(entries.keys()),pending:new Map(),collections:new Map(),read: path => read(path),articles:new Map(),cache:new Map()};
+  const inflight = new Map<string, Promise<string>>();
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  let revision = 0;
+  snapshot.reset = () => { revision++; inflight.clear(); for (const path of snapshot.cache.keys()) snapshot.files.delete(path); snapshot.cache.clear(); };
   const folders = [cfg.copyDir, ...cfg.collections.map(c => c.folder), ...(manifest.schema?.documents.map(d => d.folder) ?? []), ...(cfg.menus ? [cfg.menus.folder] : [])];
   for (const folder of folders) {
     const parts = [cfg.repoRoot,folder].filter(Boolean).join("/").split("/");
@@ -147,16 +155,36 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, c
     }
   }
   const read = async (path: string): Promise<string> => {
-    const entry = entries.get(path);
+    const current = snapshot.articles.get(path);
+    const entry = current ? { ...current, type: "blob" } : entries.get(path);
     if (!entry || entry.type !== "blob" || !["100644","100755"].includes(entry.mode)) throw new Error(translate("connection.invalidFile"));
     const expected = sha(entry.sha);
-    const blob = await gh(ctx, `/git/blobs/${expected}`);
-    if (sha(blob?.sha) !== expected) throw new Error(translate("connection.blobShaMismatch"));
-    const text = decode(blob); snapshot.files.set(path,{sha:expected,text,mode:entry.mode}); return text;
+    ctx.assertActive?.();
+    const remember = (text: string) => {
+      const file = { sha: expected, text, mode: entry.mode };
+      snapshot.files.set(path, file); cacheArticle(snapshot, path, file); return text;
+    };
+    const cached = snapshot.files.get(path) ?? [...snapshot.cache.keys()].map(key => snapshot.files.get(key)).find(file => file?.sha === expected);
+    if (cached?.sha === expected) return remember(cached.text);
+    const shared = inflight.get(expected);
+    if (shared) { const started = revision, text = await shared; if (revision !== started) throw new Error(translate("connection.reloadDraft")); return remember(text); }
+    const request = (async () => {
+      const started = revision;
+      if (active >= 4) await new Promise<void>(resolve => waiting.push(resolve)); else active++;
+      try {
+        if (revision !== started) throw new Error(translate("connection.reloadDraft"));
+        const blob = await gh(ctx, `/git/blobs/${expected}`);
+        if (revision !== started) throw new Error(translate("connection.reloadDraft"));
+        if (sha(blob?.sha) !== expected) throw new Error(translate("connection.blobShaMismatch"));
+        return remember(decode(blob, path.endsWith("/" + COLLECTION_LEDGER) ? MAX_LEDGER_BYTES : MAX_BYTES));
+      } finally { const next = waiting.shift(); if (next) next(); else active--; }
+    })();
+    inflight.set(expected, request);
+    try { return await request; } finally { if (inflight.get(expected) === request) inflight.delete(expected); }
   };
   const list = (folder: string, pattern = SLUG) => {
     const prefix = [cfg.repoRoot,folder].filter(Boolean).join("/") + "/";
-    return [...entries.keys()].filter(path => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && path.endsWith(".json")).sort().map(path => {
+    return [...entries.keys()].filter(path => path.startsWith(prefix) && path.slice(prefix.length) !== COLLECTION_LEDGER && !path.slice(prefix.length).includes("/") && path.endsWith(".json")).sort().map(path => {
       const slug = path.slice(prefix.length,-5);
       if (!pattern.test(slug)) throw new Error(translate("connection.invalidRemoteFilename"));
       return {path,slug};
@@ -181,12 +209,25 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, c
     const folder = cfg.collections.find(c => c.name === collection.name)?.folder;
     if (!folder) throw new Error(translate("connection.missingCollection"));
     collection.posts = [];
-    for (const file of list(folder,POST_SLUG)) {
-      const post = parseJson(await read(file.path));
-      if (!isPlainObject(post) || !isPlainObject(post.frontmatter)) throw new Error(translate("connection.invalidArticle"));
-      validateBody(post.body,translate); validateCollectionValues(collection.fields,post.frontmatter,manifest.documents,translate);
-      collection.posts.push({slug:file.slug,frontmatter:post.frontmatter,body:post.body});
+    const ledger = [cfg.repoRoot, folder, COLLECTION_LEDGER].filter(Boolean).join("/");
+    const files = new Map(list(folder, POST_SLUG).map(file => {
+      const entry = entries.get(file.path);
+      if (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode)) throw new Error(translate("connection.invalidFile"));
+      snapshot.articles.set(file.path, { sha: entry.sha, mode: entry.mode });
+      return [file.slug, { path: file.path, sha: entry.sha, mode: entry.mode }] as const;
+    }));
+    const state: CollectionSnapshot = { ledger, files, metadata: new Map() };
+    snapshot.collections.set(collection.name, state);
+    collection.storageSlugs = [...files.keys()];
+    let indexed: CollectionLedgerEntry[] | null = null;
+    if (entries.has(ledger)) indexed = readCollectionLedger(await read(ledger), collection);
+    for (const entry of indexed ?? []) if (files.get(entry.slug)?.sha === entry.sha) {
+      try { validateCollectionValues(collection.fields, entry.frontmatter, manifest.documents, translate); }
+      catch { continue; }
+      state.metadata.set(entry.slug, entry);
+      collection.posts.push({ slug: entry.slug, frontmatter: entry.frontmatter });
     }
+    collection.index = { state: state.metadata.size === files.size ? "complete" : "pending", loaded: state.metadata.size, total: files.size };
     assertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })), translate);
   }
   if (cfg.menus) {
@@ -198,7 +239,96 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, c
     }
   }
   Object.defineProperty(manifest,REMOTE_SNAPSHOT,{value:snapshot});
+  if (!options.deferCollections) await indexRemoteCollections(ctx, manifest);
   return manifest;
+}
+
+export async function readRemotePost(ctx: GitContext, manifest: Manifest, name: string, slug: string) {
+  const snapshot = loaded(ctx, manifest), collection = manifest.collections?.find(c => c.name === name), state = snapshot.collections.get(name), file = state?.files.get(slug);
+  if (!collection || !file) throw new Error(translate("connection.unknownCollection"));
+  if (snapshot.account !== ctx.token) throw new Error(translate("connection.reloadDraft"));
+  const post = parseJson(await snapshot.read(file.path));
+  ctx.assertActive?.();
+  if (!isPlainObject(post) || !isPlainObject(post.frontmatter)) throw new Error(translate("connection.invalidArticle"));
+  validateBody(post.body, translate);
+  validateCollectionValues(collection.fields, post.frontmatter, manifest.documents, translate);
+  return { slug, frontmatter: post.frontmatter, body: post.body as ArticleBody };
+}
+
+export async function indexRemoteCollections(ctx: GitContext, manifest: Manifest, name?: string, changed: () => void = () => {}, signal?: AbortSignal): Promise<void> {
+  const snapshot = loaded(ctx, manifest);
+  for (const collection of manifest.collections ?? []) {
+    if (name && collection.name !== name) continue;
+    const state = snapshot.collections.get(collection.name)!;
+    if (state.task) { await state.task; continue; }
+    if (collection.index?.state === "complete") continue;
+    const guard = () => { ctx.assertActive?.(); signal?.throwIfAborted(); };
+    state.task = (async () => {
+      collection.index!.state = "indexing"; delete collection.index!.error; changed();
+      const missing = [...state.files.keys()].filter(slug => !state.metadata.has(slug));
+      let next = 0;
+      try {
+        let failed = false;
+        const results = await Promise.allSettled(Array.from({ length: Math.min(4, missing.length) }, async () => {
+          while (next < missing.length) {
+            if (failed) return;
+            guard();
+            const slug = missing[next++];
+            let post;
+            try { post = await readRemotePost(ctx, manifest, collection.name, slug); }
+            catch (error) { failed = true; throw error; }
+            guard();
+            state.metadata.set(slug, { slug, sha: state.files.get(slug)!.sha, frontmatter: post.frontmatter });
+            const existing = collection.posts.find(post => post.slug === slug);
+            if (existing) existing.frontmatter = post.frontmatter;
+            else collection.posts.push({ slug, frontmatter: post.frontmatter });
+            collection.index!.loaded = state.metadata.size; changed();
+          }
+        }));
+        const failure = results.find(result => result.status === "rejected");
+        if (failure?.status === "rejected") throw failure.reason;
+        guard();
+        assertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })), translate);
+        collection.index!.state = "complete";
+      } catch (error) {
+        collection.index!.state = "error";
+        collection.index!.error = error instanceof Error ? error.message : translate("connection.requestFailed");
+        throw error;
+      } finally { changed(); }
+    })();
+    try { await state.task; } finally { state.task = undefined; }
+  }
+}
+
+export function reindexRemoteCollections(ctx: GitContext, manifest: Manifest, changed: () => void = () => {}, signal?: AbortSignal): Promise<void> {
+  return queueRemoteWrite(ctx, manifest, async () => {
+    const guarded = { ...ctx, assertActive: () => { ctx.assertActive?.(); signal?.throwIfAborted(); } };
+    for (const collection of manifest.collections ?? []) {
+      const snapshot = loaded(ctx, manifest), state = snapshot.collections.get(collection.name)!;
+      guarded.assertActive();
+      if (state.task) await state.task;
+      state.metadata.clear(); collection.posts = [];
+      collection.index = { state: "pending", loaded: 0, total: state.files.size };
+      await indexRemoteCollections(guarded, manifest, collection.name, changed, signal);
+      await mutate(guarded, manifest, state.ledger, serializeCollectionLedger(collection, [...state.metadata.values()]), !snapshot.paths.has(state.ledger));
+      changed();
+    }
+  });
+}
+
+export function resetRemoteCollectionCache(manifest: Manifest) {
+  (manifest as Manifest & { [REMOTE_SNAPSHOT]?: Snapshot })[REMOTE_SNAPSHOT]?.reset();
+}
+
+function cacheArticle(snapshot: Snapshot, path: string, file: FileSnapshot) {
+  if (!snapshot.articles.has(path)) return;
+  snapshot.cache.delete(path);
+  snapshot.cache.set(path, new TextEncoder().encode(file.text).byteLength);
+  let bytes = [...snapshot.cache.values()].reduce((sum, size) => sum + size, 0);
+  while (snapshot.cache.size > 64 || bytes > 16 * 1024 * 1024) {
+    const oldest = snapshot.cache.keys().next().value!;
+    bytes -= snapshot.cache.get(oldest)!; snapshot.cache.delete(oldest); snapshot.files.delete(oldest);
+  }
 }
 
 function loaded(ctx: GitContext, manifest: Manifest): Snapshot {
@@ -208,7 +338,7 @@ function loaded(ctx: GitContext, manifest: Manifest): Snapshot {
   return snapshot;
 }
 
-async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean, additional: MediaChange[] = []) {
+async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean, additions: MediaChange[] | ((blob: string | null) => MediaChange[]) = []) {
   const snapshot = loaded(ctx,manifest);
   const head = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
   const uncertain = snapshot.pending.get(path);
@@ -222,7 +352,14 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
       if (sha(result?.object?.sha) !== pending.head) throw new Error(translate("connection.branchUpdateUnverified"));
     }
     let verified;
-    try { verified = await gh(ctx,`${endpoint}?ref=${encodeURIComponent(ctx.branch)}`); }
+    const collectionLedger = path.endsWith("/" + COLLECTION_LEDGER);
+    try {
+      if (collectionLedger && pending.text !== null) {
+        const entry = (await remoteTree(ctx, pending.head)).get(path);
+        if (entry?.type !== "blob" || entry.sha !== pending.sha || entry.mode !== pending.mode) throw new Error(translate("connection.saveChanged"));
+        verified = { ...await gh(ctx, `/git/blobs/${pending.sha}`), type: "file" };
+      } else verified = await gh(ctx,`${endpoint}?ref=${encodeURIComponent(ctx.branch)}`);
+    }
     catch (error) {
       if (pending.text !== null || !(error instanceof GitError) || error.status !== 404) throw error;
     }
@@ -230,7 +367,7 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
       if (verified !== undefined) throw new Error(translate("connection.deletionUnverified"));
       snapshot.files.delete(path); snapshot.paths.delete(path);
     } else {
-      if (verified?.type !== "file" || sha(verified.sha) !== pending.sha || decode(verified) !== pending.text) throw new Error(translate("connection.saveChanged"));
+      if (verified?.type !== "file" || sha(verified.sha) !== pending.sha || decode(verified, path.endsWith("/" + COLLECTION_LEDGER) ? MAX_LEDGER_BYTES : MAX_BYTES) !== pending.text) throw new Error(translate("connection.saveChanged"));
       snapshot.files.set(path,{sha:pending.sha,text:pending.text,mode:pending.mode}); snapshot.paths.add(path);
     }
     const entries = pending.changes?.length ? await remoteTree(ctx, pending.head) : undefined;
@@ -242,23 +379,38 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
       } else {
         if (entry?.type !== "blob" || entry.mode !== change.mode || entry.sha !== change.sha) throw new Error(translate("connection.saveChanged"));
         const payload = await gh(ctx, `/git/blobs/${change.sha}`);
-        if (sha(payload?.sha) !== change.sha || bytesBase64(decodeMedia(payload, manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE)) !== change.text) throw new Error(translate("connection.saveChanged"));
+        if (sha(payload?.sha) !== change.sha || bytesBase64(decodeMedia(payload, change.path.endsWith("/" + COLLECTION_LEDGER) ? MAX_LEDGER_BYTES : manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE)) !== change.text) throw new Error(translate("connection.saveChanged"));
         snapshot.files.set(change.path, { sha: change.sha!, text: change.text, mode: change.mode! }); snapshot.paths.add(change.path);
       }
     }
-    if (pending.changes?.length && sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha) !== pending.head) throw new Error(translate("connection.draftConflict"));
+    if ((pending.changes?.length || collectionLedger) && sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha) !== pending.head) throw new Error(translate("connection.draftConflict"));
     snapshot.head = pending.head;
     snapshot.pending.delete(path);
+    for (const [name, state] of snapshot.collections) {
+      if (!path.startsWith(state.ledger.slice(0, -COLLECTION_LEDGER.length)) || path === state.ledger) continue;
+      const slug = path.split("/").at(-1)!.slice(0, -5);
+      if (pending.text === null) { state.files.delete(slug); state.metadata.delete(slug); }
+      else {
+        state.files.set(slug, { path, sha: pending.sha, mode: pending.mode });
+        state.metadata.set(slug, { slug, sha: pending.sha, frontmatter: (parseJson(pending.text) as { frontmatter: Record<string, unknown> }).frontmatter });
+      }
+      if (pending.text === null) { snapshot.articles.delete(path); snapshot.cache.delete(path); }
+      else { snapshot.articles.set(path, { sha: pending.sha, mode: pending.mode }); cacheArticle(snapshot, path, snapshot.files.get(path)!); }
+      manifest.collections!.find(c => c.name === name)!.index = { state: "complete", loaded: state.metadata.size, total: state.files.size };
+      manifest.collections!.find(c => c.name === name)!.storageSlugs = [...state.files.keys()];
+    }
   };
   if (uncertain) {
     await verify(uncertain);
-    if (uncertain.text === text && (!creating || uncertain.creating) && JSON.stringify((uncertain.changes ?? []).map(({ path, text }) => [path, text])) === JSON.stringify(additional.map(({ path, text }) => [path, text]))) return;
+    if (uncertain.text === text && (!creating || uncertain.creating) && (typeof additions === "function" || JSON.stringify((uncertain.changes ?? []).map(({ path, text }) => [path, text])) === JSON.stringify(additions.map(({ path, text }) => [path, text])))) return;
     if (creating && uncertain.creating) creating = false;
   }
-  const previous = snapshot.files.get(path);
+  const article = snapshot.articles.get(path);
+  const previous = snapshot.files.get(path) ?? (article ? { ...article, text: "" } : undefined);
   if (creating ? snapshot.paths.has(path) : !previous) throw new Error(creating ? translate("connection.contentExists") : translate("connection.reloadContent"));
-  const blob = text === null ? null : sha((await gh(ctx, "/git/blobs", { method: "POST", body: JSON.stringify({ content: encode(text), encoding: "base64" }) }))?.sha);
+  const blob = text === null ? null : sha((await gh(ctx, "/git/blobs", { method: "POST", body: JSON.stringify({ content: encode(text, path.endsWith("/" + COLLECTION_LEDGER) ? MAX_LEDGER_BYTES : MAX_BYTES), encoding: "base64" }) }))?.sha);
   const mode = previous?.mode ?? "100644";
+  const additional = typeof additions === "function" ? additions(blob) : additions;
   for (const change of additional) {
     change.mode = snapshot.files.get(change.path)?.mode ?? "100644";
     change.sha = change.text === null ? undefined : sha((await gh(ctx, "/git/blobs", { method: "POST", body: JSON.stringify({ content: change.text, encoding: "base64" }) }))?.sha);
@@ -303,7 +455,9 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     const frontmatter = { ...values };
     if (Object.hasOwn(frontmatter, "slug")) frontmatter.slug = normalizeUrlSlug(frontmatter.slug, translate);
     const prefix = filePath(ctx,manifest,folder,"placeholder","json",POST_SLUG).replace(/placeholder\.json$/, "");
-    const others = [...snapshot.files].filter(([file]) => file.startsWith(prefix) && file !== path && file.endsWith(".json")).map(([file, value]) => ({ slug: file.slice(prefix.length, -5), values: (parseJson(value.text) as { frontmatter: Record<string, unknown> }).frontmatter }));
+    await indexRemoteCollections(ctx, manifest, collection.name);
+    const state = snapshot.collections.get(collection.name)!;
+    const others = [...state.metadata.values()].filter(entry => entry.slug !== selection.slug).map(entry => ({ slug: entry.slug, values: entry.frontmatter }));
     assertUniqueUrlSlugs([...others, { slug: selection.slug, values: frontmatter }], translate);
     data = {frontmatter,body};
   } else if (selection.kind === "document") {
@@ -326,7 +480,11 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     data = validateMenu({...values,slug:selection.slug},cfg.menus.maxDepth,translate);
     path = filePath(ctx,manifest,cfg.menus.folder,selection.slug);
   } else throw new Error(translate("connection.selectContent"));
-  await mutate(ctx,manifest,path,serializeContentJson(data,cfg.jsonOutput),creating);
+  const additional = selection.kind === "post" ? (blob: string | null) => {
+    const state = snapshot.collections.get(selection.collection)!, collection = manifest.collections!.find(c => c.name === selection.collection)!;
+    return [{ path: state.ledger, text: encode(serializeCollectionLedger(collection, [...state.metadata.values()].filter(e => e.slug !== selection.slug).concat({ slug: selection.slug, sha: blob!, frontmatter: (data as { frontmatter: Record<string, unknown> }).frontmatter })), MAX_LEDGER_BYTES) }];
+  } : [];
+  await mutate(ctx,manifest,path,serializeContentJson(data,cfg.jsonOutput),creating,additional);
 }
 
 function bytesBase64(bytes: Uint8Array) {
@@ -693,11 +851,10 @@ export async function deleteRemoteDocument(ctx: GitContext, manifest: Manifest, 
     });
     assertDocumentUnreferenced(manifest.schema, documents, id, translate);
     const remaining = documents.filter(doc => doc.id !== id);
+    await indexRemoteCollections(ctx, manifest);
     for (const collection of manifest.collections ?? []) {
-      const folder = manifest.github!.collections.find(entry => entry.name === collection.name)!.folder;
-      const prefix = filePath(ctx, manifest, folder, "placeholder").replace(/placeholder\.json$/, "");
-      for (const [file, value] of snapshot.files) if (file.startsWith(prefix) && file.endsWith(".json")) {
-        const values = (parseJson(value.text) as { frontmatter: Record<string, unknown> }).frontmatter;
+      for (const entry of snapshot.collections.get(collection.name)!.metadata.values()) {
+        const values = entry.frontmatter;
         validateCollectionValues(collection.fields, values, documents, translate);
         try { validateCollectionValues(collection.fields, values, remaining, translate); }
         catch { throw new Error(translate("local.documentReferenced")); }
@@ -715,6 +872,9 @@ export async function deleteRemotePost(ctx: GitContext, manifest: Manifest, coll
     const cfg = config(ctx,manifest);
     const folder = cfg.collections.find(c => c.name === collection)?.folder;
     if (!folder || !manifest.collections?.some(c => c.name === collection)) throw new Error(translate("connection.unknownCollection"));
-    await mutate(ctx,manifest,filePath(ctx,manifest,folder,slug,"json",POST_SLUG),null,false);
+    const path = filePath(ctx,manifest,folder,slug,"json",POST_SLUG);
+    await indexRemoteCollections(ctx, manifest, collection);
+    const state = loaded(ctx, manifest).collections.get(collection)!, definition = manifest.collections!.find(c => c.name === collection)!;
+    await mutate(ctx,manifest,path,null,false, () => [{ path: state.ledger, text: encode(serializeCollectionLedger(definition, [...state.metadata.values()].filter(e => e.slug !== slug)), MAX_LEDGER_BYTES) }]);
   });
 }

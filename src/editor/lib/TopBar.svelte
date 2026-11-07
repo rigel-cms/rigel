@@ -2,7 +2,7 @@
   import { t } from "../i18n";
   import Icon from "./Icon.svelte";
   import SidebarIcon from "./SidebarIcon.svelte";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { Manifest } from "../../manifest/types";
   import { searchIndex, type SearchHit } from "../../manifest/search";
   import type { SearchScope } from "../../config";
@@ -24,12 +24,16 @@
     onselect,
     scope = "all",
     contentLocale,
+    onindex,
+    oncancelindex,
   }: {
     manifest: Manifest;
     sel: Sel | null;
     onselect: (s: Sel, locale?: string) => void;
     scope?: SearchScope;
     contentLocale?: string;
+    onindex?: () => void;
+    oncancelindex?: () => void;
   } = $props();
 
   let open = $state(false);
@@ -38,7 +42,7 @@
   let inputEl = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
-    if (open) inputEl?.focus();
+    if (open) { inputEl?.focus(); untrack(() => onindex?.()); }
   });
 
   const index = $derived(searchIndex(manifest, scope, contentLocale, $t));
@@ -108,6 +112,13 @@
         />
         <kbd>{$t("shell.escapeKeyLowercase")}</kbd>
       </div>
+      {#each manifest.collections ?? [] as collection (collection.name)}
+        {#if collection.index && collection.index.state !== "complete"}
+          <p role="status">{collection.label}: {$t("shell.indexingCollections", { loaded: collection.index.loaded, total: collection.index.total })}</p>
+          {#if collection.index.error}<p role="alert">{collection.index.error}</p><button onclick={onindex}>{$t("shell.retryLoading")}</button>{/if}
+          {#if collection.index.state === "indexing"}<button onclick={oncancelindex}>{$t("connection.cancel")}</button>{/if}
+        {/if}
+      {/each}
       <ul id="rigel-search-results" role="listbox" aria-label={$t("shell.searchResults")}>
         {#each hits as h, i (h.id)}
           <li role="presentation">
@@ -117,7 +128,7 @@
             </button>
           </li>
         {:else}
-          <li class="empty" role="presentation">{$t("shell.noResults")}</li>
+          <li class="empty" role="presentation">{$t(manifest.collections?.some(c => c.index && c.index.state !== "complete") ? "shell.indexIncomplete" : "shell.noResults")}</li>
         {/each}
       </ul>
       <div class="palette-footer">

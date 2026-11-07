@@ -79,7 +79,6 @@
   "shell.showKey": "Mostra {name}",
   "shell.keyFormatError": "Controlla il formato di {name}.",
   "shell.editorInterfaceLanguage": "Lingua dell’interfaccia dell’editor",
-
   "shell.developerMode": "Modalità sviluppatore",
   "shell.enableDevMode": "Attiva modalità sviluppatore",
   "shell.devModeHint": "Mostra il JSON grezzo della bozza corrente e le chiavi dei campi accanto alle etichette.",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "Seleziona una pagina o una raccolta dalla barra laterale per iniziare a modificare.",
   "shell.currentDraft": "Bozza corrente",
   "shell.editorPreviewWidth": "Larghezza dell’editor e dell’anteprima",
-  "shell.editorWidthPercent": "Larghezza editor: {percent}%"
+  "shell.editorWidthPercent": "Larghezza editor: {percent}%",
+  "shell.maintenance": "Manutenzione",
+  "shell.reindexCollections": "Reindicizza raccolte",
+  "shell.reindexHint": "Ricostruisci i metadati senza modificare gli articoli.",
+  "shell.reindexConfirmGithub": "Salvare gli indici ricostruiti nel ramo delle bozze? Il sito non verrà pubblicato.",
+  "shell.reindexConfirmLocal": "Ricostruire gli indici sul disco? Gli articoli non cambieranno.",
+  "shell.reindexComplete": "Indici delle raccolte salvati.",
+  "shell.loadingArticle": "Caricamento articolo…",
+  "shell.indexingCollections": "Indicizzazione: {loaded} di {total}. I risultati restano parziali fino al termine.",
+  "shell.indexIncomplete": "Indice incompleto. Alcuni risultati potrebbero mancare.",
+  "shell.indexReady": "Metadati pronti: {total} voci."
 }

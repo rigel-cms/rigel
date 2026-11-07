@@ -55,7 +55,7 @@ const __rigelReservedSlugs = new Set(documents.filter((doc) => !documentTypes.fi
     columns: ${JSON.stringify(c.columns ?? null)},
     posts: Object.entries(
       import.meta.glob(${JSON.stringify(`/${c.folder}/**/*.json`)}, { eager: true, query: "?raw", import: "default" })
-    ).map(([path, raw]) => {
+    ).filter(([path]) => !path.split("/").some(part => part.startsWith("."))).map(([path, raw]) => {
       const post = JSON.parse(raw);
       __rigelValidateBody(post.body);
       __rigelValidateCollectionValues(${JSON.stringify(c.fields)}, post.frontmatter, documents);

@@ -79,7 +79,6 @@
   "shell.showKey": "Afficher {name}",
   "shell.keyFormatError": "Veuillez vérifier le format de {name}.",
   "shell.editorInterfaceLanguage": "Langue de l’interface de l’éditeur",
-
   "shell.developerMode": "Mode développeur",
   "shell.enableDevMode": "Activer le mode développeur",
   "shell.devModeHint": "Affiche le JSON brut du brouillon actuel et les clés des champs à côté des libellés.",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "Veuillez sélectionner une page ou une collection dans la barre latérale pour commencer à modifier le contenu.",
   "shell.currentDraft": "Brouillon actuel",
   "shell.editorPreviewWidth": "Largeur de l’éditeur et de l’aperçu",
-  "shell.editorWidthPercent": "Largeur de l’éditeur : {percent}%"
+  "shell.editorWidthPercent": "Largeur de l’éditeur : {percent}%",
+  "shell.maintenance": "Maintenance",
+  "shell.reindexCollections": "Réindexer les collections",
+  "shell.reindexHint": "Reconstruire les métadonnées sans modifier les articles.",
+  "shell.reindexConfirmGithub": "Enregistrer les index reconstruits sur la branche de brouillons ? Le site ne sera pas publié.",
+  "shell.reindexConfirmLocal": "Reconstruire les index sur le disque ? Les articles ne seront pas modifiés.",
+  "shell.reindexComplete": "Index des collections enregistrés.",
+  "shell.loadingArticle": "Chargement de l’article…",
+  "shell.indexingCollections": "Indexation : {loaded} sur {total}. Les résultats restent partiels pendant l’indexation.",
+  "shell.indexIncomplete": "Index incomplet. Certains résultats peuvent manquer.",
+  "shell.indexReady": "Métadonnées prêtes : {total} entrées."
 }

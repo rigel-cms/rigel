@@ -32,7 +32,10 @@ test.each(["local", "demo"])("%s manifest keeps locale metadata and values witho
   fixture.manifest.backend = backend;
   try {
     const manifest: Manifest = await (await GET({} as never)).json();
-    expect(manifest).toEqual(fixture.manifest);
+    if (backend === "local") {
+      expect(manifest.collections![0].posts[0]).not.toHaveProperty("body");
+      expect(manifest.collections![0].posts[0].frontmatter).toEqual(fixture.manifest.collections[0].posts[0].frontmatter);
+    } else expect(manifest).toEqual(fixture.manifest);
     expect(manifest.contentLocales).toEqual(fixture.manifest.contentLocales);
   } finally { fixture.manifest.backend = previous; }
 });

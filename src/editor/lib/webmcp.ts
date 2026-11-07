@@ -240,7 +240,8 @@ export function contentCatalog(manifest: Manifest, locale: string | undefined, c
     ...(visible.menus?.entries ?? []).map(menu => ({ label: menu.title, selection: { kind: "menu", slug: menu.slug } as Selection })),
   ];
   assertToolJson(entries);
-  return { context, locale: locale ?? null, entries };
+  const indexing = (visible.collections ?? []).filter(collection => collection.index && collection.index.state !== "complete").map(collection => ({ name: collection.name, ...collection.index }));
+  return { context, locale: locale ?? null, entries, complete: indexing.length === 0, indexing };
 }
 
 export function selectContent(catalog: ReturnType<typeof contentCatalog>, input: unknown): Selection {

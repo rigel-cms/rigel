@@ -24,6 +24,7 @@ These guides follow the SDK source in this repository. Check your installed vers
 ## Save and publish
 
 - [GitHub connection and publishing](github.md): authentication, draft saves and reviewed publishing.
+- [Collection metadata ledgers](collection-ledgers.md): indexed article lists, on-demand bodies and maintenance reindexing.
 - [Live and draft previews](preview-hosts.md): preview mappings and deployment hosts.
 
 Content Save and website deployment are separate operations. Local Save writes files without committing them. GitHub Save writes the configured editing branch; publishing follows the configured branch workflow and hosting pipeline.

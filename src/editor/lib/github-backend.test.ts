@@ -5,6 +5,183 @@ import { emptyBody } from "../../article-body";
 import { readValues } from "../../routes/serialize";
 import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, listRemoteMedia, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, readRemoteMedia, resetRemoteMediaCache } from "./github-backend";
 
+import { serializeCollectionLedger } from "../../manifest/collection-ledger";
+import { readRemotePost, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./github-backend";
+
+test("article cache reset rejects late reads and changes of account cannot reuse cached bodies", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  const before = s.calls.length;
+  await readRemotePost(ctx, m, "blog", "hello");
+  expect(s.calls.length).toBe(before);
+  await expect(readRemotePost({ ...ctx, token: "other-account" }, m, "blog", "hello")).rejects.toThrow(/reload/i);
+  resetRemoteCollectionCache(m);
+  await readRemotePost(ctx, m, "blog", "hello");
+  expect(s.calls.length - before).toBe(1);
+  resetRemoteCollectionCache(m);
+  const original = fetch;
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(done => { release = done; }), fetching = new Promise<void>(done => { started = done; });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { started(); await held; return original(url, init); });
+  const pending = readRemotePost(ctx, m, "blog", "hello"), rejected = expect(pending).rejects.toThrow(/reload/i);
+  await fetching; resetRemoteCollectionCache(m); release(); await rejected;
+});
+
+test("indexed login reads zero article blobs; concurrent selection and reopen read one", async () => {
+  const s = server(), original = blueprint(), file = s.files.get("playground/src/content/blog/hello.json")!;
+  s.put("playground/src/content/blog/.rigel-collection.json", serializeCollectionLedger(original.collections![0], [{ slug: "hello", sha: file.sha, frontmatter: JSON.parse(file.text).frontmatter }]));
+  const m = await loadManifestRemote(ctx, original);
+  expect(s.calls.filter(c => c.path === `/git/blobs/${file.sha}`)).toHaveLength(0);
+  const posts = await Promise.all([readRemotePost(ctx, m, "blog", "hello"), readRemotePost(ctx, m, "blog", "hello")]);
+  expect(posts[0].body).toEqual(emptyBody());
+  await readRemotePost(ctx, m, "blog", "hello");
+  expect(s.calls.filter(c => c.path === `/git/blobs/${file.sha}`)).toHaveLength(1);
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+});
+
+test("missing ledger returns before bodies and reconciles progressively without writing", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint(), true, { deferCollections: true });
+  const file = s.files.get("playground/src/content/blog/hello.json")!;
+  expect(s.calls.filter(c => c.path === `/git/blobs/${file.sha}`)).toHaveLength(0);
+  expect(m.collections![0].index?.state).toBe("pending");
+  await indexRemoteCollections(ctx, m);
+  expect(m.collections![0].posts[0].frontmatter.title).toBe("Hello");
+  expect(m.collections![0].index).toMatchObject({ state: "complete", loaded: 1, total: 1 });
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+  await reindexRemoteCollections(ctx, m);
+  const tree = s.calls.filter(c => c.path === "/git/trees" && c.method === "POST").at(-1)!;
+  expect(tree.body.tree.map((e: any) => e.path)).toEqual(["playground/src/content/blog/.rigel-collection.json"]);
+  const cold = s.calls.length;
+  await loadManifestRemote(ctx, blueprint());
+  expect(s.calls.slice(cold).filter(c => c.path === `/git/blobs/${file.sha}`)).toHaveLength(0);
+});
+
+test("article save and delete include an exact-SHA metadata ledger in the same commit", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Updated" }, emptyBody(), false);
+  const article = s.files.get("playground/src/content/blog/hello.json")!;
+  const ledgerPath = "playground/src/content/blog/.rigel-collection.json";
+  expect(JSON.parse(s.files.get(ledgerPath)!.text).entries).toEqual([{ slug: "hello", sha: article.sha, frontmatter: { title: "Updated" } }]);
+  expect(s.calls.filter(c => c.path === "/git/trees" && c.method === "POST").at(-1)!.body.tree).toHaveLength(2);
+  await deleteRemotePost(ctx, m, "blog", "hello");
+  expect(JSON.parse(s.files.get(ledgerPath)!.text).entries).toEqual([]);
+  expect(s.files.has("playground/src/content/blog/hello.json")).toBe(false);
+});
+
+test.each(["missing", "malformed", "stale"])("%s ledger falls back only to source articles without automatic writes", async mode => {
+  const s = server(), original = blueprint();
+  if (mode !== "missing") s.put("playground/src/content/blog/.rigel-collection.json", mode === "malformed" ? "{" : serializeCollectionLedger({ ...original.collections![0], fields: [] }, []));
+  const m = await loadManifestRemote(ctx, original, true, { deferCollections: true });
+  expect(m.collections![0].index?.state).toBe("pending");
+  await indexRemoteCollections(ctx, m);
+  expect(m.collections![0].index?.state).toBe("complete");
+  expect(m.collections![0].posts[0].frontmatter.title).toBe("Hello");
+  expect(m.collections![0].posts[0]).not.toHaveProperty("body");
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+});
+
+test("reindex cancellation and branch conflicts never persist a ledger or change articles", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint(), true, { deferCollections: true }), before = new Map(s.files);
+  const controller = new AbortController(); controller.abort();
+  await expect(reindexRemoteCollections(ctx, m, () => {}, controller.signal)).rejects.toThrow();
+  expect(s.files).toEqual(before);
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+  s.put("rival", "external commit");
+  await expect(reindexRemoteCollections(ctx, m)).rejects.toThrow(/conflict/i);
+  expect(s.files.has("playground/src/content/blog/.rigel-collection.json")).toBe(false);
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+});
+
+test("index workers settle before retry and never claim completion after an interrupted read", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint(), true, { deferCollections: true });
+  const original = fetch; let fail = true;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { if (fail && url.includes("/git/blobs/")) { fail = false; throw Error("offline"); } return original(url, init); });
+  await expect(indexRemoteCollections(ctx, m)).rejects.toThrow();
+  expect(m.collections![0].index?.state).toBe("error");
+  expect(m.collections![0].index?.loaded).toBe(0);
+  await indexRemoteCollections(ctx, m);
+  expect(m.collections![0].index?.state).toBe("complete");
+  expect(m.collections![0].posts).toHaveLength(1);
+});
+
+test("parallel collection reconciliation shares a four-request article limit", async () => {
+  const s = server(), original = blueprint();
+  original.collections!.push({ name: "news", label: "News", fields: [], posts: [] });
+  original.github!.collections.push({ name: "news", folder: "src/content/news" });
+  for (const name of ["blog", "news"]) for (let i = 0; i < 7; i++) s.put(`playground/src/content/${name}/post-${i}.json`, JSON.stringify({ frontmatter: { title: String(i) }, body: emptyBody() }));
+  const m = await loadManifestRemote(ctx, original, true, { deferCollections: true }), originalFetch = fetch;
+  let active = 0, peak = 0;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 1)); return await originalFetch(url, init); }
+    finally { active--; }
+  });
+  await Promise.all(["blog", "news"].map(name => indexRemoteCollections(ctx, m, name)));
+  expect(peak).toBe(4);
+  expect(m.collections!.map(c => c.index?.state)).toEqual(["complete", "complete"]);
+});
+
+test("large collection ledgers use blob readback beyond the Contents API inline limit", async () => {
+  const s = server();
+  for (let i = 0; i < 3; i++) s.put(`playground/src/content/blog/large-${i}.json`, JSON.stringify({ frontmatter: { title: String(i) + "x".repeat(400000) }, body: emptyBody() }));
+  const m = await loadManifestRemote(ctx, blueprint());
+  await reindexRemoteCollections(ctx, m);
+  const ledger = s.files.get("playground/src/content/blog/.rigel-collection.json")!;
+  expect(Buffer.byteLength(ledger.text)).toBeGreaterThan(1024 * 1024);
+  const calls = s.calls.length;
+  const reloaded = await loadManifestRemote(ctx, blueprint());
+  expect(reloaded.collections![0].posts).toHaveLength(4);
+  expect(s.calls.slice(calls).filter(c => c.path === `/git/blobs/${ledger.sha}`)).toHaveLength(1);
+  expect(s.calls.some(c => c.path.startsWith("/contents/") && c.path.includes(".rigel-collection"))).toBe(false);
+});
+
+test("indexed collection references prevent document deletion without hydrating article bodies", async () => {
+  const s = server(), original = blueprint(), file = s.files.get("playground/src/content/blog/hello.json")!;
+  s.put("playground/src/content/blog/.rigel-collection.json", serializeCollectionLedger(original.collections![0], [{ slug: "hello", sha: file.sha, frontmatter: JSON.parse(file.text).frontmatter }]));
+  const m = await loadManifestRemote(ctx, original);
+  await expect(deleteRemoteDocument(ctx, m, "author:alex")).rejects.toThrow(/referenced/);
+  expect(s.calls.filter(c => c.path === `/git/blobs/${file.sha}`)).toHaveLength(0);
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+});
+
+test("articles with an identical SHA share in-flight hydration across storage paths", async () => {
+  const s = server(), file = s.files.get("playground/src/content/blog/hello.json")!;
+  s.files.set("playground/src/content/blog/duplicate.json", file);
+  s.put("marker", "refresh tree");
+  const m = await loadManifestRemote(ctx, blueprint(), true, { deferCollections: true });
+  await Promise.all([readRemotePost(ctx, m, "blog", "hello"), readRemotePost(ctx, m, "blog", "duplicate")]);
+  expect(s.calls.filter(c => c.path === `/git/blobs/${file.sha}`)).toHaveLength(1);
+});
+
+test("reindex verifies an uncertain ledger commit before retrying without a duplicate commit", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint()), original = fetch;
+  let committed = false, fail = true;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (committed && fail && url.includes("/git/blobs/")) { fail = false; throw Error("Lost verification"); }
+    const response = await original(url, init);
+    if (init?.method === "PATCH") committed = true;
+    return response;
+  });
+  await expect(reindexRemoteCollections(ctx, m)).rejects.toThrow();
+  await reindexRemoteCollections(ctx, m);
+  expect(s.calls.filter(c => c.path === "/git/commits" && c.method === "POST")).toHaveLength(1);
+  expect(s.calls.filter(c => c.method === "PATCH")).toHaveLength(1);
+  expect(JSON.parse(s.files.get("playground/src/content/blog/.rigel-collection.json")!.text).entries).toHaveLength(1);
+});
+
+test("session invalidation during reindex rejects late metadata and cannot write a ledger", async () => {
+  const s = server(); let active = true;
+  const context = { ...ctx, assertActive: () => { if (!active) throw Error("Session inactive"); } };
+  const m = await loadManifestRemote(context, blueprint(), true, { deferCollections: true }), original = fetch;
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(done => { release = done; }), fetching = new Promise<void>(done => { started = done; });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { started(); await held; return original(url, init); });
+  const task = reindexRemoteCollections(context, m), rejected = expect(task).rejects.toThrow(/inactive/);
+  await fetching; active = false; release(); await rejected;
+  expect(m.collections![0].index?.state).toBe("error");
+  expect(m.collections![0].index?.loaded).toBe(0);
+  expect(s.calls.every(c => c.method === "GET")).toBe(true);
+});
+
 test("media request benchmark shares listing, parallel blobs and reopened previews", async () => {
   const s = server();
   const urls = Array.from({ length: 12 }, (_, i) => `/rigel-media/image-${i}.txt`);
@@ -365,7 +542,8 @@ test.each([undefined, "pretty", "minified"] as const)("GitHub saves use %s JSON 
   expect(s.files.get("playground/src/content/copy/contact.ts")).toEqual(before.get("playground/src/content/copy/contact.ts"));
   expect(s.files.get("unrelated/unsafe.ts")).toEqual(before.get("unrelated/unsafe.ts"));
   const reloaded = await loadManifestRemote(ctx, original);
-  expect(reloaded.collections![0].posts[0]).toEqual({ slug: "hello", frontmatter, body });
+  expect(reloaded.collections![0].posts[0]).toEqual({ slug: "hello", frontmatter });
+  expect(await readRemotePost(ctx, reloaded, "blog", "hello")).toEqual({ slug: "hello", frontmatter, body });
   expect(reloaded.documents![0].data).toEqual(data);
   expect(reloaded.menus!.entries).toEqual([menu]);
 });

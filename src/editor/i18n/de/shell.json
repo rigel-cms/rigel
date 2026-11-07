@@ -79,7 +79,6 @@
   "shell.showKey": "{name} anzeigen",
   "shell.keyFormatError": "Prüfe das Format von {name}.",
   "shell.editorInterfaceLanguage": "Sprache der Editoroberfläche",
-
   "shell.developerMode": "Entwicklermodus",
   "shell.enableDevMode": "Entwicklermodus aktivieren",
   "shell.devModeHint": "Zeigt die JSON-Rohdaten des aktuellen Entwurfs sowie Feldschlüssel neben den Beschriftungen an.",
@@ -202,5 +201,15 @@
   "shell.welcomeHint": "Wähle eine Seite oder Sammlung aus der Seitenleiste, um mit dem Bearbeiten zu beginnen.",
   "shell.currentDraft": "Aktueller Entwurf",
   "shell.editorPreviewWidth": "Breite von Editor und Vorschau",
-  "shell.editorWidthPercent": "{percent}% Editorbreite"
+  "shell.editorWidthPercent": "{percent}% Editorbreite",
+  "shell.maintenance": "Wartung",
+  "shell.reindexCollections": "Sammlungen neu indexieren",
+  "shell.reindexHint": "Metadaten neu erstellen, ohne Artikel zu ändern.",
+  "shell.reindexConfirmGithub": "Neue Metadaten-Indizes im Entwurfsbranch speichern? Die Website wird nicht veröffentlicht.",
+  "shell.reindexConfirmLocal": "Metadaten-Indizes auf dem Datenträger neu erstellen? Artikel bleiben unverändert.",
+  "shell.reindexComplete": "Sammlungsindizes gespeichert.",
+  "shell.loadingArticle": "Artikel wird geladen…",
+  "shell.indexingCollections": "Indexierung: {loaded} von {total}. Ergebnisse sind bis zum Abschluss unvollständig.",
+  "shell.indexIncomplete": "Metadaten-Index unvollständig. Ergebnisse können fehlen.",
+  "shell.indexReady": "Metadaten bereit: {total} Einträge."
 }

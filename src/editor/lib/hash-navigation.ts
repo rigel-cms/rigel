@@ -46,7 +46,7 @@ export function resolveHash(hash: string, manifest: Manifest): { selection: Sele
     else if (kind === "documents" && parts.length === 2) selection = { kind: "documents", type: key };
     else if (kind === "documents" && parts.length === 3 && content.documents?.some(doc => doc.type === key && doc.id === id)) selection = { kind: "document", type: key, id };
     else if (kind === "collections" && parts.length === 2) selection = { kind: "collection", name: key };
-    else if (kind === "collections" && parts.length === 3 && content.collections?.some(collection => collection.name === key && collection.posts.some(post => post.slug === id))) selection = { kind: "post", collection: key, slug: id };
+    else if (kind === "collections" && parts.length === 3 && content.collections?.some(collection => collection.name === key && (collection.posts.some(post => post.slug === id) || collection.storageSlugs?.includes(id)))) selection = { kind: "post", collection: key, slug: id };
     else if (kind === "menus" && parts.length === 1 && content.menus) selection = { kind: "menus" };
     else if (kind === "menus" && parts.length === 2 && content.menus?.entries.some(menu => menu.slug === key)) selection = { kind: "menu", slug: key };
     else if (kind === "media" && parts.length === 1) selection = { kind: "media" };

@@ -152,7 +152,7 @@ async function deleteDocumentFile(
         if (error instanceof DocumentStoreError && error.status === 404) continue;
         throw error;
       }
-      for (const name of (await readdir(collectionDirectory)).filter(name => name.endsWith(".json"))) {
+      for (const name of (await readdir(collectionDirectory)).filter(name => name.endsWith(".json") && name !== ".rigel-collection.json")) {
         if (!/^[a-z0-9][a-z0-9_-]*\.json$/.test(name)) throw new DocumentStoreError("Invalid collection filename", 500);
         const data = await readJsonFile(path.join(collectionDirectory, name), t);
         if (!isPlainObject(data) || !isPlainObject(data.frontmatter)) throw new DocumentStoreError("Invalid collection document", 500);

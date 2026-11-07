@@ -67,8 +67,9 @@
   import { buildSidebar, navigationKey, type Selection } from "../manifest/navigation";
   import { startGitHubLogin, checkGitHubAccess, type GitHubAccess } from "./lib/github-auth";
   import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, reviewRemotePublish, confirmRemotePublish, PublishReviewChangedError, type GitContext, type PublishReview } from "./lib/github-backend";
-  import { readRemotePost, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./lib/github-backend";
-  import { readLocalArticle, cacheLocalArticle, resetLocalArticles } from "./lib/local-articles";
+  import { readRemotePost, reauthorizeRemoteContent, remoteSelectionReady, readRemoteSelection, indexRemoteDocuments, hasRemoteFileCache, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./lib/github-backend";
+  import { readLocalArticle, cacheLocalArticle, resetLocalArticles, hasLocalArticles } from "./lib/local-articles";
+  import { clearFileCache, hasFileCache, fileCacheChanges } from "./lib/file-cache";
 
   type Sel = Selection;
 
@@ -102,19 +103,37 @@
   let articleLoading = $state(false);
   let articleError = $state("");
   let articleRevision = 0;
+  let documentIndexLoading = $state(false);
+  let documentIndexError = $state("");
   let indexController = new AbortController();
   let reindexBusy = $state(false);
   let reindexMessage = $state("");
+  let fileCacheMessage = $state("");
+  const canClearFileCache = $derived.by(() => { $fileCacheChanges; return hasRemoteFileCache(manifest) || hasLocalArticles() || hasFileCache(); });
+  const fileCacheBusy = $derived(connectionBusy || reindexBusy || articleLoading || documentIndexLoading || saveState === "saving" || publishBusy);
+
+  function clearFiles() {
+    if (fileCacheBusy || !canClearFileCache) return;
+    actionDialog = {
+      title: $t("shell.clearFileCache"), description: $t("shell.clearFileCacheConfirm"), confirmLabel: $t("shell.clearFileCache"),
+      onconfirm: async () => {
+        if (fileCacheBusy) return;
+        resetRemoteCollectionCache(manifest); resetLocalArticles(); resetMediaPreviews();
+        try { await clearFileCache(); fileCacheMessage = $t("shell.fileCacheCleared"); }
+        catch { fileCacheMessage = $t("shell.fileCacheClearError"); }
+      },
+    };
+  }
 
   function sessionContext(token: string, repo: string, branch: string): GitContext {
     const context: GitContext = { token, repo, branch, assertActive: () => {
-      if (gitContext !== context || Date.now() >= sessionExpiresAt - 30_000) throw new Error($t("shell.sessionExpiredRetry"));
+      if (gitContext !== context || githubAccess?.status !== "ready" || Date.now() >= sessionExpiresAt - 30_000) throw new Error($t("shell.sessionExpiredRetry"));
     } };
     return context;
   }
 
   function indexCollections(name?: string) {
-    if (!githubMode || !gitContext || !connected) return;
+    if (!name || !githubMode || !gitContext || !connected) return;
     const context = gitContext, current = manifest;
     void indexRemoteCollections(context, current, name, () => {}, indexController.signal).catch(handleAuthError);
   }
@@ -132,18 +151,13 @@
     try {
       if (githubMode) await reindexRemoteCollections(requireGitContext(), manifest, () => {}, indexController.signal);
       else {
+        const response = await fetch("/rigel/api/local/reindex", { method: "POST", headers: { "Accept-Language": $locale }, signal: indexController.signal });
+        if (!response.ok) throw new Error(await response.text());
+        const results = await response.json() as { name: string; count: number }[];
         for (const collection of manifest.collections ?? []) {
-          collection.index = { state: "indexing", loaded: 0, total: collection.posts.length };
-          try {
-            const response = await fetch(`/rigel/api/local/reindex?collection=${encodeURIComponent(collection.name)}`, { method: "POST", headers: { "Accept-Language": $locale }, signal: indexController.signal });
-            if (!response.ok) throw new Error(await response.text());
-            const [result] = await response.json() as { name: string; count: number }[];
-            collection.index = { state: "complete", loaded: result.count, total: result.count };
-          } catch (error) {
-            collection.index.state = "error";
-            collection.index.error = error instanceof Error ? error.message : $t("shell.saveChangesError");
-            throw error;
-          }
+          const result = results.find(result => result.name === collection.name);
+          if (!result) throw new Error($t("shell.saveChangesError"));
+          collection.index = { state: "complete", loaded: result.count, total: result.count };
         }
       }
       reindexMessage = $t("shell.reindexComplete");
@@ -159,7 +173,7 @@
       try {
         const context = requireGitContext(), hash = currentHash();
         resetRemoteCollectionCache(manifest); cancelIndexing(); connectionBusy = true;
-        const remote = await loadManifestRemote(context, blueprint!, false, { deferCollections: true });
+        const remote = await loadManifestRemote(context, blueprint!, false, { deferCollections: true, deferContent: true });
         if (gitContext !== context) return;
         manifest = remote; restoreHash(hash);
       } catch (error) { handleAuthError(error); connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
@@ -302,12 +316,21 @@
         invalidateSession();
         throw new Error($t("shell.sessionExpiredCheckAccess"));
       }
+      githubAccess = null;
       const access = await checkGitHubAccess(context.token, config.repo, config.appSlug);
       if (gitContext !== context) return;
       githubAccess = access;
-      if (access.status !== "ready") return;
+      if (access.status !== "ready") { resetRemoteCollectionCache(manifest); resetMediaPreviews(); try { clearFileCache(); } catch {} return; }
+      if (context.cacheAccount && context.cacheAccount !== access.user.login.toLowerCase()) {
+        resetRemoteCollectionCache(manifest); resetMediaPreviews(); cancelIndexing(); articleRevision++;
+        sel = null; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false; newEntry = null; newDocument = null; connected = false;
+      }
+      context.cacheAccount = access.user.login.toLowerCase();
+      if (connected && !reauthorizeRemoteContent(context, manifest)) {
+        sel = null; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false; newEntry = null; newDocument = null; connected = false;
+      }
       if (!connected && blueprint) {
-        const remote = await loadManifestRemote(context, blueprint, true, { deferCollections: true });
+        const remote = await loadManifestRemote(context, blueprint, true, { deferCollections: true, deferContent: true });
         if (gitContext !== context) return;
         manifest = remote;
         connected = true;
@@ -346,7 +369,10 @@
       const session = await startGitHubLogin(manifest.github.authOrigin);
       if (revision !== authRevision) return;
       resetMediaPreviews();
+      resetRemoteCollectionCache(manifest);
+      const previousAccount = gitContext?.cacheAccount;
       gitContext = sessionContext(session.accessToken, manifest.github.repo, manifest.github.branch);
+      gitContext.cacheAccount = previousAccount;
       githubAccess = null;
       sessionExpiresAt = session.expiresAt;
       writeSession(manifest.github, session);
@@ -605,7 +631,7 @@
   });
 
   const sidebar = $derived(buildSidebar(visibleContent, $t));
-  let pagesFilter = $state<string | null>(null);
+  let pagesFilter = $state<string | null>("");
   let pagesQuery = $state("");
   let collectionQueries = $state<Record<string, string>>({});
   const tableQuery = $derived(sel?.kind === "collection" ? Object.hasOwn(collectionQueries, sel.name) ? collectionQueries[sel.name] : "" : pagesQuery);
@@ -666,6 +692,10 @@
     return String(key === "title" ? doc.data.title ?? doc.data.name ?? doc.slug : key === "slug" ? activeDocType?.shared ? doc.slug : effectiveSlug(doc.data, doc.slug) : doc.data[key] ?? "");
   }
   const typeDocuments = $derived((visibleContent.documents ?? []).filter((doc) => doc.type === docTypeName(sel)).sort((a, b) => documentCell(a, sortBy).localeCompare(documentCell(b, sortBy)) * sortDir));
+  const documentListIndex = $derived.by(() => {
+    const documents = sel?.kind === "documents" ? typeDocuments : pageDocuments.filter(doc => inPageCategory(docTypes.find(type => type.name === doc.type)?.category, pageCategory));
+    return { loaded: documents.filter(doc => doc.loaded !== "identity").length, total: documents.length };
+  });
 
 
   const menu = $derived.by(() => { const slug = sel?.kind === "menu" ? sel.slug : null; return manifest.menus?.entries.find((m) => m.slug === slug); });
@@ -691,14 +721,15 @@
   let hashNavigation: ReturnType<typeof createHashNavigation> | null = null;
   function currentHash() {
     const selection = sel?.kind === "pages" ? { kind: "pages" as const, ...(pagesFilter !== null ? { category: pagesFilter } : {}) } : sel;
-    return selectionHash(selection, contentLocale === manifest.contentLocales?.defaultLocale ? undefined : contentLocale);
+    const hash = selectionHash(selection, contentLocale === manifest.contentLocales?.defaultLocale ? undefined : contentLocale);
+    return sel?.kind === "pages" && pagesFilter === null ? `${hash}${hash.includes("?") ? "&" : "?"}all=1` : hash;
   }
 
   function restoreHash(hash: string) {
     const route = resolveHash(hash, manifest);
     selectedContentLocale = route.locale;
     entryList = null;
-    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? null : null;
+    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? (new URLSearchParams(hash.split("?")[1]).get("all") === "1" ? null : "") : "";
     pagesQuery = "";
     openSelection(route.selection);
     hashNavigation?.write(currentHash(), true);
@@ -812,7 +843,7 @@
     if (sel && next && sameSel(sel, next) && !resetPages && !resetCollection) return;
     requestNavigation(() => {
       if (resetPages) {
-        pagesFilter = next.category ?? null;
+        pagesFilter = next.category ?? "";
         pagesQuery = "";
       }
       if (resetCollection) collectionQueries[next.name] = "";
@@ -822,7 +853,20 @@
 
   function openSelection(next: Sel | null) {
     const revision = ++articleRevision;
+    cancelIndexing();
+    if ((next?.kind === "document" || next?.kind === "page") && (sel?.kind === "pages" || sel?.kind === "documents")) entryList = sel;
     articleLoading = false; articleError = "";
+    if (githubMode && next && !(next.kind === "document" && newDocument?.id === next.id) && !remoteSelectionReady(gitContext!, manifest, next)) {
+      sel = next; articleLoading = true; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false;
+      const context = gitContext, current = manifest;
+      void readRemoteSelection(context!, current, next).then(() => {
+        if (revision === articleRevision && gitContext === context && manifest === current) openSelection(next);
+      }).catch(error => {
+        handleAuthError(error);
+        if (revision === articleRevision) { articleError = error instanceof Error ? error.message : $t("shell.saveChangesError"); articleLoading = false; }
+      });
+      return;
+    }
     draftRevision += 1;
     if (next?.kind === "page" || next?.kind === "document") {
       if (sel?.kind === "pages" || sel?.kind === "documents") entryList = sel;
@@ -831,6 +875,14 @@
     if (next?.kind === "pages" && next.category !== undefined) pagesFilter = next.category;
     sel = next;
     if (next?.kind === "collection") indexCollections(next.name);
+    if (githubMode && (next?.kind === "pages" || next?.kind === "documents")) {
+      const names = docTypes.filter(type => next.kind === "documents" ? type.name === next.type : !type.shared && inPageCategory(type.category, next.category ?? pagesFilter)).map(type => type.name);
+      const context = gitContext!, current = manifest;
+      documentIndexLoading = true; documentIndexError = "";
+      void indexRemoteDocuments(context, current, names, () => {}, indexController.signal).catch(error => {
+        if (revision === articleRevision && error?.name !== "AbortError") { handleAuthError(error); documentIndexError = error instanceof Error ? error.message : $t("shell.saveChangesError"); }
+      }).finally(() => { if (revision === articleRevision) documentIndexLoading = false; });
+    } else { documentIndexLoading = false; documentIndexError = ""; }
     saveError = "";
     sortBy = "";
     sortDir = 1;
@@ -899,6 +951,7 @@
       if (!selectionInContent(destination, entryList)) entryList = null;
       if (!selectionInContent(destination, sel)) openSelection(null);
       if (target && selectionInContent(destination, target)) openSelection(target);
+      else if (sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "collection") openSelection(sel);
       focusContentLocale();
     }, focusContentLocale);
   }
@@ -927,7 +980,7 @@
       if (connectionError) throw new Error("Reconnect GitHub and verify editing access first.");
     }
     const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open';
-    const overlay = document.querySelector(blocked) || [...document.querySelectorAll('iframe')].some(frame => frame.contentDocument?.querySelector(blocked));
+    const overlay = [document, ...[...document.querySelectorAll('iframe')].map(frame => frame.contentDocument)].some(doc => doc && [...doc.querySelectorAll(blocked)].some(element => element.getClientRects().length > 0 && doc.defaultView?.getComputedStyle(element).visibility !== "hidden"));
     if (articleLoading || articleError || reindexBusy || connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
   }
 
@@ -939,7 +992,7 @@
       read: () => draftSnapshot(manifest, sel, contentLocale, draftContext(), draft, bodyDraft),
       update: (input) => updateDraft(updateDraftField(manifest, sel, contentLocale, draftContext(), draft, input)),
       body: input => updateBody(replaceArticleBody(sel, draftContext(), input)),
-      list: () => { indexCollections(); return contentCatalog(manifest, contentLocale, draftContext()); },
+      list: () => contentCatalog(manifest, contentLocale, draftContext()),
       select: input => {
         select(selectContent(contentCatalog(manifest, contentLocale, draftContext()), input));
         return { pendingConfirmation: !!pendingNavigation };
@@ -987,6 +1040,7 @@
   }
 
   function newPage(type = pageDocType, chooseTemplate = false) {
+    if (articleLoading || articleError) return;
     if (chooseTemplate) type = templates.find(type => inPageCategory(type.category, pageCategory)) ?? templates[0];
     if (!type || !schema || type.creatable === false || type.singleton) return;
     actionDialog = {
@@ -1010,6 +1064,7 @@
   }
 
   function newPost(c: ManifestCollection) {
+    if (articleLoading || articleError) return;
     actionDialog = {
       title: $t("shell.addToCollection", { name: c.label }), description: $t("shell.newPostDescription"), fieldLabel: $t("shell.title"), confirmLabel: $t("shell.createDraft"),
       onconfirm: (title) => {
@@ -1022,6 +1077,7 @@
   }
 
   function deletePage() {
+    if (articleLoading || articleError) return;
     if (publishOpen || publishBusy || saveState === "saving" || sel?.kind !== "document" || !activeDocType || !schema) return;
     const id = sel.id, type = activeDocType, slug = id.slice(type.name.length + 1), back = documentBack, pageSchema = schema;
     if (isProtectedDocument(type, slug)) return;
@@ -1055,6 +1111,7 @@
   }
 
   function deletePost() {
+    if (articleLoading || articleError) return;
     if (publishOpen || publishBusy) return;
     const current = post, collection = coll, unsaved = newEntry !== null;
     if (!current || !collection) return;
@@ -1094,6 +1151,9 @@
 
 <svelte:window
   onstorage={(event) => {
+    if (event.key === "rigelcms.cache.files" && event.newValue === null) {
+      resetRemoteCollectionCache(manifest); resetLocalArticles(); resetMediaPreviews(); try { clearFileCache(); } catch {}
+    }
     if ((event.key === "rigelcms.session" || event.key === null) && blueprint?.github && !readSession(blueprint.github)) {
       invalidateSession();
       connectionError = $t("shell.signedOutAnotherTab");
@@ -1157,7 +1217,7 @@
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
-    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} onindex={() => indexCollections()} oncancelindex={cancelIndexing} />
+    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>
         {#key localeControlRevision}
@@ -1278,17 +1338,17 @@
           <h2>{sel.kind === "page" ? page?.label : sel.kind === "menu" ? String(draft.title || menu?.slug || "") : sel.kind === "post" ? String(draft.title || post?.slug || "") : sel.kind === "document" ? activeDocType?.singleton ? activeDocType.title : String(draft.title || draft.name || activeDocument?.slug || sel.id) : listTitle}</h2>
         {#if sel.kind === "pages"}
           {#if templates.length}
-            <button class="primary" onclick={() => newPage(pageDocType, true)}>{$t("shell.addNew")}</button>
+            <button class="primary" disabled={articleLoading || !!articleError} onclick={() => newPage(pageDocType, true)}>{$t("shell.addNew")}</button>
           {/if}
         {/if}
         {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
-          <button class="primary" onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
+          <button class="primary" disabled={articleLoading || !!articleError} onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
         {/if}
         {#if githubMode && sel.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
         {#if sel.kind === "pages" || (sel.kind === "collection" && coll)}
           <div class="pages-controls">
           {#if sel.kind === "pages" && categories.length}
-            <Select ariaLabel={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); select({ kind: "pages" }); } }} />
+            <Select ariaLabel={$t("shell.category")} value={JSON.stringify(pageCategory)} options={[{ value: "null", label: $t("shell.allPages") }, { value: JSON.stringify(""), label: $t("shell.coreCategory") }, ...categories.map(category => ({ value: JSON.stringify(category), label: category }))]} onchange={(value) => { if (typeof value === "string") { pagesFilter = JSON.parse(value); openSelection({ kind: "pages" }); } }} />
           {/if}
             <div class="pages-search">
               <Icon name="magnifier" size={18} />
@@ -1315,7 +1375,8 @@
       {#if !ready}
         <p>{$t("shell.loading")}</p>
       {:else if articleLoading}
-        <p role="status">{$t("shell.loadingArticle")}</p>
+        <p role="status">{$t("shell.loading")}</p>
+        <div class="connection-loader" role="progressbar" aria-label={$t("shell.loading")}></div>
       {:else if articleError}
         <p role="alert">{articleError}</p>
         <button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>
@@ -1364,6 +1425,8 @@
             </tbody>
           </table>
         </div>
+        {#if (sel?.kind === "pages" || sel?.kind === "documents") && documentIndexLoading}<p role="status">{$t("shell.indexingCollections", documentListIndex)}</p>{/if}
+        {#if documentIndexError}<p role="alert">{documentIndexError}</p><button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>{/if}
         {#if sel?.kind === "collection" && coll?.index && coll.index.state !== "complete"}
           <p role="status">{$t("shell.indexingCollections", { loaded: coll.index.loaded, total: coll.index.total })}</p>
           {#if coll.index.error}<p role="alert">{coll.index.error}</p><button onclick={() => indexCollections(coll!.name)}>{$t("shell.retryLoading")}</button>{/if}
@@ -1478,7 +1541,7 @@
 {/if}
 
 {#if settingsOpen}
-  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} onreindex={reindexCollections} oncancelindex={cancelIndexing} {reindexBusy} {reindexMessage} collections={manifest.collections ?? []} maintenanceDisabled={demoMode || dirty || saveState === "saving" || publishBusy} />
+  <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} onreindex={reindexCollections} oncancelindex={cancelIndexing} onclearcache={clearFiles} {canClearFileCache} {fileCacheBusy} {fileCacheMessage} {reindexBusy} {reindexMessage} collections={manifest.collections ?? []} maintenanceDisabled={demoMode || dirty || saveState === "saving" || publishBusy} />
 {/if}
 {#if shortcutsOpen}
   <Shortcuts onclose={() => (shortcutsOpen = false)} />

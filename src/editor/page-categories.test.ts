@@ -72,7 +72,7 @@ test("Core filters uncategorized native and legacy pages without changing their 
   expect(manifest.schema!.documents.find(type => type.name === "page")!.category).toBeUndefined();
   expect(pageCategories(contentForLocale(manifest, "en"))).toEqual(["Articles"]);
   expect(pageCategories(contentForLocale(manifest, "fr"))).toEqual(["Announcements", "Articles"]);
-  expect(source).toContain('let pagesFilter = $state<string | null>(null)');
+  expect(source).toContain('let pagesFilter = $state<string | null>("")');
 });
 
 test("Pages search matches rendered titles, name fallbacks, effective slugs and schema categories without changing ordering or data", () => {

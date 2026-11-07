@@ -3,7 +3,7 @@ import { isPlainObject } from "../schema/validate";
 
 export const COLLECTION_LEDGER = ".rigel-collection.json";
 export interface CollectionLedgerEntry { slug: string; sha: string; frontmatter: Record<string, unknown> }
-type Shape = Pick<ManifestCollection, "name" | "fields" | "columns" | "locale">;
+type Shape = Pick<ManifestCollection, "name" | "columns" | "locale"> & { fields: unknown };
 
 export function collectionFingerprint(collection: Shape): string {
   return JSON.stringify([collection.name, collection.locale ?? null, collection.fields, collection.columns ?? null]);

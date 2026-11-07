@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CollectionConfig } from "../config";
-import type { ContentDocument } from "../schema/types";
+import type { ContentDocument, DocumentDef, Schema } from "../schema/types";
+import { documentLedgerShape, documentMetadata } from "./document-ledger";
+import { validateDocument } from "../schema/validate";
 import { validateBody } from "../article-body";
 import { validateCollectionValues } from "./collections";
 import { assertUniqueUrlSlugs } from "../slugs";
@@ -31,7 +33,6 @@ export async function safeCollectionFile(folder: string, name: string, t: Transl
 }
 
 export async function rebuildCollectionLedger(collection: CollectionConfig, documents: ContentDocument[] = [], t: Translator = systemMessage, signal?: AbortSignal): Promise<number> {
-  const ledger = await safeCollectionFile(collection.folder, COLLECTION_LEDGER, t);
   const entries: CollectionLedgerEntry[] = [];
   for (const name of (await readdir(collection.folder)).filter(name => name.endsWith(".json") && name !== COLLECTION_LEDGER).sort()) {
     signal?.throwIfAborted();
@@ -42,13 +43,31 @@ export async function rebuildCollectionLedger(collection: CollectionConfig, docu
     entries.push({ slug: name.slice(0, -5), sha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex"), frontmatter: post.frontmatter });
   }
   assertUniqueUrlSlugs(entries.map(entry => ({ slug: entry.slug, values: entry.frontmatter })), t);
+  await writeLedger(collection.folder, collection, entries, t, signal);
+  return entries.length;
+}
+
+export async function rebuildDocumentLedger(root: string, schema: Schema, type: DocumentDef, documents: ContentDocument[], t: Translator = systemMessage, signal?: AbortSignal) {
+  const folder = path.resolve(root, type.folder), entries: CollectionLedgerEntry[] = [];
+  for (const doc of documents.filter(doc => doc.type === type.name)) {
+    signal?.throwIfAborted();
+    const bytes = await readFile(await safeCollectionFile(folder, `${doc.slug}.json`, t));
+    const data = JSON.parse(bytes.toString("utf8"));
+    validateDocument(schema, type.name, doc.slug, data, documents, t);
+    entries.push({ slug: doc.slug, sha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex"), frontmatter: documentMetadata(type, data) });
+  }
+  await writeLedger(folder, documentLedgerShape(type, schema), entries, t, signal);
+  return entries.length;
+}
+
+async function writeLedger(folder: string, shape: Parameters<typeof serializeCollectionLedger>[0], entries: CollectionLedgerEntry[], t: Translator, signal?: AbortSignal) {
+  const ledger = await safeCollectionFile(folder, COLLECTION_LEDGER, t);
   const temporary = `${ledger}.${randomUUID()}.tmp`;
   try {
     signal?.throwIfAborted();
-    await writeFile(temporary, serializeCollectionLedger(collection, entries), { flag: "wx" });
-    await safeCollectionFile(collection.folder, COLLECTION_LEDGER, t);
+    await writeFile(temporary, serializeCollectionLedger(shape, entries), { flag: "wx" });
+    await safeCollectionFile(folder, COLLECTION_LEDGER, t);
     signal?.throwIfAborted();
     await rename(temporary, ledger);
   } finally { await rm(temporary, { force: true }); }
-  return entries.length;
 }

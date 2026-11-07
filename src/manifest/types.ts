@@ -51,6 +51,7 @@ export interface Manifest {
   menus?: { maxDepth: number; entries: MenuDocument[] };
   schema?: import("../schema/types").Schema;
   documents?: import("../schema/types").ContentDocument[];
+  contentIndex?: { state: "pending" | "indexing" | "complete" | "error"; error?: string };
 }
 
 export interface CollectionField {

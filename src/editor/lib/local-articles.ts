@@ -1,18 +1,21 @@
 import { validateBody, type ArticleBody } from "../../article-body";
 import { isPlainObject } from "../../schema/validate";
 import { translate } from "../i18n";
+import { fileCacheChanged } from "./file-cache";
 
 type Article = { frontmatter: Record<string, unknown>; body: ArticleBody };
 const cache = new Map<string, { article: Article; bytes: number }>();
 const pending = new Map<string, Promise<Article>>();
 let revision = 0;
 const key = (collection: string, slug: string) => JSON.stringify([collection, slug]);
-export function resetLocalArticles() { revision++; cache.clear(); pending.clear(); }
+export const hasLocalArticles = () => cache.size > 0;
+export function resetLocalArticles() { revision++; cache.clear(); pending.clear(); fileCacheChanged(); }
 export function cacheLocalArticle(collection: string, slug: string, article: Article) {
   const id = key(collection, slug), bytes = new TextEncoder().encode(JSON.stringify(article)).byteLength;
   cache.delete(id); cache.set(id, { article: structuredClone(article), bytes });
   let total = [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
   while (cache.size > 64 || total > 16 * 1024 * 1024) { const oldest = cache.keys().next().value!; total -= cache.get(oldest)!.bytes; cache.delete(oldest); }
+  fileCacheChanged();
 }
 export async function readLocalArticle(collection: string, slug: string): Promise<Article> {
   const id = key(collection, slug), cached = cache.get(id);

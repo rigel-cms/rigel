@@ -112,9 +112,14 @@
         />
         <kbd>{$t("shell.escapeKeyLowercase")}</kbd>
       </div>
+      {#if manifest.backend === "github"}<p role="status">{$t("shell.searchMetadataScope")}</p>{/if}
+      {#if manifest.contentIndex && manifest.contentIndex.state !== "complete"}
+        <p role="status">{$t("shell.indexIncomplete")}</p>
+        {#if manifest.contentIndex.error}<p role="alert">{manifest.contentIndex.error}</p><button onclick={onindex}>{$t("shell.retryLoading")}</button>{/if}
+      {/if}
       {#each manifest.collections ?? [] as collection (collection.name)}
         {#if collection.index && collection.index.state !== "complete"}
-          <p role="status">{collection.label}: {$t("shell.indexingCollections", { loaded: collection.index.loaded, total: collection.index.total })}</p>
+          <p role="status">{collection.label}: {$t(collection.index.state === "indexing" ? "shell.indexingCollections" : "shell.indexIncomplete", { loaded: collection.index.loaded, total: collection.index.total })}</p>
           {#if collection.index.error}<p role="alert">{collection.index.error}</p><button onclick={onindex}>{$t("shell.retryLoading")}</button>{/if}
           {#if collection.index.state === "indexing"}<button onclick={oncancelindex}>{$t("connection.cancel")}</button>{/if}
         {/if}
@@ -128,7 +133,7 @@
             </button>
           </li>
         {:else}
-          <li class="empty" role="presentation">{$t(manifest.collections?.some(c => c.index && c.index.state !== "complete") ? "shell.indexIncomplete" : "shell.noResults")}</li>
+          <li class="empty" role="presentation">{$t((manifest.contentIndex && manifest.contentIndex.state !== "complete") || manifest.collections?.some(c => c.index && c.index.state !== "complete") ? "shell.indexIncomplete" : "shell.noResults")}</li>
         {/each}
       </ul>
       <div class="palette-footer">

@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { fileURLToPath } from "node:url";
 import config from "virtual:rigel-config";
 import { requestTranslator } from "../editor/i18n/server";
-import { collectionWrite, rebuildCollectionLedger } from "../manifest/collection-ledger-store";
+import { collectionWrite, rebuildCollectionLedger, rebuildDocumentLedger } from "../manifest/collection-ledger-store";
 import { readDocuments } from "../schema/store";
 
 export const prerender = false;
@@ -15,6 +15,10 @@ export const POST: APIRoute = ({ request }) => collectionWrite(async () => {
     const name = new URL(request.url).searchParams.get("collection");
     const collections = (config.collections ?? []).filter(collection => !name || collection.name === name);
     if (name && !collections.length) return new Response(t("local.unknownCollectionSlug"), { status: 404 });
+    if (!name && config.root && config.schema) for (const type of config.schema.documents) {
+      request.signal.throwIfAborted();
+      results.push({ name: type.name, count: await rebuildDocumentLedger(fileURLToPath(config.root), config.schema, type, documents, t, request.signal) });
+    }
     for (const collection of collections) {
       request.signal.throwIfAborted();
       results.push({ name: collection.name, count: await rebuildCollectionLedger(collection, documents, t, request.signal) });

@@ -34,7 +34,7 @@ ${documentTypes.map((type, index) => `const __rigelDoc${index} = import.meta.glo
 export const documentTypes = ${JSON.stringify(documentTypes.map((type) => ({ name: type.name, shared: Boolean(type.shared) })))};
 const __rigelRawDocuments = { ${documentTypes.map((type, index) => `${JSON.stringify(type.name)}: __rigelDoc${index}`).join(", ")} };
 export const documents = Object.entries(__rigelRawDocuments)
-  .flatMap(([type, modules]) => Object.entries(modules).map(([file, data]) => {
+  .flatMap(([type, modules]) => Object.entries(modules).filter(([file]) => !file.split("/").some(part => part.startsWith("."))).map(([file, data]) => {
     const slug = file.split("/").pop().replace(/\\.json$/, "");
     return { id: type + ":" + slug, type, slug, data: { ...data, _id: type + ":" + slug, _type: type } };
   }))

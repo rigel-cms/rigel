@@ -236,11 +236,16 @@ export function contentCatalog(manifest: Manifest, locale: string | undefined, c
   const entries: { label: string; selection: Selection }[] = [
     ...visible.pages.map(page => ({ label: page.label, selection: { kind: "page", slug: page.slug } as Selection })),
     ...(visible.documents ?? []).filter(doc => visible.schema?.documents.some(type => type.name === doc.type)).map(doc => ({ label: doc.slug, selection: { kind: "document", type: doc.type, id: doc.id } as Selection })),
-    ...(visible.collections ?? []).flatMap(collection => collection.posts.map(post => ({ label: `${collection.label}: ${post.slug}`, selection: { kind: "post", collection: collection.name, slug: post.slug } as Selection }))),
+    ...(visible.collections ?? []).flatMap(collection => (collection.storageSlugs ?? collection.posts.map(post => post.slug)).map(slug => ({ label: `${collection.label}: ${slug}`, selection: { kind: "post", collection: collection.name, slug } as Selection }))),
     ...(visible.menus?.entries ?? []).map(menu => ({ label: menu.title, selection: { kind: "menu", slug: menu.slug } as Selection })),
   ];
   assertToolJson(entries);
   const indexing = (visible.collections ?? []).filter(collection => collection.index && collection.index.state !== "complete").map(collection => ({ name: collection.name, ...collection.index }));
+  for (const type of visible.schema?.documents ?? []) {
+    const docs = (visible.documents ?? []).filter(doc => doc.type === type.name);
+    const loaded = docs.filter(doc => doc.loaded !== "identity").length;
+    if (loaded < docs.length) indexing.push({ name: type.name, state: "pending", loaded, total: docs.length });
+  }
   return { context, locale: locale ?? null, entries, complete: indexing.length === 0, indexing };
 }
 

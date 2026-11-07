@@ -59,6 +59,7 @@ export interface Schema {
 }
 
 export interface ContentDocument {
+  loaded?: "identity" | "metadata" | "complete";
   id: string;
   type: string;
   slug: string;

@@ -39,6 +39,7 @@ const manifest = { backend: "github", pages: [], collections: [collection], gith
 function api(path, method, body) {
   requests.push({ path, method });
   if (method === "OPTIONS") return [204, null];
+  if (path === "/graphql" && method === "POST") return [404, {}];
   if (path === "/user") return [200, { login: fixtureUser, avatar_url: "https://avatars.githubusercontent.com/u/1", html_url: `https://github.com/${fixtureUser}` }];
   const installation = { id: 7, app_slug: "rigel-cms", account: { login: "fixture-owner", type: "User" }, permissions: { contents: "write" }, suspended_at: null, html_url: "https://github.com/settings/installations/7" };
   if (path.startsWith("/user/installations?")) return [200, { total_count: installed && fixtureUser === "fixture-user" ? 1 : 0, installations: installed && fixtureUser === "fixture-user" ? [installation] : [] }];
@@ -246,11 +247,11 @@ try {
   await waitFor("!!document.querySelector('.settings-modal')");
   await evaluate("[...document.querySelectorAll('.settings-nav button')].find(b=>b.textContent.includes('Advanced')).click()");
   await checkMaintenance(localMode ? 'local' : 'github');
-  await evaluate("[...document.querySelectorAll('.settings-pane button')].find(b=>b.textContent==='Reindex collections').click()");
+  await evaluate("[...document.querySelectorAll('.settings-pane button')].find(b=>b.textContent==='Reindex all content').click()");
   await waitFor("!!document.querySelector('.action-dialog[open]')");
   const originalArticles = [...files].filter(([path]) => path !== ledgerPath).map(([path,file])=>[path,file.text]);
   await click('.action-dialog button[type=submit]');
-  await waitFor("document.querySelector('.settings-pane')?.textContent.includes('Collection ledgers saved.')");
+  await waitFor("document.querySelector('.settings-pane')?.textContent.includes('Content metadata ledgers saved.')");
   assert.deepEqual([...files].filter(([path])=>path!==ledgerPath).map(([path,file])=>[path,file.text]),originalArticles);
   assert.deepEqual(requests.filter(r=>r.paths).at(-1).paths,[ledgerPath]);
   await click('.settings-modal .close');
@@ -262,11 +263,12 @@ try {
   await cdp('Page.navigate',{url}); await waitFor("!!document.querySelector('#rigel-sidebar')");
   assert.equal(articleReads(beforeReload),0);
   await click('.search-trigger');
-  await waitFor("document.querySelector('.palette')?.textContent.includes('Indexing metadata')");
-  await waitFor("!document.querySelector('.palette')?.textContent.includes('Indexing metadata')");
-  assert.equal(articleReads(beforeReload),2);
+  await waitFor("!!document.querySelector('.palette')");
+  assert.equal(articleReads(beforeReload),0);
   await evaluate("document.querySelector('.palette-backdrop').click()");
   await click('[data-collection="blog"]'); await waitFor("document.querySelectorAll('tbody .table-link').length === 12");
+  await waitFor("document.querySelector('tbody')?.textContent.includes('External edit')");
+  assert.equal(articleReads(beforeReload),2);
   assert.equal(await evaluate("document.querySelector('tbody').textContent.includes('External edit')"),true);
   assert.equal(await evaluate("document.querySelector('tbody').textContent.includes('article-02')"),false);
   await evaluate("[...document.querySelectorAll('.titlebar button')].find(b=>b.textContent==='Refresh').click()");
@@ -278,6 +280,7 @@ try {
   assert.equal(articleReads(beforeRefreshedSelection),1);
   await click('[data-collection="blog"]'); await waitFor("document.querySelectorAll('tbody .table-link').length === 12");
   const beforeCorrupt=requests.length;
+  await evaluate("new Promise((resolve,reject)=>{const request=indexedDB.open('rigelcms-files',1);request.onsuccess=()=>{const db=request.result,tx=db.transaction('files','readwrite');tx.objectStore('files').clear();tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};})");
   put(ledgerPath,'{'); head=nextSha(); remember();
   await cdp('Page.navigate',{url}); await waitFor("!!document.querySelector('#rigel-sidebar')");
   assert.equal(articleReads(beforeCorrupt),0);
@@ -293,7 +296,7 @@ try {
   await evaluate("[...document.querySelectorAll('main > button')].find(b=>b.textContent==='Retry loading').click()");
   await waitFor("document.querySelectorAll('tbody .table-link').length === 12 && !document.querySelector('main > [role=alert]')");
   assert.equal(articleReads(beforeCorrupt),12);
-  assert.equal(requests.slice(beforeCorrupt).some(r=>!['GET','OPTIONS'].includes(r.method)),false);
+  assert.equal(requests.slice(beforeCorrupt).some(r=>!['GET','OPTIONS'].includes(r.method) && r.path!=='/graphql'),false);
   const fallbackReads = articleReads(beforeCorrupt);
   if (process.env.RIGEL_FIXTURE_ROOT) {
     const directory = join(process.env.RIGEL_FIXTURE_ROOT,folder), ledger = join(directory,'.rigel-collection.json');
@@ -306,10 +309,10 @@ try {
     await waitFor("!!document.querySelector('.settings-modal')");
     await evaluate("[...document.querySelectorAll('.settings-nav button')].find(b=>b.textContent.includes('Advanced')).click()");
     await checkMaintenance('local');
-    await evaluate("[...document.querySelectorAll('.settings-pane button')].find(b=>b.textContent==='Reindex collections').click()");
+    await evaluate("[...document.querySelectorAll('.settings-pane button')].find(b=>b.textContent==='Reindex all content').click()");
     await waitFor("!!document.querySelector('.action-dialog[open]')");
     await click('.action-dialog button[type=submit]');
-    await waitFor("document.querySelector('.settings-pane')?.textContent.includes('Collection ledgers saved.')");
+    await waitFor("document.querySelector('.settings-pane')?.textContent.includes('Content metadata ledgers saved.')");
     const entries=JSON.parse(await readFile(ledger,'utf8')).entries;
     assert.equal(entries.length,originals.size);
     for(const [name,bytes] of originals) assert.deepEqual(await readFile(join(directory,name)),bytes);

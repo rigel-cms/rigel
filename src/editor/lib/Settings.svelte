@@ -11,7 +11,7 @@
   import logo from "../assets/rigelcms-icon.png?url";
   import { author, license } from "../../../package.json";
 
-  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose, onreindex, oncancelindex, reindexBusy = false, reindexMessage = "", collections = [], maintenanceDisabled = false }: {
+  let { s = $bindable(), search, contentLocales, github, user, error, saving, onerase, onclose, onreindex, oncancelindex, onclearcache, canClearFileCache = false, fileCacheBusy = false, fileCacheMessage = "", reindexBusy = false, reindexMessage = "", collections = [], maintenanceDisabled = false }: {
     s: RigelSettings;
     search?: Manifest["search"];
     contentLocales?: Manifest["contentLocales"];
@@ -23,6 +23,10 @@
     onclose: () => void;
     onreindex?: () => void;
     oncancelindex?: () => void;
+    onclearcache?: () => void;
+    canClearFileCache?: boolean;
+    fileCacheBusy?: boolean;
+    fileCacheMessage?: string;
     reindexBusy?: boolean;
     reindexMessage?: string;
     collections?: NonNullable<Manifest["collections"]>;
@@ -217,17 +221,24 @@
               <h3>{$t("shell.maintenance")}</h3>
               <p class="hint">{$t("shell.reindexHint")}</p>
               <button type="button" class="outlined" disabled={maintenanceDisabled || reindexBusy} onclick={onreindex}>{$t("shell.reindexCollections")}</button>
-              {#if reindexBusy}<button type="button" class="outlined" onclick={oncancelindex}>{$t("connection.cancel")}</button>{/if}
-              {#each collections as collection (collection.name)}
-                {#if collection.index}<p role="status">{collection.label}: {$t(collection.index.state === "complete" ? "shell.indexReady" : "shell.indexingCollections", { loaded: collection.index.loaded, total: collection.index.total })}{#if collection.index.error} {collection.index.error}{/if}</p>{/if}
-              {/each}
+              {#if reindexBusy}
+                <p role="status">{$t("shell.reindexWorking")}</p>
+                <div class="connection-loader" role="progressbar" aria-label={$t("shell.reindexWorking")}></div>
+                <button type="button" class="outlined" onclick={oncancelindex}>{$t("connection.cancel")}</button>
+              {/if}
+              {#if s.devMode}
+                {#each collections as collection (collection.name)}
+                  {#if collection.index}<p role="status">{collection.label} ({collection.name}): {$t(collection.index.state === "complete" ? "shell.indexReady" : "shell.indexingCollections", { loaded: collection.index.loaded, total: collection.index.total })}{#if collection.index.error} {collection.index.error}{/if}</p>{/if}
+                {/each}
+              {/if}
               {#if reindexMessage}<p role="status">{reindexMessage}</p>{/if}
             </div>
           {/if}
           <div class="clear-data">
             <h3>{$t("shell.clearData")}</h3>
             <p class="hint">{$t("shell.fileCacheHint")}</p>
-            <button type="button" class="danger-btn" disabled>{$t("shell.clearFileCache")}</button>
+            <button type="button" class="outlined" disabled={!canClearFileCache || fileCacheBusy} onclick={onclearcache}>{$t("shell.clearFileCache")}</button>
+            {#if fileCacheMessage}<p role="status">{fileCacheMessage}</p>{/if}
             <p class="hint">{$t("shell.eraseAllDataHint")}</p>
             <button type="button" class="danger-btn" disabled={saving} onclick={() => {
               eraseError = "";

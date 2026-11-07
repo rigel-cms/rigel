@@ -85,7 +85,7 @@ export async function readDocuments(schema: Schema, root: string, preview?: Prev
       if (error instanceof DocumentStoreError && error.status === 500 && /does not exist/.test(error.message)) continue;
       throw error;
     }
-    const names = (await readdir(directory)).filter((name) => name.endsWith(".json")).sort();
+    const names = (await readdir(directory)).filter((name) => name.endsWith(".json") && name !== ".rigel-collection.json").sort();
     for (const name of names) {
       const slug = name.slice(0, -5);
       if (!SLUG_PATTERN.test(slug)) throw new DocumentStoreError(`Invalid document filename ${name}`, 500);

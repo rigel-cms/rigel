@@ -7,7 +7,7 @@
   import { getSettings, setSettings } from "./settings";
   import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName, matchesMediaAccept, safeFileUrl } from "../../media-types";
   import config from "virtual:rigel-config";
-  import { onMediaReset, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
+  import { onMediaReset, refreshMediaPreviews, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
   import type { EmbedData } from "../blocks/embed";
   import type { VideoData } from "../blocks/video";
@@ -115,8 +115,9 @@
     alt = (image.alt ?? altText).slice(0, 1000);
   }
 
-  async function library() {
-    const data = await listMedia();
+  async function library(refresh = false) {
+    const request = requestId, data = await listMedia(refresh);
+    if (request !== requestId) return;
     assets = data.assets.filter((asset: MediaAsset) => inline || (kind === "file" ? safeFileUrl(asset.url) && matchesMediaAccept(asset.url, accept) : asset.type?.startsWith(kind === "video" ? "video/" : "image/")));
     writable = !demoMode && data.writable === true;
     folder = data.folder;
@@ -130,7 +131,7 @@
     if (open && dialog) { dialog.showModal(); cancel?.focus(); }
   });
   function releaseFile() { if (objectURL) URL.revokeObjectURL(objectURL); objectURL = ""; }
-  async function run() {
+  async function run(refresh = false) {
     if (picking) return;
     const request = ++requestId;
     error = "";
@@ -145,7 +146,7 @@
     }
     loading = true; results = []; searched = false;
     try {
-      if (tab === "library" || tab === "upload") await library();
+      if (tab === "library" || tab === "upload") { await library(refresh); if (refresh) refreshMediaPreviews(); }
       else {
         const found = await searchImages(tab as StockSource, query);
         if (request === requestId) results = found;
@@ -253,7 +254,7 @@
     <div class="media-select">
       <Select ariaLabel={$t("media.modifiedMonth")} data-tooltip={$t("media.modifiedMonthHint")} value={month} onchange={next => { month = String(next); }} options={[{ value: "", label: $t("media.allModifiedDates") }, ...months.map(date => ({ value: date, label: new Date(date + "-01T00:00:00Z").toLocaleDateString($locale, { month: "long", year: "numeric", timeZone: "UTC" }) }))]} />
     </div>
-    <button type="button" class="outlined" onclick={() => { tab = "library"; void run(); }} disabled={loading || picking}>{$t("media.refresh")}</button>
+    <button type="button" class="outlined" onclick={() => { tab = "library"; void run(true); }} disabled={loading || picking}>{$t("media.refresh")}</button>
     {#if filter || format || month}<button type="button" class="outlined" onclick={resetFilters}>{$t("media.resetFilters")}</button>{/if}
     <input class="media-search" aria-label={$t("media.searchMedia")} type="search" bind:value={filter} placeholder={$t("media.searchMediaPlaceholder")} />
   </div>
@@ -348,10 +349,10 @@
           {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
         {:else if tab === "url"}
           <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="url" bind:value={urlInput} placeholder={$t(kind === "video" ? "media.videoUrlPlaceholder" : "media.imageUrlPlaceholder")} /></label>
-          <button type="button" class="primary" onclick={run}>{$t("media.useUrl")}</button>
+          <button type="button" class="primary" onclick={() => run()}>{$t("media.useUrl")}</button>
         {:else}
           <p class="hint">{$t(tab === "picsum" ? "media.picsumHint" : tab === "unsplash" ? "media.unsplashHint" : "media.stockImportHint")}</p>
-          <div class="search-row"><input aria-label={$t("media.searchPhotos")} type="search" bind:value={query} placeholder={$t("media.searchPhotosPlaceholder")} onkeydown={e => e.key === "Enter" && run()} /><button type="button" class="primary" onclick={run} disabled={loading || picking}>{loading ? "…" : $t("media.search")}</button></div>
+          <div class="search-row"><input aria-label={$t("media.searchPhotos")} type="search" bind:value={query} placeholder={$t("media.searchPhotosPlaceholder")} onkeydown={e => e.key === "Enter" && run()} /><button type="button" class="primary" onclick={() => run()} disabled={loading || picking}>{loading ? "…" : $t("media.search")}</button></div>
           {#if searched && !results.length && !error}<p class="hint" role="status">{$t("media.noPhotos")}</p>{/if}
           <div class="grid">
             {#each results as r (r.url)}

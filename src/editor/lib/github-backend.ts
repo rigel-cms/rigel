@@ -16,7 +16,7 @@ import { documentIndex, isPlainObject, validateDocument, validateDocumentId, val
 import { applyValues, readValues } from "../../routes/serialize";
 import { assertUniqueUrlSlugs, normalizeUrlSlug, validateDocumentSlugs } from "../../slugs";
 
-export interface GitContext { token: string; repo: string; branch: string; assertActive?: () => void }
+export interface GitContext { token: string; repo: string; branch: string; assertActive?: () => void; mediaSession?: object }
 
 type FileSnapshot = { sha: string; text: string; mode: string };
 type MediaChange = { path: string; text: string | null; sha?: string; mode?: string };
@@ -385,17 +385,79 @@ async function remoteMedia(ctx: GitContext, manifest: Manifest) {
   return { ...paths, snapshot, head, entries, record, assets: assets.sort((a, b) => a.name.localeCompare(b.name)), read };
 }
 
-export async function listRemoteMedia(ctx: GitContext, manifest: Manifest): Promise<MediaAsset[]> {
-  return (await remoteMedia(ctx, manifest)).assets;
+type MediaListing = Awaited<ReturnType<typeof remoteMedia>>;
+type MediaCache = { session: object; scope: string; listing?: Promise<MediaListing>; blobs: Map<string, Blob>; pending: Map<string, Promise<Blob>>; bytes: number; active: number; waiting: (() => void)[] };
+let mediaCaches = new WeakMap<Manifest, MediaCache>();
+export function resetRemoteMediaCache() { mediaCaches = new WeakMap(); }
+function mediaCache(ctx: GitContext, manifest: Manifest) {
+  ctx.assertActive?.(); loaded(ctx, manifest);
+  const session = ctx.mediaSession ?? ctx, scope = JSON.stringify([ctx.token, target(ctx, manifest)]);
+  let cache = mediaCaches.get(manifest);
+  if (!cache || cache.session !== session || cache.scope !== scope) {
+    cache = { session, scope, blobs: new Map(), pending: new Map(), bytes: 0, active: 0, waiting: [] };
+    mediaCaches.set(manifest, cache);
+  }
+  return cache;
+}
+function assertMediaCache(ctx: GitContext, manifest: Manifest, cache: MediaCache) {
+  ctx.assertActive?.();
+  if (mediaCaches.get(manifest) !== cache) throw new Error(translate("connection.reloadDraft"));
+}
+function mediaListing(ctx: GitContext, manifest: Manifest, cache: MediaCache) {
+  if (!cache.listing) {
+    const listing = remoteMedia(ctx, manifest).then(media => {
+      assertMediaCache(ctx, manifest, cache);
+      if (cache.listing !== listing) throw new Error(translate("connection.reloadDraft"));
+      return media;
+    });
+    cache.listing = listing;
+    void listing.catch(() => { if (cache.listing === listing) cache.listing = undefined; });
+  }
+  return cache.listing;
+}
+export async function listRemoteMedia(ctx: GitContext, manifest: Manifest, refresh = false): Promise<MediaAsset[]> {
+  if (refresh) {
+    ctx.assertActive?.();
+    const previous = mediaCaches.get(manifest);
+    previous?.blobs.clear(); previous?.pending.clear();
+    mediaCaches.delete(manifest);
+  }
+  return (await mediaListing(ctx, manifest, mediaCache(ctx, manifest))).assets;
 }
 
 export async function readRemoteMedia(ctx: GitContext, manifest: Manifest, url: string): Promise<Blob> {
-  const media = await remoteMedia(ctx, manifest);
+  const cache = mediaCache(ctx, manifest), listing = mediaListing(ctx, manifest, cache), media = await listing;
+  assertMediaCache(ctx, manifest, cache);
+  if (cache.listing !== listing) throw new Error(translate("connection.reloadDraft"));
   if (!safeFileUrl(url) || !media.assets.some(asset => asset.url === url)) throw new Error(translate("local.unknownAsset"));
-  const metadata = mediaMetadata(url)!;
-  const bytes = await media.read(media.directory + "/" + url.slice(media.prefix.length).split("/").map(decodeURIComponent).join("/"), manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE);
-  if (!bytes.length || !validMediaBytes(bytes, metadata.extension)) throw new Error(translate("local.mediaBytesMismatch"));
-  return new Blob([bytes], { type: metadata.type === "text/plain" ? "text/plain; charset=utf-8" : metadata.type });
+  const metadata = mediaMetadata(url)!, path = media.directory + "/" + url.slice(media.prefix.length).split("/").map(decodeURIComponent).join("/"), key = media.entries.get(path).sha + ":" + metadata.extension;
+  const cached = cache.blobs.get(key);
+  if (cached) { cache.blobs.delete(key); cache.blobs.set(key, cached); return cached; }
+  const pending = cache.pending.get(key);
+  if (pending) return pending;
+  const request = (async () => {
+    if (cache.active >= 4) await new Promise<void>(resolve => cache.waiting.push(resolve));
+    else cache.active++;
+    try {
+      assertMediaCache(ctx, manifest, cache);
+      if (cache.listing !== listing) throw new Error(translate("connection.reloadDraft"));
+      const bytes = await media.read(path, manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE);
+      assertMediaCache(ctx, manifest, cache);
+      if (cache.listing !== listing) throw new Error(translate("connection.reloadDraft"));
+      if (!bytes.length || !validMediaBytes(bytes, metadata.extension)) throw new Error(translate("local.mediaBytesMismatch"));
+      const blob = new Blob([bytes], { type: metadata.type === "text/plain" ? "text/plain; charset=utf-8" : metadata.type });
+      if (blob.size <= 32 * 1024 * 1024) {
+        while (cache.blobs.size >= 64 || cache.bytes + blob.size > 32 * 1024 * 1024) {
+          const oldest = cache.blobs.keys().next().value!;
+          cache.bytes -= cache.blobs.get(oldest)!.size; cache.blobs.delete(oldest);
+        }
+        cache.blobs.set(key, blob); cache.bytes += blob.size;
+      }
+      return blob;
+    } finally { const next = cache.waiting.shift(); if (next) next(); else cache.active--; }
+  })();
+  cache.pending.set(key, request);
+  try { return await request; } finally { if (cache.pending.get(key) === request) cache.pending.delete(key); }
 }
 
 function queueRemoteWrite<T>(ctx: GitContext, manifest: Manifest, operation: () => Promise<T>): Promise<T> {
@@ -403,7 +465,11 @@ function queueRemoteWrite<T>(ctx: GitContext, manifest: Manifest, operation: () 
   if (publishing.has(key)) return Promise.reject(new Error(translate("connection.waitBeforeSaving")));
   const snapshot = loaded(ctx, manifest);
   saving.set(key, (saving.get(key) ?? 0) + 1);
-  const result = snapshot.writes.then(operation);
+  const result = snapshot.writes.then(async () => {
+    const invalidate = () => { const cache = mediaCaches.get(manifest); if (cache) { cache.listing = undefined; cache.pending.clear(); } };
+    invalidate();
+    try { return await operation(); } finally { invalidate(); }
+  });
   snapshot.writes = result.then(() => {}, () => {});
   return result.finally(() => saving.set(key, (saving.get(key) ?? 1) - 1));
 }

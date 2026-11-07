@@ -3,7 +3,124 @@ import { readFileSync } from "node:fs";
 import type { Manifest } from "../../manifest/types";
 import { emptyBody } from "../../article-body";
 import { readValues } from "../../routes/serialize";
-import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, listRemoteMedia, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, readRemoteMedia } from "./github-backend";
+import { loadManifestRemote, saveRemoteSelection, deleteRemotePost, deleteRemoteDocument, listRemoteMedia, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, readRemoteMedia, resetRemoteMediaCache } from "./github-backend";
+
+test("media request benchmark shares listing, parallel blobs and reopened previews", async () => {
+  const s = server();
+  const urls = Array.from({ length: 12 }, (_, i) => `/rigel-media/image-${i}.txt`);
+  for (const url of urls) s.put(`playground/public${url}`, `image ${url}`);
+  s.put("playground/public/rigel-media/.rigel-media.json", "{}");
+  const m = await loadManifestRemote(ctx, blueprint()), start = s.calls.length;
+  await listRemoteMedia(ctx, m);
+  await Promise.all(urls.flatMap(url => [readRemoteMedia(ctx, m, url), readRemoteMedia(ctx, m, url)]));
+  const cold = s.calls.length - start;
+  await listRemoteMedia(ctx, m);
+  await Promise.all(urls.map(url => readRemoteMedia(ctx, m, url)));
+  const reopened = s.calls.length - start - cold;
+  const reads = s.calls.slice(start);
+  console.log(JSON.stringify({ benchmark: "12 media, two parallel consumers, reopen", cold, reopened, heads: reads.filter(c => c.path.includes("/git/ref/")).length, trees: reads.filter(c => c.path.includes("/git/trees/")).length }));
+  expect(cold).toBe(15);
+  expect(reopened).toBe(0);
+  expect(reads.filter(call => call.path.includes("/git/ref/"))).toHaveLength(1);
+  expect(reads.filter(call => call.path.includes("/git/trees/"))).toHaveLength(1);
+  expect(reads.filter(call => call.path.includes("/git/blobs/"))).toHaveLength(13);
+});
+
+test("immutable blob reuse preserves each asset MIME and signature validation", async () => {
+  const s = server();
+  s.put("playground/public/rigel-media/a.txt", "plain,text");
+  s.files.set("playground/public/rigel-media/b.csv", s.files.get("playground/public/rigel-media/a.txt")!);
+  s.put("snapshot-marker", "refresh tree");
+  const m = await loadManifestRemote(ctx, blueprint());
+  expect((await readRemoteMedia(ctx, m, "/rigel-media/a.txt")).type).toBe("text/plain; charset=utf-8");
+  expect((await readRemoteMedia(ctx, m, "/rigel-media/b.csv")).type).toBe("text/csv");
+});
+
+test("hard media refresh drops identical SHA blobs and cannot be refilled by old downloads", async () => {
+  const s = server(), url = "/rigel-media/a.txt";
+  s.put(`playground/public${url}`, "private");
+  const m = await loadManifestRemote(ctx, blueprint());
+  await readRemoteMedia(ctx, m, url);
+  const before = s.calls.length;
+  await listRemoteMedia(ctx, m, true);
+  await readRemoteMedia(ctx, m, url);
+  expect(s.calls.length - before).toBe(3);
+  resetRemoteMediaCache();
+  await listRemoteMedia(ctx, m);
+  const original = fetch;
+  let release!: () => void, started!: () => void, first = true;
+  const held = new Promise<void>(done => { release = done; }), fetching = new Promise<void>(done => { started = done; });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { if (first && url.includes("/git/blobs/")) { first = false; started(); await held; } return original(url, init); });
+  const pending = readRemoteMedia(ctx, m, url), rejected = expect(pending).rejects.toThrow(/reload/i);
+  await fetching;
+  await listRemoteMedia(ctx, m, true);
+  release(); await rejected;
+  const after = s.calls.length;
+  await readRemoteMedia(ctx, m, url);
+  expect(s.calls.length - after).toBe(1);
+});
+
+test("media refresh revalidates metadata and SHA without permitting stale writes", async () => {
+  const s = server(), url = "/rigel-media/a.txt", ledger = "playground/public/rigel-media/.rigel-media.json";
+  s.put(`playground/public${url}`, "old"); s.put(ledger, JSON.stringify({ [url]: { title: "Old" } }));
+  const m = await loadManifestRemote(ctx, blueprint());
+  expect(await (await readRemoteMedia(ctx, m, url)).text()).toBe("old");
+  s.put(`playground/public${url}`, "new"); s.put(ledger, JSON.stringify({ [url]: { title: "New" } }));
+  expect((await listRemoteMedia(ctx, m))[0].title).toBe("Old");
+  expect((await listRemoteMedia(ctx, m, true))[0].title).toBe("New");
+  expect(await (await readRemoteMedia(ctx, m, url)).text()).toBe("new");
+  await expect(updateRemoteMedia(ctx, m, { url, title: "Unsafe" })).rejects.toThrow(/conflict/);
+  expect(s.calls.filter(c => c.method !== "GET")).toEqual([]);
+});
+
+test("media cache bounds concurrency, retries errors and evicts old blobs", async () => {
+  const s = server(), urls = Array.from({ length: 66 }, (_, i) => `/rigel-media/${i}.txt`);
+  for (const url of urls) s.put(`playground/public${url}`, url);
+  const m = await loadManifestRemote(ctx, blueprint());
+  await listRemoteMedia(ctx, m);
+  const original = fetch;
+  let active = 0, peak = 0, fail = true;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (!url.includes("/git/blobs/")) return original(url, init);
+    active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 1)); if (fail) { fail = false; throw Error("retry"); } return await original(url, init); }
+    finally { active--; }
+  });
+  await expect(readRemoteMedia(ctx, m, urls[0])).rejects.toThrow();
+  await Promise.all(urls.map(url => readRemoteMedia(ctx, m, url)));
+  expect(peak).toBe(4);
+  const before = s.calls.length;
+  await readRemoteMedia(ctx, m, urls[0]);
+  expect(s.calls.length - before).toBe(1);
+});
+
+test("media reset and account changes discard cached bytes and reject late results", async () => {
+  const s = server(), url = "/rigel-media/a.txt";
+  s.put(`playground/public${url}`, "private");
+  const m = await loadManifestRemote(ctx, blueprint());
+  await listRemoteMedia(ctx, m);
+  const original = fetch;
+  let release!: () => void, started!: () => void;
+  const held = new Promise<void>(done => { release = done; }), fetching = new Promise<void>(done => { started = done; });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { if (url.includes("/git/blobs/")) { started(); await held; } return original(url, init); });
+  const pending = readRemoteMedia(ctx, m, url);
+  const rejected = expect(pending).rejects.toThrow(/reload/i);
+  await fetching; resetRemoteMediaCache(); release(); await rejected;
+  await readRemoteMedia(ctx, m, url);
+  const before = s.calls.length;
+  await readRemoteMedia({ ...ctx, token: "another-account" }, m, url);
+  expect(s.calls.length - before).toBe(3);
+});
+
+test("media listing failures retry and simultaneous callers share the listing", async () => {
+  const s = server(), m = await loadManifestRemote(ctx, blueprint());
+  s.status = 503;
+  await expect(listRemoteMedia(ctx, m)).rejects.toThrow();
+  s.status = 0;
+  const before = s.calls.length;
+  await Promise.all([listRemoteMedia(ctx, m), listRemoteMedia(ctx, m)]);
+  expect(s.calls.length - before).toBe(2);
+});
 
 test("repository media initializes file and ledger atomically, previews bytes and preserves content Save", async () => {
   const s = server(), m = await loadManifestRemote(ctx, blueprint());
@@ -19,6 +136,7 @@ test("repository media initializes file and ledger atomically, previews bytes an
   await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Unsaved article" }, emptyBody(), false);
   await deleteRemoteMedia(ctx, m, url);
   expect(await listRemoteMedia(ctx, m)).toEqual([]);
+  await expect(readRemoteMedia(ctx, m, url)).rejects.toThrow(/unknown/i);
   expect(JSON.parse(s.files.get("playground/public/rigel-media/.rigel-media.json")!.text)).toEqual({});
   expect(s.files.has(`playground/public${url}`)).toBe(false);
 });

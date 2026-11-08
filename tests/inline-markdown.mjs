@@ -88,6 +88,7 @@ try {
 
   await clickAt(await at('#copy p'));
   await wait(`${copy}.isContentEditable`, 'inline editor');
+  await evaluate(`(()=>{const heading=${copy}.querySelector('h2'); const range=${frame}.createRange(); range.selectNodeContents(heading); range.collapse(true); const selection=${frame}.defaultView.getSelection(); selection.removeAllRanges(); selection.addRange(range);})()`);
   await cdp('Input.insertText', { text: 'Hello ' });
   await wait(`document.querySelector('#draft').textContent.includes('Hello')`, 'typed text reaches the draft');
   assert.equal(new MarkdownIt().render(await field('copy')), '<h2>Hello Native copy</h2>\n<p>Website <strong>presentation</strong> stays readable.</p>\n<p>Another paragraph.</p>\n', 'typing writes render-equivalent Markdown back to the field');

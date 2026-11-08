@@ -226,6 +226,16 @@
     patch();
   }
   const regionAttributes = ["class", "style", "role", "aria-label", "aria-multiline", "aria-keyshortcuts", "contenteditable", "data-lexical-editor", "spellcheck", "tabindex", "translate"];
+  function placeCaret(element: HTMLElement, offset: number) {
+    const doc = element.ownerDocument;
+    const range = doc.createRange(); range.selectNodeContents(element); range.collapse(true);
+    const walker = doc.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (offset <= (node.textContent?.length ?? 0)) { range.setStart(node, offset); range.collapse(true); break; }
+      offset -= node.textContent?.length ?? 0;
+    }
+    const selection = doc.defaultView?.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+  }
   async function startBodyEdit(element: HTMLElement, event?: MouseEvent) {
     if (!body) return;
     if (bodyEditor) { element.focus(); return; }
@@ -263,22 +273,20 @@
     await tick();
     const editable = element; editable.focus();
     const block = editable?.children[Math.max(0, blockIndex)];
-    if (block) {
-      const range = doc.createRange(); range.selectNodeContents(block); range.collapse(true);
-      const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (offset <= (node.textContent?.length ?? 0)) { range.setStart(node, offset); range.collapse(true); break; }
-        offset -= node.textContent?.length ?? 0;
-      }
-      const selection = doc.defaultView?.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
-    }
+    if (block) placeCaret(block as HTMLElement, offset);
     if (editVideo) mounted.editVideoAt(blockIndex);
   }
-  function startMarkdownEdit(element: HTMLElement) {
+  function startMarkdownEdit(element: HTMLElement, event?: MouseEvent) {
     const field = fieldPathFrom(element);
     if (!bodyInline || !field || field.doc !== docId || !schema || !docType) return false;
     const def = fieldForPath(schema, docType, values, field.path);
     if (def?.type !== "markdown" || def.sidebarOnly) return false;
+    const blockIndex = event ? [...element.children].findIndex(child => child.contains(event.target as Node)) : 0;
+    const caret = event && element.ownerDocument.caretPositionFromPoint?.(event.clientX, event.clientY);
+    let offset = 0;
+    if (caret && element.children[blockIndex]?.contains(caret.offsetNode)) {
+      const range = element.ownerDocument.createRange(); range.selectNodeContents(element.children[blockIndex]); range.setEnd(caret.offsetNode, caret.offset); offset = range.toString().length;
+    }
     stopBodyEdit();
     const doc = element.ownerDocument;
     let editorStyle = doc.querySelector<HTMLStyleElement>('style[data-rigel-editor-styles]');
@@ -320,7 +328,11 @@
     }
     bodyThemeObserver = new MutationObserver(syncTheme);
     bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
-    void tick().then(() => (element.isContentEditable ? element : host.querySelector<HTMLTextAreaElement>("textarea"))?.focus());
+    void tick().then(() => {
+      (element.isContentEditable ? element : host.querySelector<HTMLTextAreaElement>("textarea"))?.focus();
+      const block = element.children[Math.max(0, blockIndex)];
+      if (event && element.isContentEditable && block) placeCaret(block as HTMLElement, offset);
+    });
     return true;
   }
 
@@ -353,7 +365,7 @@
     const articleBody = target.closest<HTMLElement>('[data-rigel-richtext="$body"]');
     if (inlineBodyEnabled && articleBody) { void startBodyEdit(articleBody, event); return; }
     const markdown = target.closest<HTMLElement>("[data-rigel-richtext]");
-    if (markdown && startMarkdownEdit(markdown)) return;
+    if (markdown && startMarkdownEdit(markdown, event)) return;
     stopBodyEdit();
     const element = target.closest<HTMLElement>("[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
     if (element) selectFromElement(element);

@@ -6,6 +6,7 @@
   import type { Manifest } from "../../manifest/types";
   import { searchIndex, type SearchHit } from "../../manifest/search";
   import type { SearchScope } from "../../config";
+  import { shortcutAria, shortcutLabel } from "./shortcuts";
 
   type Sel =
     | { kind: "media" }
@@ -22,6 +23,7 @@
     manifest,
     sel,
     onselect,
+    open = $bindable(false),
     scope = "all",
     contentLocale,
     onindex,
@@ -30,19 +32,19 @@
     manifest: Manifest;
     sel: Sel | null;
     onselect: (s: Sel, locale?: string) => void;
+    open?: boolean;
     scope?: SearchScope;
     contentLocale?: string;
     onindex?: () => void;
     oncancelindex?: () => void;
   } = $props();
 
-  let open = $state(false);
   let query = $state("");
   let active = $state(-1);
   let inputEl = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
-    if (open) { inputEl?.focus(); untrack(() => onindex?.()); }
+    if (open) { query = ""; active = -1; inputEl?.focus(); untrack(() => onindex?.()); }
   });
 
   const index = $derived(searchIndex(manifest, scope, contentLocale, $t));
@@ -56,12 +58,6 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      open = !open;
-      query = "";
-      active = -1;
-    }
     if (e.key === "Escape") open = false;
     if (!open || e.isComposing) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -81,10 +77,10 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<button class="search-trigger" aria-label={$t("shell.searchContent")} data-tooltip={$t("shell.searchContentTooltip")} onclick={() => { active = -1; open = true; }}>
+<button class="search-trigger" aria-label={$t("shell.searchContent")} aria-keyshortcuts={shortcutAria("search")} data-tooltip={$t("shell.searchContentTooltip", { shortcut: shortcutLabel("search") })} onclick={() => { active = -1; open = true; }}>
   <SidebarIcon name="magnifying-glass" />
   <span class="sidebar-label">{$t("shell.searchPlaceholder")}</span>
-  <kbd>⌘K</kbd>
+  <kbd>{shortcutLabel("search").replaceAll(" + ", " ")}</kbd>
 </button>
 
 {#if open}

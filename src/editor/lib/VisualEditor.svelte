@@ -14,11 +14,12 @@
   import SidebarIcon from "./SidebarIcon.svelte";
   import Icon from "./Icon.svelte";
   import PreviewFrame from "./PreviewFrame.svelte";
+  import { isTypingTarget, matchShortcut, shortcutAria, shortcutOverlayOpen, type ShortcutId } from "./shortcuts";
   import { fieldForPath, replaceAt, type SelectedField } from "./schema-edit";
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
   let {
-    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {},
+    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {}, shortcutsEnabled = true, onshortcut = () => {},
   }: {
     docId: string;
     schema?: Schema;
@@ -39,6 +40,8 @@
     reloadToken?: number;
     onchange: (next: Record<string, unknown>) => void;
     oneditdocument?: (id: string) => void;
+    shortcutsEnabled?: boolean;
+    onshortcut?: (shortcut: ShortcutId) => void;
   } = $props();
 
   let frame: HTMLIFrameElement | undefined = $state();
@@ -55,6 +58,7 @@
   let bodyAttributes: [string, string | null][] = [];
   let bodyScope: HTMLElement | null = null;
   let removeTooltips: (() => void) | undefined;
+  let stopFrameShortcut: (() => void) | undefined;
   let mode = $state<"browse" | "edit">("edit");
   let panelOpen = $state(false);
   let editorWidth = $state(0);
@@ -337,6 +341,7 @@
   }
   $effect(() => { if (!bodyInline || (!schema && !inlineBodyEnabled) || mode !== "edit") stopBodyEdit(); });
   onDestroy(stopBodyEdit);
+  onDestroy(() => stopFrameShortcut?.());
 
   function onClick(event: MouseEvent) {
     const target = eventElement(event.target);
@@ -416,6 +421,8 @@
   }
 
   function onLoad() {
+    stopFrameShortcut?.();
+    stopFrameShortcut = undefined;
     stopBodyEdit(); bodyAvailable = false;
     loaded = false;
     error = "";
@@ -437,6 +444,9 @@
       doc.defaultView?.addEventListener("scroll", () => closeInline(), { passive: true });
       if (schema) bindPreviewDocument(doc, docId);
       if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error($t("richtext.liveEditingUnavailable"));
+      const onkeydown = (event: KeyboardEvent) => frameShortcut(event, doc);
+      doc.addEventListener("keydown", onkeydown, true);
+      stopFrameShortcut = () => doc.removeEventListener("keydown", onkeydown, true);
       loaded = true;
       bodyAvailable = !schema && !!body && !!doc.querySelector('[data-rigel-richtext="$body"]');
       patch();
@@ -454,6 +464,24 @@
       selected = null;
       closeInline();
     }
+  }
+
+  function localShortcut(event: KeyboardEvent, doc: Document) {
+    const shortcut = shortcutsEnabled ? matchShortcut(event) : null;
+    if (shortcut !== "toggleMode" && shortcut !== "toggleProperties") return;
+    if (editingBody || inline || isTypingTarget(doc.activeElement) || shortcutOverlayOpen(doc)) return;
+    event.preventDefault();
+    if (shortcut === "toggleMode") setMode(mode === "edit" ? "browse" : "edit");
+    else panelOpen = !panelOpen;
+  }
+
+  function frameShortcut(event: KeyboardEvent, doc: Document) {
+    const shortcut = shortcutsEnabled ? matchShortcut(event) : null;
+    if (!shortcut) return;
+    if (shortcut === "toggleMode" || shortcut === "toggleProperties") { localShortcut(event, doc); return; }
+    if (shortcut === "toggleSidebar" && isTypingTarget(doc.activeElement)) return;
+    event.preventDefault();
+    onshortcut(shortcut);
   }
 
   function endResize() {
@@ -520,20 +548,21 @@
 </script>
 
 <svelte:window onkeydown={(event) => {
-  if (event.key === "Escape" && inline) { event.stopPropagation(); closeInline(true); }
+  if (event.key === "Escape" && inline) { event.stopPropagation(); closeInline(true); return; }
+  localShortcut(event, document);
 }} />
 
 <div class="visual-editor" bind:clientWidth={editorWidth} class:with-panel={panelOpen} class:resizing-properties={resizing} style={`--properties-width: ${panelWidth}px`}>
   <div class="visual-canvas">
     <div class="visual-toolbar">
       <div class="mode-toggle" role="group" aria-label={$t("richtext.previewMode")}>
-        <button type="button" aria-pressed={mode === "browse"} onclick={() => setMode("browse")}>{$t("richtext.browse")}</button>
-        <button type="button" aria-pressed={mode === "edit"} onclick={() => setMode("edit")}>{$t("richtext.edit")}</button>
+        <button type="button" aria-pressed={mode === "browse"} aria-keyshortcuts={shortcutAria("toggleMode")} onclick={() => setMode("browse")}>{$t("richtext.browse")}</button>
+        <button type="button" aria-pressed={mode === "edit"} aria-keyshortcuts={shortcutAria("toggleMode")} onclick={() => setMode("edit")}>{$t("richtext.edit")}</button>
       </div>
       <span class="visual-hint">{mode === "edit" ? $t("richtext.editPreviewHint") : $t("richtext.browsePreviewHint")}</span>
       <div class="visual-actions">
         {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label={$t("richtext.previewOnWebsite")} data-tooltip={$t("richtext.previewOnWebsite")}><Icon name="external" size={18} /></a>{/if}
-        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label={$t("richtext.togglePropertiesPanel")} data-tooltip={$t("richtext.togglePropertiesPanel")} onclick={() => (panelOpen = !panelOpen)}>
+        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-keyshortcuts={shortcutAria("toggleProperties")} aria-label={$t("richtext.togglePropertiesPanel")} data-tooltip={$t("richtext.togglePropertiesPanel")} onclick={() => (panelOpen = !panelOpen)}>
           <SidebarIcon name="square-half" />
         </button>
       </div>

@@ -230,7 +230,7 @@
 .rigel .search-trigger:hover { border-color: var(--text-3); }
 .rigel .search-trigger kbd {
   margin-left: auto;
-  font: 600 0.6875rem ui-monospace, monospace;
+  font: 400 0.6875rem ui-monospace, monospace;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 0;
@@ -353,7 +353,7 @@
 .rigel .rigel-modal table.keys td { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
 .rigel .rigel-modal table.keys tr:last-child td { border-bottom: none; }
 .rigel .rigel-modal table.keys kbd {
-  font: 600 0.75rem ui-monospace, monospace;
+  font: 400 0.75rem ui-monospace, monospace;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0;

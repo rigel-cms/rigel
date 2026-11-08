@@ -40,6 +40,7 @@
   import { pageCategories, pageTemplates, inPageCategory } from "../manifest/pages";
   import { validateDocumentSlugs } from "../slugs";
   import Shortcuts from "./lib/Shortcuts.svelte";
+  import { isTypingTarget, matchShortcut, shortcutAria, shortcutOverlayOpen, type ShortcutId } from "./lib/shortcuts";
   import CollectionPanel from "./lib/CollectionPanel.svelte";
   import { emptyBody, type ArticleBody } from "../article-body";
   import SchemaPanel from "./lib/SchemaPanel.svelte";
@@ -353,6 +354,7 @@
     sessionExpiresAt = 0;
     githubAccess = null;
     tokenExpired = true;
+    searchOpen = false;
   }
 
   function handleAuthError(error: unknown) {
@@ -408,6 +410,7 @@
       connectionError = "";
       settingsOpen = false;
       shortcutsOpen = false;
+      searchOpen = false;
       newEntry = null;
       newDocument = null;
       draft = {};
@@ -495,6 +498,19 @@
   let settingsOpen = $state(false);
   let userOpen = $state(false);
   let shortcutsOpen = $state(false);
+  let searchOpen = $state(false);
+  const shortcutsReady = $derived(ready && !(githubMode && (!connected || tokenExpired || githubAccess?.status !== "ready" || !!connectionError)) && !connectionBusy && !articleLoading && !articleError && !publishOpen && !publishLoading && !publishBusy && !settingsOpen && !shortcutsOpen && !userOpen && !pendingNavigation && !actionDialog && saveState !== "saving");
+
+  function runShortcut(id: ShortcutId) {
+    if (id === "search") {
+      if (shortcutsReady && (searchOpen || !shortcutOverlayOpen())) searchOpen = !searchOpen;
+      return;
+    }
+    if (!shortcutsReady || searchOpen || shortcutOverlayOpen()) return;
+    if (id === "save") { if (dirty) void save(); return; }
+    if (id === "toggleSidebar") { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; return; }
+    if (id === "help") shortcutsOpen = true;
+  }
 
   let settings = $state(getSettings());
   let settingsError = $state("");
@@ -1172,6 +1188,11 @@
       userOpen = false;
       document.querySelector<HTMLButtonElement>('.user-btn')?.focus();
     }
+    const shortcut = matchShortcut(e);
+    if (!shortcut || shortcut === "toggleMode" || shortcut === "toggleProperties") return;
+    if (shortcut === "toggleSidebar" && isTypingTarget(e.target)) return;
+    e.preventDefault();
+    runShortcut(shortcut);
   }}
 />
 {#if !ready || (githubMode && !connected)}
@@ -1217,7 +1238,7 @@
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
     </a>
-    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
+    <TopBar {manifest} {sel} {contentLocale} bind:open={searchOpen} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>
         {#key localeControlRevision}
@@ -1258,7 +1279,7 @@
         <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">{$t("shell.publish")}</span>
       </button>
     {/if}
-    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} data-tooltip={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
+    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-keyshortcuts={shortcutAria("toggleSidebar")} aria-label={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} data-tooltip={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
       <SidebarIcon name="sidebar-simple" /><span class="sidebar-label">{$t("shell.collapseSidebar")}</span>
     </button>
     <div class="aside-foot">
@@ -1284,7 +1305,7 @@
               <Icon name="gear" size={13} />
               {$t("shell.settings")}
             </button>
-            <button role="menuitem" onclick={() => { userOpen = false; shortcutsOpen = true; }}>
+            <button role="menuitem" aria-keyshortcuts={shortcutAria("help")} onclick={() => { userOpen = false; shortcutsOpen = true; }}>
               <Icon name="keyboard" size={13} />
               {$t("shell.keyboardShortcutsMenu")}
             </button>
@@ -1330,7 +1351,7 @@
             <span class="save-status" role="status" class:dirty={dirty && saveState !== "saving"} class:saving={saveState === "saving"} class:saved={!dirty && saveState === "saved"} class:error={saveState === "error"}>
               {saveState === "saving" ? $t("shell.saving") : saveState === "error" ? $t("shell.saveFailed") : dirty ? $t("shell.unsaved") : saveState === "saved" ? $t("shell.saved") : ""}
             </span>
-            <button class="primary save-button" disabled={!dirty || saveState === "saving"} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
+            <button class="primary save-button" disabled={!dirty || saveState === "saving"} aria-keyshortcuts={shortcutAria("save")} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
           </div>
         </div>
         {/if}
@@ -1458,6 +1479,8 @@
             if (doc) select({ kind: "document", type: doc.type, id: doc.id });
           }}
           onchange={updateDraft}
+          shortcutsEnabled={shortcutsReady && !searchOpen}
+          onshortcut={runShortcut}
         />
         {/if}
 
@@ -1509,6 +1532,8 @@
             creating={!!newEntry}
             devMode={settings.devMode}
             onchange={updateDraft}
+            shortcutsEnabled={shortcutsReady && !searchOpen}
+            onshortcut={runShortcut}
           >
             {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading, inlineFields, oneditfield)}
               <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
@@ -1534,7 +1559,7 @@
     </main>
     {#if manifest.preview && previewTarget}
       <div class="preview-divider" role="separator" tabindex="0" aria-label={$t("shell.editorPreviewWidth")} aria-orientation="vertical" aria-controls="rigel-editor-pane" aria-valuemin={Math.round(splitMin * 100)} aria-valuemax={Math.round(splitMax * 100)} aria-valuenow={Math.round(previewSplit * 100)} aria-valuetext={$t("shell.editorWidthPercent", { percent: Math.round(previewSplit * 100) })} onpointerdown={startPreviewResize} onpointermove={movePreviewResize} onpointerup={endPreviewResize} onpointercancel={endPreviewResize} onlostpointercapture={endPreviewResize} onkeydown={keyPreviewResize}></div>
-      <SitePreview target={previewTarget} config={manifest.preview} isNew={!!newEntry} values={draft} body={bodyDraft} devMode={settings.devMode} />
+      <SitePreview target={previewTarget} config={manifest.preview} isNew={!!newEntry} values={draft} body={bodyDraft} devMode={settings.devMode} shortcutsEnabled={shortcutsReady && !searchOpen} onshortcut={runShortcut} />
     {/if}
   </div>
 </div>

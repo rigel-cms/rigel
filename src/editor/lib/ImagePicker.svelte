@@ -2,6 +2,9 @@
   import { locale, t } from "../i18n";
   import { onMount, onDestroy, tick } from "svelte";
   import Icon from "./Icon.svelte";
+  import MediaUsage from "./MediaUsage.svelte";
+  import type { Manifest } from "../../manifest/types";
+  import type { MediaUsageEntry } from "../../manifest/media-usage";
   import ActionDialog from "./ActionDialog.svelte";
   import Select from "./Select.svelte";
   import { getSettings, setSettings } from "./settings";
@@ -14,7 +17,9 @@
   import { filterMedia, modifiedMonth, mediaSize, mediaIcon, assetFile, type MediaAsset } from "./media-library";
   import { searchImages, importStockImage, importImageUrl, uploadMedia, safeImageUrl, STOCK_PROVIDERS, type StockResult, type StockSource } from "./images";
 
-  let { value = "", altText = "", triggerLabel, kind = "image", accept, video, onvideo, embed, onembed, onpick, inline = false, toolbar = false, hiddenTrigger = false, onopen, onclose }: {
+  let { value = "", altText = "", triggerLabel, kind = "image", accept, video, onvideo, embed, onembed, onpick, inline = false, toolbar = false, hiddenTrigger = false, onopen, onclose, manifest, onusage }: {
+    manifest?: Manifest;
+    onusage?: (entry: MediaUsageEntry) => void;
     video?: VideoData;
     onvideo?: (video: VideoData) => void;
     embed?: EmbedData;
@@ -294,13 +299,14 @@
               {#if imageImport}<label><span>{$t("media.decorativeAlt")}</span><input aria-label={$t("media.imageAlt")} type="text" maxlength="1000" disabled={picking} bind:value={alt} /></label>{:else if selected.asset?.type?.startsWith("image/")}<label><span>{$t("media.alt")}</span><textarea aria-label={$t("media.mediaAlt")} rows="3" maxlength="1000" readonly={demoMode} bind:value={metaAlt}></textarea></label>{/if}
               <label><span>{$t("media.title")}</span><input aria-label={$t(imageImport ? "media.imageTitle" : "media.mediaTitle")} type="text" maxlength="200" readonly={demoMode} disabled={picking} bind:value={metaTitle} /></label>
               <label><span>{$t("media.description")}</span><textarea aria-label={$t(imageImport ? "media.imageDescription" : "media.mediaDescription")} rows="3" maxlength="1000" readonly={demoMode} disabled={picking} bind:value={metaDescription}></textarea></label>
-              {#if selected.asset}<p class="hint">{$t("media.author", { author: selected.asset.author || $t("media.localUser") })}</p>{:else if selected.file}<p class="hint">{selected.file.name}</p>{/if}
+              {#if !selected.asset && selected.file}<p class="hint">{selected.file.name}</p>{/if}
             </div>
           {:else if selected.file}
             <p class="hint">{selected.file.name}</p>
           {:else if !selected.asset}
             <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="text" readonly value={selected.url} /></label>
           {/if}
+          {#if selected.asset}<div class="media-attribution">{#if inline || metadataImport}<p class="hint">{$t("media.author", { author: selected.asset.author || $t("media.localUser") })}</p>{/if}{#if manifest && onusage}<MediaUsage {manifest} url={selected.asset.url} onselect={entry => { close(); onusage?.(entry); }} />{/if}</div>{/if}
           {#if imageImport && !selected.file}<label><span>{$t("media.imageUrl")}</span><input type="text" readonly value={selected.url} /></label>{/if}
           {#if !inline && kind !== "file" && !imageImport}<label><span>{$t(kind === "video" ? "media.captionOptional" : "media.descriptiveAlt")}</span><input aria-label={kind === "video" ? $t("media.videoCaption") : undefined} type="text" bind:value={alt} /></label>{/if}
           {#if kind === "video"}

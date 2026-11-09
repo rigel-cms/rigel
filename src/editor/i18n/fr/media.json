@@ -1,4 +1,9 @@
 {
+  "media.usedIn": "Utilisé dans",
+  "media.usageLoading": "Vérification des références…",
+  "media.usageError": "Certaines références n’ont pas pu être vérifiées. Les résultats peuvent être incomplets.",
+  "media.usageIncomplete": "Références du contenu chargé uniquement. D’autres contenus peuvent aussi utiliser ce fichier.",
+  "media.usageEmpty": "Aucune référence dans le contenu géré.",
   "media.insertMedia": "Insérer un média",
   "media.image": "Image",
   "media.video": "Vidéo",

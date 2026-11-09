@@ -1,4 +1,9 @@
 {
+  "media.usedIn": "Used in",
+  "media.usageLoading": "Checking content references…",
+  "media.usageError": "Could not check all content references. Results may be incomplete.",
+  "media.usageIncomplete": "Showing references from loaded content only. Other content may also use this file.",
+  "media.usageEmpty": "No references in managed content.",
   "media.insertMedia": "Insert media",
   "media.image": "Image",
   "media.video": "Video",

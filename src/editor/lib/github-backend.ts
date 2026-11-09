@@ -494,6 +494,7 @@ export function reindexRemoteCollections(ctx: GitContext, manifest: Manifest, ch
 }
 
 export function resetRemoteCollectionCache(manifest: Manifest) {
+  for (const collection of manifest.collections ?? []) for (const post of collection.posts) delete post.body;
   if (manifest.documents) for (const doc of manifest.documents) {
     const entry = (manifest as Manifest & { [REMOTE_SNAPSHOT]?: Snapshot })[REMOTE_SNAPSHOT]?.documents.get(doc.type)?.metadata.get(doc.slug);
     if (doc.loaded !== "complete") doc.data = entry?.frontmatter ?? {};

@@ -1,4 +1,9 @@
 {
+  "media.usedIn": "Gebruikt in",
+  "media.usageLoading": "Verwijzingen controleren…",
+  "media.usageError": "Niet alle verwijzingen konden worden gecontroleerd. Resultaten kunnen onvolledig zijn.",
+  "media.usageIncomplete": "Alleen verwijzingen uit geladen inhoud. Andere inhoud kan dit bestand ook gebruiken.",
+  "media.usageEmpty": "Geen verwijzingen in beheerde inhoud.",
   "media.insertMedia": "Media invoegen",
   "media.image": "Afbeelding",
   "media.video": "Video",

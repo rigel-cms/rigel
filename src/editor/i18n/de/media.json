@@ -1,4 +1,9 @@
 {
+  "media.usedIn": "Verwendet in",
+  "media.usageLoading": "Verweise werden geprüft…",
+  "media.usageError": "Nicht alle Verweise konnten geprüft werden. Die Ergebnisse sind möglicherweise unvollständig.",
+  "media.usageIncomplete": "Nur Verweise aus geladenen Inhalten. Andere Inhalte können diese Datei ebenfalls verwenden.",
+  "media.usageEmpty": "Keine Verweise in verwalteten Inhalten.",
   "media.insertMedia": "Medien einfügen",
   "media.image": "Bild",
   "media.video": "Video",

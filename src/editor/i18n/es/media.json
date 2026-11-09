@@ -1,4 +1,9 @@
 {
+  "media.usedIn": "Se usa en",
+  "media.usageLoading": "Comprobando referencias…",
+  "media.usageError": "No se pudieron comprobar todas las referencias. Los resultados pueden estar incompletos.",
+  "media.usageIncomplete": "Solo referencias del contenido cargado. Otros contenidos también pueden usar este archivo.",
+  "media.usageEmpty": "Sin referencias en el contenido gestionado.",
   "media.insertMedia": "Insertar archivos multimedia",
   "media.image": "Imagen",
   "media.video": "Video",

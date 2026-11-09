@@ -92,6 +92,11 @@
   let tokenExpired = $state(false);
   const githubMode = $derived(manifest.backend === "github");
   const demoMode = $derived(manifest.backend === "demo");
+  const mediaManifest = $derived(githubMode ? {
+    ...manifest,
+    pages: manifest.pages.filter(page => remoteSelectionReady(gitContext!, manifest, { kind: "page", slug: page.slug })),
+    menus: manifest.menus ? { ...manifest.menus, entries: manifest.menus.entries.filter(menu => remoteSelectionReady(gitContext!, manifest, { kind: "menu", slug: menu.slug })) } : undefined,
+  } : manifest);
   let sel = $state<Sel | null>(null);
   const previewTarget = $derived(sel?.kind === "page" ? sel : null);
   let draft = $state<Record<string, unknown>>({});
@@ -475,11 +480,11 @@
             docBase = JSON.parse(JSON.stringify(values));
           } else if (m) { m.title = values.title; m.items = values.items; }
           else if (po) {
-            po.frontmatter = values; if (demoMode) po.body = body; bodyBase = body;
+            po.frontmatter = values; po.body = body; bodyBase = body;
             if (!githubMode && !demoMode && c) cacheLocalArticle(c.name, po.slug, { frontmatter: values, body });
           }
           else if (p) p.values = values;
-          if (creating && po && c) { if (!demoMode) delete po.body; c.posts.push(po); }
+          if (creating && po && c) c.posts.push(po);
           newEntry = null;
           dirty = JSON.stringify({ fm: draft, body: bodyDraft }) !== JSON.stringify({ fm: docSel ? docBase : values, body });
           saveState = dirty ? "idle" : "saved";
@@ -933,7 +938,7 @@
         void request.then(article => {
           if (revision !== articleRevision || gitContext !== context || manifest !== current) return;
           draft = JSON.parse(JSON.stringify(article.frontmatter));
-          if (po) po.frontmatter = article.frontmatter;
+          if (po) { po.frontmatter = article.frontmatter; po.body = article.body; }
           else manifest.collections?.find(c => c.name === next.collection)?.posts.push({ slug: next.slug, frontmatter: article.frontmatter });
           bodyDraft = article.body; bodyBase = article.body; saveState = "idle";
         }).catch(error => {
@@ -1402,7 +1407,7 @@
         <p role="alert">{articleError}</p>
         <button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>
       {:else if sel?.kind === "media"}
-        <ImagePicker inline />
+        <ImagePicker inline manifest={mediaManifest} onusage={entry => selectSearch(entry.target, entry.locale)} />
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
 
         <div class="table-card">

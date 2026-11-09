@@ -1,4 +1,5 @@
 .rigel, .rigel *, .rigel *::before, .rigel *::after { box-sizing: border-box; }
+.rigel :where(a:any-link) { color: var(--link); }
 .rigel .rigel-tooltip { position: fixed; pointer-events: auto; inset: auto; margin: 0; padding: 4px 10px; max-width: min(17.5rem, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; border: 0; border-radius: 0; background: var(--text); color: var(--panel); box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); font: 500 11px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; overflow-wrap: anywhere; text-align: start; white-space: normal; }
 .rigel .rigel-tooltip::backdrop { background: transparent; pointer-events: none; }
 @media (forced-colors: active) { .rigel .rigel-tooltip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; } }
@@ -909,6 +910,8 @@
 .rigel .media-meta { border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; }
 .rigel .media-meta label { margin-top: 0.75rem; }
 .rigel .media-details { min-width: 0; }
+.rigel .media-attribution { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.rigel .media-attribution .hint { margin: 0; }
 .rigel .media-details .hint { overflow-wrap: anywhere; }
 .rigel .image-picker:has(.media-editing) { width: min(1040px, 100%); }
 .rigel .media-selection.media-editing { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.5rem; }
@@ -919,8 +922,8 @@
 .rigel .media-editing > .media-actions { grid-column: 1 / -1; margin-top: 0; }
 @media (max-width: 700px) {
   .rigel .media-selection.media-editing { grid-template-columns: minmax(0, 1fr); }
-  .rigel .media-editing .media-preview > :is(img, video) { max-height: 35dvh; }
-  .rigel .media-editing .media-preview > iframe { height: 35dvh; }
+  .rigel .media-editing .media-preview > :is(img, video) { max-height: 25dvh; }
+  .rigel .media-editing .media-preview > iframe { height: 25dvh; }
   .rigel .with-media-path .media-path { flex-basis: 100%; }
   .rigel .with-media-path .media-button-actions { flex-basis: 100%; justify-content: flex-end; }
 }

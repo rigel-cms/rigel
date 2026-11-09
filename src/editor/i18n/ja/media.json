@@ -1,4 +1,9 @@
 {
+  "media.usedIn": "使用箇所",
+  "media.usageLoading": "参照を確認中…",
+  "media.usageError": "すべての参照を確認できませんでした。結果が不完全な可能性があります。",
+  "media.usageIncomplete": "読み込み済みコンテンツの参照のみを表示しています。他のコンテンツでも使用されている可能性があります。",
+  "media.usageEmpty": "管理対象コンテンツに参照はありません。",
   "media.insertMedia": "メディアを挿入",
   "media.image": "画像",
   "media.video": "動画",

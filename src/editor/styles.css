@@ -4,6 +4,7 @@
 .rigel .rigel-tooltip::backdrop { background: transparent; pointer-events: none; }
 @media (forced-colors: active) { .rigel .rigel-tooltip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; } }
 .rigel {
+  --button-size: 36px;
   --rigel-50: #EFFBFF;
   --rigel-100: #D9F4FF;
   --rigel-200: #ADE8FF;
@@ -35,7 +36,7 @@
 .rigel .connection-brand img { flex-shrink: 0; }
 .rigel .connection-card h1 { margin: 1rem 0; font-size: 1.75rem; line-height: 1.2; }
 .rigel .connection-card p { margin: 1rem 0; }
-.rigel .connection-card :is(button, a.primary) { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.625rem 1rem; font: inherit; text-decoration: none; text-align: center; }
+.rigel .connection-card :is(button, a.primary) { display: inline-flex; align-items: center; justify-content: center; min-height: var(--button-size); padding: 0.375rem 1rem; font: inherit; text-decoration: none; text-align: center; }
 .rigel .connection-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .rigel .connection-note { color: var(--text-muted); font-size: 0.8125rem; }
 .rigel .connection-error { color: var(--danger); }
@@ -45,7 +46,12 @@
 @media (prefers-reduced-motion: reduce) { .rigel .connection-loader::before { animation: none; left: 30%; } }
 .rigel .github-session { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-control); background: var(--surface-raised); }
 .rigel .github-session p { margin: 0 0 0.75rem; }
-.rigel .github-reconnect { min-height: 44px; }
+.rigel .recovery-notice strong { display: block; margin-bottom: 0.5rem; }
+.rigel .recovery-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.rigel .recovery-actions button { min-height: var(--button-size); }
+.rigel .recovery-list { width: min(100%, 36rem); margin: 1.5rem auto 0; text-align: left; }
+.rigel .recovery-entry { display: grid; gap: 0.5rem; padding: 1rem 0; border-top: 1px solid var(--border-control); overflow-wrap: anywhere; }
+.rigel .github-reconnect { min-height: var(--button-size); }
 @media (max-width: 480px) { .rigel.connection-shell { padding: 1rem; } .rigel .connection-card { padding: 1.25rem; } }
 
 /* Shell layout — applied only to the editor shell, not modal backdrops */
@@ -180,7 +186,7 @@
 .rigel .rail-scroll > button:hover { background: var(--surface-raised); color: var(--text); }
 .rigel .sidebar-asset-icon { display: inline-block; width: 18px; height: 18px; flex-shrink: 0; background-color: currentColor; mask-image: var(--sidebar-icon); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
 .rigel .rail-scroll > button { gap: 0.625rem; }
-.rigel aside > button.sidebar-publish { gap: 0.625rem; width: calc(100% - 1.5rem); min-height: 44px; margin: 0 0.75rem 0.5rem; padding: 0.625rem; border: 1px solid var(--border-control); color: var(--text); }
+.rigel aside > button.sidebar-publish { gap: 0.625rem; width: calc(100% - 1.5rem); min-height: var(--button-size); margin: 0 0.75rem 0.5rem; padding: 0.375rem 0.625rem; border: 1px solid var(--border-control); color: var(--text); }
 .rigel aside > button.sidebar-publish:disabled { opacity: 0.5; cursor: not-allowed; }
 .rigel aside > button.sidebar-toggle { gap: 0.625rem; width: calc(100% - 1.5rem); margin: 0 0.75rem 0.5rem; padding: 0.625rem; font-size: 0.75rem; }
 @media (min-width: 768px) {
@@ -470,6 +476,7 @@
 .rigel main:not(.wide) { max-width: 720px; }
 
 /* ── Buttons ───────────────────────────── */
+.rigel :is(.primary, .outlined, .danger-btn) { min-height: var(--button-size); }
 .rigel .primary {
   padding: 0.4375rem 1rem;
   border: none;
@@ -863,8 +870,7 @@
 .rigel .media-head h2 { margin: 0; font-size: 1rem; }
 .rigel .media-tools { align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--border-control); background: var(--panel); }
 .rigel .media-views { display: flex; flex-shrink: 0; margin-inline-end: 1rem; }
-.rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; padding: 0; flex-shrink: 0; }
-@media (pointer: coarse) { .rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { width: 44px; height: 44px; } }
+.rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { display: inline-flex; align-items: center; justify-content: center; width: var(--button-size); height: var(--button-size); padding: 0; flex-shrink: 0; }
 .rigel .media-views button + button { border-left: 0; }
 .rigel .media-views button[aria-pressed=true] { background: var(--accent-soft); color: var(--on-accent-soft); }
 .rigel .media-tools .media-select { position: relative; max-width: 100%; min-width: 0; }
@@ -1335,7 +1341,7 @@
 .rigel .select-check { width: 1rem; flex-shrink: 0; color: var(--accent); }
 .rigel .select-empty { margin: 0; padding: 0.5rem; color: var(--text-2); }
 .rigel .add-section .custom-select { flex: 1; }
-@media (max-width: 767px) { .rigel .select-option { min-height: 2.75rem; } }
+@media (max-width: 767px) { .rigel .select-option { min-height: var(--button-size); } }
 .rigel .schema-panel:has(> .panel-tabs) { scroll-padding-top: 4rem; }
 .rigel .schema-panel .block-editor > .body-toolbar:not(.image-toolbar), .rigel .schema-panel .markdown-editor:not(.markdown-inline) .formatting-toolbar { position: sticky; top: var(--properties-tabs-height, 0px); z-index: 3; }
 .rigel .schema-panel > .panel-tabs { position: sticky; top: 0; z-index: 10; padding-top: 0.5rem; margin-top: -0.5rem; background: var(--panel); }

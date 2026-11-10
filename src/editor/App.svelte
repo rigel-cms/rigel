@@ -88,6 +88,147 @@
   import { readRemotePost, reauthorizeRemoteContent, remoteSelectionReady, readRemoteSelection, indexRemoteDocuments, hasRemoteFileCache, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./lib/github-backend";
   import { readLocalArticle, cacheLocalArticle, resetLocalArticles, hasLocalArticles } from "./lib/local-articles";
   import { clearFileCache, hasFileCache, fileCacheChanges } from "./lib/file-cache";
+  import { recoveryScope, readRecovery, writeRecovery, removeRecovery, consumeRecovery, holdRecovery, clearRecovery, type RecoveryDraft } from "./lib/draft-recovery";
+
+  let recoveries = $state<RecoveryDraft[]>([]);
+  let recoveryOffer = $state<RecoveryDraft | null>(null);
+  let recoveryError = $state(false);
+  let recoveryId: string | null = null;
+  let recoverySource: RecoveryDraft | null = null;
+  let recoveryScopeKey: string | null = null;
+  let recoveryBase = $state.raw<RecoveryDraft["base"]>({ values: null, body: "" });
+  let recoveryPending: RecoveryDraft | null = null;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let releaseRecovery = () => {};
+
+  function loadRecoveries() {
+    const scope = recoveryScope(manifest, githubAccess?.status === "ready" ? githubAccess.user.login.toLowerCase() : undefined);
+    try {
+      recoveries = scope ? readRecovery(scope) : [];
+      if (scope && !recoveryId) recoveryScopeKey = scope;
+    }
+    catch { recoveryError = true; }
+  }
+
+  function flushRecovery() {
+    clearTimeout(recoveryTimer);
+    if (!recoveryPending) return;
+    try {
+      writeRecovery(recoveryPending);
+      if (recoverySource) void consumeRecovery(recoverySource).then(loadRecoveries).catch(() => { recoveryError = true; });
+      recoverySource = null; recoveryPending = null; recoveryError = false; loadRecoveries();
+    }
+    catch { recoveryError = true; }
+  }
+
+  function discardRecoveryDraft() {
+    clearTimeout(recoveryTimer); recoveryPending = null;
+    try {
+      if (recoveryId) removeRecovery(recoveryId);
+      if (recoverySource) void consumeRecovery(recoverySource).then(loadRecoveries).catch(() => { recoveryError = true; });
+      recoverySource = null; loadRecoveries();
+    } catch { recoveryError = true; }
+  }
+
+  function forgetRecovery(broadcast = false) {
+    const scope = recoveryScopeKey ?? recoveryScope(manifest, githubAccess?.user.login.toLowerCase());
+    clearTimeout(recoveryTimer); recoveryPending = null; releaseRecovery();
+    try {
+      if (scope) {
+        if (broadcast) localStorage.setItem("rigelcms.recoveryLogout", JSON.stringify([scope, crypto.randomUUID()]));
+        clearRecovery(scope);
+      }
+    }
+    catch { recoveryError = true; }
+    recoveryId = null; recoverySource = null; recoveryScopeKey = null; recoveryOffer = null; recoveries = [];
+  }
+
+  function backupDraft() {
+    if (!recoveryId || !recoveryScopeKey || !sel || !["page", "document", "post", "menu"].includes(sel.kind) || articleLoading) return;
+    if (!dirty) { discardRecoveryDraft(); return; }
+    recoveryPending = JSON.parse(JSON.stringify({ version: 1, id: recoveryId, scope: recoveryScopeKey, selection: sel, locale: contentLocale, values: draft, body: bodyDraft, base: recoveryBase, creating: !!newEntry || !!newDocument, savedAt: Date.now() }));
+    clearTimeout(recoveryTimer);
+    recoveryTimer = setTimeout(flushRecovery, 400);
+  }
+
+  function offerRecovery() {
+    recoveryScopeKey = recoveryScope(manifest, githubAccess?.status === "ready" ? githubAccess.user.login.toLowerCase() : undefined);
+    recoveryId = recoveryScopeKey ? crypto.randomUUID() : null;
+    releaseRecovery();
+    releaseRecovery = recoveryId ? holdRecovery(recoveryId) : () => {};
+    recoverySource = null;
+    recoveryBase = JSON.parse(JSON.stringify({ values: newEntry || newDocument ? null : draft, body: bodyBase }));
+    loadRecoveries();
+    recoveryOffer = recoveries.find(record => sameSel(record.selection, sel!) && record.locale === contentLocale && (record.creating || JSON.stringify({ values: record.values, body: record.body }) !== JSON.stringify({ values: draft, body: bodyDraft }))) ?? null;
+    if (dirty) backupDraft();
+  }
+
+  function restoreRecovery(record: RecoveryDraft) {
+    if (dirty || saveTask || articleLoading) return;
+    if (record.creating) { requestNavigation(() => openRecovery(record, true)); return; }
+    requestNavigation(() => {
+      if (!sel || !sameSel(record.selection, sel) || record.scope !== recoveryScopeKey) return;
+      draft = JSON.parse(JSON.stringify(record.values));
+      bodyDraft = JSON.parse(JSON.stringify(record.body));
+      recoverySource = record;
+      recoveryOffer = null;
+      touch();
+    });
+  }
+
+  function dismissRecovery(record: RecoveryDraft) {
+    try {
+      void consumeRecovery(record).then(loadRecoveries).catch(() => { recoveryError = true; });
+      recoveryOffer = null;
+    }
+    catch { recoveryError = true; }
+  }
+
+  function openRecovery(record: RecoveryDraft, restoreNew = false) {
+    if (record.scope !== recoveryScope(manifest, githubAccess?.status === "ready" ? githubAccess.user.login.toLowerCase() : undefined)) return;
+    if (record.creating && !restoreNew) { recoveryOffer = record; return; }
+    const destination = contentForLocale(manifest, record.locale);
+    if (record.creating) {
+      const target = record.selection;
+      if (target.kind === "document" && destination.schema?.documents.some(type => type.name === target.type && type.creatable !== false && !type.singleton) && !manifest.documents?.some(doc => doc.id === target.id)) {
+        newDocument = { type: target.type, id: target.id, slug: target.id.slice(target.type.length + 1) };
+        draft = newDocumentFromTemplate(manifest.schema!, target.type, "", target.id.slice(target.type.length + 1));
+      } else if (target.kind === "post" && destination.collections?.some(collection => collection.name === target.collection && !collection.posts.some(post => post.slug === target.slug) && !collection.storageSlugs?.includes(target.slug))) {
+        newEntry = { collection: target.collection, post: { slug: target.slug, frontmatter: {}, body: emptyBody() } };
+      } else return;
+    } else if (!selectionInContent(destination, record.selection)) return;
+    selectedContentLocale = record.locale;
+    openSelection(record.selection);
+    if (record.creating) {
+      draft = JSON.parse(JSON.stringify(record.values));
+      bodyDraft = JSON.parse(JSON.stringify(record.body));
+      recoverySource = record; recoveryOffer = null; touch();
+    }
+  }
+
+  $effect(() => {
+    if (!ready || githubMode && (!connected || githubAccess?.status !== "ready")) { recoveries = []; return; }
+    manifest; githubAccess;
+    untrack(loadRecoveries);
+  });
+
+  onMount(() => {
+    const hidden = () => { if (document.visibilityState === "hidden") flushRecovery(); };
+    const changed = (event: StorageEvent) => {
+      if (event.key === "rigelcms.recoveryLogout" && event.newValue) {
+        try { if (JSON.parse(event.newValue)[0] === recoveryScopeKey) forgetRecovery(); } catch {}
+      } else if (event.key?.startsWith("rigelcms.drafts.")) loadRecoveries();
+    };
+    window.addEventListener("pagehide", flushRecovery);
+    window.addEventListener("storage", changed);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      flushRecovery(); releaseRecovery();
+      window.removeEventListener("pagehide", flushRecovery);
+      window.removeEventListener("storage", changed);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  });
 
   type Sel = Selection;
 
@@ -329,9 +470,11 @@
       githubAccess = null;
       const access = await checkGitHubAccess(context.token, config.repo, config.appSlug);
       if (gitContext !== context) return;
+      if (recoveryScopeKey && recoveryScope(manifest, access.user.login.toLowerCase()) !== recoveryScopeKey) forgetRecovery();
       githubAccess = access;
       if (access.status !== "ready") { resetRemoteCollectionCache(manifest); resetMediaPreviews(); try { clearFileCache(); } catch {} return; }
       if (context.cacheAccount && context.cacheAccount !== access.user.login.toLowerCase()) {
+        forgetRecovery();
         resetRemoteCollectionCache(manifest); resetMediaPreviews(); cancelIndexing(); articleRevision++;
         sel = null; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false; newEntry = null; newDocument = null; connected = false;
       }
@@ -345,6 +488,12 @@
         manifest = remote;
         connected = true;
       }
+      if (dirty && !recoveryId) {
+        recoveryScopeKey = recoveryScope(manifest, access.user.login.toLowerCase());
+        recoveryId = recoveryScopeKey ? crypto.randomUUID() : null;
+        releaseRecovery = recoveryId ? holdRecovery(recoveryId) : () => {};
+        backupDraft();
+      }
     } catch (error) {
       if (gitContext === context) handleAuthError(error);
       throw error;
@@ -352,6 +501,7 @@
   }
 
   function invalidateSession() {
+    flushRecovery();
     resetRemoteCollectionCache(manifest);
     resetLocalArticles();
     cancelIndexing(); articleRevision++; articleLoading = false; articleError = "";
@@ -411,9 +561,10 @@
   function signOut() {
     if (saveState === "saving" || connectionBusy) return;
     userOpen = false;
-    if (publishBusy) { invalidateSession(); connected = false; return; }
+    if (publishBusy) { forgetRecovery(true); invalidateSession(); connected = false; return; }
     closePublish();
     requestNavigation(() => {
+      forgetRecovery(true);
       invalidateSession();
       connected = false;
       connectionError = "";
@@ -445,6 +596,7 @@
   function save(): Promise<boolean> {
     if (publishOpen || publishBusy || articleLoading || articleError || reindexBusy) return Promise.resolve(false);
     if (saveTask) return saveTask;
+    flushRecovery();
     saveTask = (async () => {
       if (dirty) {
         saveState = "saving";
@@ -491,6 +643,8 @@
           if (creating && po && c) c.posts.push(po);
           newEntry = null;
           dirty = JSON.stringify({ fm: draft, body: bodyDraft }) !== JSON.stringify({ fm: docSel ? docBase : values, body });
+          recoveryBase = JSON.parse(JSON.stringify({ values, body }));
+          if (dirty) backupDraft(); else discardRecoveryDraft();
           saveState = dirty ? "idle" : "saved";
           saveError = "";
         } catch (error) {
@@ -579,6 +733,7 @@
       description: $t("shell.eraseBrowserDataDescription"),
       onconfirm: () => {
         if (saveState === "saving") throw new Error($t("shell.waitForSave"));
+        clearTimeout(recoveryTimer); recoveryPending = null; recoveryId = null;
         eraseData();
         dirty = false;
         location.reload();
@@ -854,6 +1009,7 @@
     const action = pendingNavigation;
     pendingNavigation = null;
     pendingNavigationCancel = null;
+    discardRecoveryDraft();
     const fallback: Sel | null = newEntry ? { kind: "collection", name: newEntry.collection } : newDocument ? { kind: "pages" } : sel;
     newEntry = null;
     newDocument = null;
@@ -877,11 +1033,13 @@
   }
 
   function openSelection(next: Sel | null) {
+    flushRecovery(); releaseRecovery();
+    recoveryOffer = null; recoveryId = null; recoverySource = null;
     const revision = ++articleRevision;
     cancelIndexing();
     if ((next?.kind === "document" || next?.kind === "page") && (sel?.kind === "pages" || sel?.kind === "documents")) entryList = sel;
     articleLoading = false; articleError = "";
-    if (githubMode && next && !(next.kind === "document" && newDocument?.id === next.id) && !remoteSelectionReady(gitContext!, manifest, next)) {
+    if (githubMode && next && !(next.kind === "document" && newDocument?.id === next.id) && !(next.kind === "post" && newEntry?.post.slug === next.slug && newEntry.collection === next.collection) && !remoteSelectionReady(gitContext!, manifest, next)) {
       sel = next; articleLoading = true; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false;
       const context = gitContext, current = manifest;
       void readRemoteSelection(context!, current, next).then(() => {
@@ -945,6 +1103,7 @@
           if (po) { po.frontmatter = article.frontmatter; po.body = article.body; }
           else manifest.collections?.find(c => c.name === next.collection)?.posts.push({ slug: next.slug, frontmatter: article.frontmatter });
           bodyDraft = article.body; bodyBase = article.body; saveState = "idle";
+          articleLoading = false; offerRecovery();
         }).catch(error => {
           handleAuthError(error);
           if (revision === articleRevision) articleError = error instanceof Error ? error.message : $t("shell.saveChangesError");
@@ -959,6 +1118,7 @@
     }
     dirty = newEntry !== null || (newDocument !== null && next?.kind === "document");
     saveState = "idle";
+    if (next && ["page", "document", "post", "menu"].includes(next.kind)) offerRecovery();
 
   }
 
@@ -1041,6 +1201,7 @@
     if (sel?.kind === "document") {
       dirty = JSON.stringify(draft) !== JSON.stringify(docBase);
       if (saveState !== "saving") saveState = "idle";
+      backupDraft();
       return;
     }
     const ref =
@@ -1052,6 +1213,7 @@
       JSON.stringify({ fm: draft, body: bodyDraft }) !==
       JSON.stringify({ fm: ref, body: bodyBase });
     if (saveState !== "saving") saveState = "idle";
+    backupDraft();
   }
 
   function cellValue(p: { slug: string; frontmatter: Record<string, unknown> }, key: string): string {
@@ -1128,6 +1290,7 @@
           }
           manifest.documents = (manifest.documents ?? []).filter(doc => doc.id !== id);
         }
+        discardRecoveryDraft();
         newDocument = null;
         docBase = null;
         openSelection(back);
@@ -1155,6 +1318,7 @@
           }
           collection.posts = collection.posts.filter((p) => p.slug !== current.slug);
         }
+        discardRecoveryDraft();
         newEntry = null;
         openSelection({ kind: "collection", name: collection.name });
       },
@@ -1344,6 +1508,18 @@
       {/if}
       {#if demoMode}<p class="github-session" role="status">{$t("shell.demoBanner")}</p>{/if}
       {#if settingsError}<p role="alert">{settingsError}</p>{/if}
+      {#if recoveryError}<p role="alert">{$t("recovery.error")}</p>{/if}
+      {#if recoveryOffer && !articleLoading && (!githubMode || githubAccess?.status === "ready")}
+        <div class="github-session recovery-notice" role="region" aria-label={$t("recovery.title")}>
+          <strong>{$t("recovery.title")}</strong>
+          <p>{$t("recovery.description")}</p>
+          {#if !recoveryOffer.creating && JSON.stringify(recoveryOffer.base) !== JSON.stringify(recoveryBase)}<p role="status">{$t("recovery.changed")}</p>{/if}
+          <div class="recovery-actions">
+            <button class="primary" disabled={dirty || saveState === "saving" || connectionBusy} onclick={() => restoreRecovery(recoveryOffer!)}>{$t("recovery.restore")}</button>
+            <button class="outlined" disabled={saveState === "saving" || connectionBusy} onclick={() => dismissRecovery(recoveryOffer!)}>{$t("recovery.discard")}</button>
+          </div>
+        </div>
+      {/if}
       {#if ready && sel && sel.kind !== "media"}
         {#if sel.kind === "page" || sel.kind === "post" || sel.kind === "menu" || sel.kind === "document"}
         <div class="editor-actions">
@@ -1558,6 +1734,21 @@
           <h2>{$t("shell.welcomeTitle")}</h2>
           <p>{$t("shell.welcomeTagline")}</p>
           <p class="welcome-hint">{$t("shell.welcomeHint")}</p>
+          {#if recoveries.length}
+            <section class="recovery-list" aria-label={$t("recovery.listTitle")}>
+              <h3>{$t("recovery.listTitle")}</h3>
+              {#each recoveries as record (record.id)}
+                <div class="recovery-entry">
+                  <strong>{String(record.values.title ?? record.values.name ?? (record.selection.kind === "document" ? record.selection.id : record.selection.slug))}</strong>
+                  <small>{$t("recovery.date", { date: new Date(record.savedAt).toLocaleString($locale) })}</small>
+                  <div class="recovery-actions">
+                    <button class="outlined" onclick={() => openRecovery(record)}>{$t("recovery.review")}</button>
+                    <button class="outlined" onclick={() => dismissRecovery(record)}>{$t("recovery.discard")}</button>
+                  </div>
+                </div>
+              {/each}
+            </section>
+          {/if}
           {#if updateVersion}<UpdateNotice version={updateVersion} ondismiss={dismissVersion} />{/if}
         </div>
       {/if}

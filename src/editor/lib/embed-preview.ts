@@ -39,7 +39,7 @@ export function createVideoOverlay(doc: Document, label: () => string, url: stri
   });
   mediaLabel(edit, () => translate("media.editVideo"));
   edit.hidden = !editable;
-  edit.style.cssText = "min-height:44px;padding:0.5rem 0.75rem;border:1px solid #d4d4d8;background:white;color:#18181b;font:inherit;cursor:pointer";
+  edit.style.cssText = "min-height:var(--button-size,36px);padding:0.5rem 0.75rem;border:1px solid #d4d4d8;background:white;color:#18181b;font:inherit;cursor:pointer";
   card.append(heading, link, edit);
   overlay.append(card);
   return overlay;

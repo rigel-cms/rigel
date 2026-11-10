@@ -65,7 +65,7 @@ try {
   await wait(`!!document.querySelector('#file-field .image-field button')`, 'native file picker rendered');
   await check(`(() => { const b = document.querySelector('#file-field button[aria-label="Remove file"]'); const r = b.getBoundingClientRect(); return r.width === 36 && r.height === 36 && getComputedStyle(b).padding === '0px'; })()`, 'remove control is square without text-button padding');
   await cdp('Emulation.setTouchEmulationEnabled', { enabled: true });
-  await check(`(() => { const r = document.querySelector('#file-field button[aria-label="Remove file"]').getBoundingClientRect(); return r.width === 44 && r.height === 44; })()`, 'touch remove control is a 44px square');
+  await check(`(() => { const r = document.querySelector('#file-field button[aria-label="Remove file"]').getBoundingClientRect(); return r.width === 36 && r.height === 36; })()`, 'touch remove control uses the shared 36px square');
   await cdp('Emulation.setTouchEmulationEnabled', { enabled: false });
   await click('#file-field .image-field button');
   await wait(`!!document.querySelector('dialog[open] .thumb')`, 'library loaded');

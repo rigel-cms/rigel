@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { createServer, build } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
+const recoveryMode = process.argv.includes("--recovery");
+const recoveryBackend = { fail: false };
 const root = fileURLToPath(new URL("../", import.meta.url));
 const scratch = path.join(root, "_temp/shortcuts");
 await mkdir(scratch, { recursive: true });
@@ -19,6 +21,10 @@ const body = {
   },
 };
 const manifest = {
+  recoveryScope: "browser-test-project",
+  schema: { objects: [], documents: [{ name: "settings", title: "Settings", type: "document", folder: "settings", shared: true, fields: [{ key: "title", label: "Title", type: "string" }] }] },
+  documents: [{ id: "settings:site", type: "settings", slug: "site", data: { title: "Site name" } }],
+  menus: { maxDepth: 3, entries: [{ slug: "main", title: "Main menu", items: [] }] },
   pages: [{ slug: "home", label: "Home", groups: [{ id: "hero", label: "Hero", fields: [{ key: "title", label: "Title", type: "string" }] }], values: { hero: { title: "Original title" } } }],
   collections: [{ name: "blog", label: "Blog", fields: [{ key: "title", label: "Title", type: "string" }], columns: ["title"], posts: [{ slug: "test", frontmatter: { title: "Test post" } }] }],
   preview: { pages: { home: "/preview-page.html" }, collections: { blog: { url: "/preview-post.html", template: "/preview-post.html" } } },
@@ -45,6 +51,17 @@ try {
     if (req.url === "/rigel/media.json") return send(200, "application/json", JSON.stringify({ assets: [], writable: false }));
     if (req.url === "/preview-page.html") return send(200, "text/html", pagePreview);
     if (req.url === "/preview-post.html") return send(200, "text/html", postPreview);
+    if (recoveryMode && req.method !== "GET" && req.url.startsWith("/rigel/api/local/")) {
+      writes.push(req.url);
+      let text = ""; for await (const chunk of req) text += chunk;
+      if (recoveryBackend.fail) return send(503, "text/plain", "Simulated save failure");
+      const data = JSON.parse(text);
+      if (req.url === "/rigel/api/local/save") manifest.pages[0].values = data.values;
+      else if (req.url.startsWith("/rigel/api/local/documents/")) manifest.documents[0].data = data.data;
+      else if (req.url.startsWith("/rigel/api/local/menus/")) Object.assign(manifest.menus.entries[0], data);
+      else { const slug = decodeURIComponent(req.url.split("/").pop()); const post = manifest.collections[0].posts.find(post => post.slug === slug); if (post) Object.assign(post, data); else manifest.collections[0].posts.push({ slug, ...data }); }
+      return send(200, "application/json", "{}");
+    }
     if (req.url === "/rigel/api/local/blog/test" && req.method === "GET") return send(200, "application/json", JSON.stringify({ frontmatter: { title: "Test post" }, body }));
     if (req.url === "/rigel/api/local/blog/test" && req.method === "POST") { writes.push(req.url); await delay(120); return send(200, "application/json", "{}"); }
     if (req.url === "/rigel/api/local/save" && req.method === "POST") { writes.push(req.url); await delay(120); return send(200, "application/json", "{}"); }
@@ -61,7 +78,7 @@ try {
   await new Promise(resolve => ws.addEventListener("open", resolve, { once: true }));
   let id = 0; const pending = new Map();
   ws.addEventListener("message", event => { const message = JSON.parse(event.data); if (message.method === "Runtime.exceptionThrown") exceptions.push(message.params.exceptionDetails); const entry = pending.get(message.id); if (entry) { pending.delete(message.id); clearTimeout(entry.timer); message.error ? entry.reject(message.error) : entry.resolve(message.result); } });
-  cdp = (method, params = {}) => new Promise((resolve, reject) => { const key = ++id; const timer = setTimeout(() => { pending.delete(key); reject(new Error(method + " timed out")); }, 15000); pending.set(key, { resolve, reject, timer }); ws.send(JSON.stringify({ id: key, method, params })); });
+  cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const key = ++id; const timer = setTimeout(() => { pending.delete(key); reject(new Error(method + " timed out")); }, 15000); pending.set(key, { resolve, reject, timer }); ws.send(JSON.stringify({ id: key, method, params, ...(sessionId ? { sessionId } : {}) })); });
   evaluate = async expression => { const result = await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }); if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails)); return result.result.value; };
   const wait = (expression, label = expression) => until(() => evaluate(expression), label);
   async function check(expression, label) { const value = await evaluate(expression); if (!value) console.error(label, await evaluate(`({active:document.activeElement?.outerHTML?.slice(0,200), body:document.body.innerText.slice(0,400), writes:${JSON.stringify(writes)}})`)); assert.equal(value, true, label); checks++; }
@@ -88,6 +105,9 @@ try {
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await reset();
 
+  if (recoveryMode) {
+    await (await import("./draft-recovery-browser.mjs")).runRecovery({ cdp, evaluate, wait, click, shot, origin, writes, exceptions, manifest, recoveryBackend, delay });
+  } else {
   await check(`document.querySelector('.search-trigger kbd').textContent === '⌘ K'`, "search badge uses the compact platform label");
   await check(`document.querySelector('.search-trigger').getAttribute('aria-keyshortcuts') === 'Meta+K Control+K'`, "search exposes accessible key names");
   await key("k", "KeyK", meta);
@@ -284,6 +304,7 @@ try {
 
   assert.deepEqual(exceptions, []);
   console.log(`PASS shortcuts: ${checks} checks, ${writes.length} content writes`);
+  }
 } finally {
   try { ws?.close(); } catch {}
   try { chrome?.kill("SIGTERM"); } catch {}

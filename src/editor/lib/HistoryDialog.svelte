@@ -131,6 +131,6 @@
   dt { font-weight: 600; color: var(--text-muted); margin-bottom: .25rem; }
   dd { margin: 0 0 1rem; white-space: pre-wrap; }
   dd:last-child { margin-bottom: 0; }
-  .history-list > button, footer button { min-height: 44px; }
+  .history-list > button, footer button { min-height: var(--button-size); }
   @media (max-width: 600px) { .history-layout { grid-template-columns: minmax(0, 1fr); } .history-list { max-height: 25dvh; } .history-preview { max-height: 30dvh; } }
 </style>

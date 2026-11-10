@@ -86,5 +86,5 @@
   ul { list-style: none; margin: 0; padding: 0; }
   li { overflow-wrap: anywhere; }
   li + li { margin-top: .625rem; }
-  @media (pointer: coarse) { .usage-trigger { min-height: 44px; } }
+  @media (pointer: coarse) { .usage-trigger { min-height: var(--button-size); } }
 </style>

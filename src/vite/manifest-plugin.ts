@@ -3,6 +3,7 @@ import { isRunnableDevEnvironment } from "vite";
 import { fileURLToPath } from "node:url";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { parseConfig } from "../config";
 import { validateDocumentId } from "../schema/validate";
 import type { RigelConfig } from "../config";
@@ -237,7 +238,7 @@ ${collectionCode}
 ];
 for (const collection of collections) __rigelAssertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })));
 ${menuCode}
-export default { pages, collections, documents, search: ${JSON.stringify(cfg.search)}${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : cfg.backend === "demo" ? ', backend: "demo"' : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
+export default { pages, collections, documents, recoveryScope: ${JSON.stringify(cfg.backend === "local" && root ? createHash("sha256").update(root.href).digest("hex") : undefined)}, search: ${JSON.stringify(cfg.search)}${cfg.contentLocales ? ", contentLocales: " + JSON.stringify(cfg.contentLocales) : ""}${github ? ', backend: "github", github: ' + JSON.stringify(github) : cfg.backend === "demo" ? ', backend: "demo"' : ""}${cfg.menus ? ", menus" : ""}${cfg.schema ? ", schema: " + JSON.stringify(cfg.schema) : ""}${cfg.preview ? ", preview: " + JSON.stringify(cfg.preview) : ""}${cfg.sidebar ? ", sidebar: " + JSON.stringify(cfg.sidebar) : ""} };
 `;
     },
   };

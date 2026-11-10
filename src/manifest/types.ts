@@ -40,6 +40,7 @@ export interface GitHubBackendConfig {
 }
 
 export interface Manifest {
+  recoveryScope?: string;
   contentLocales?: import("../config").ContentLocalesConfig;
   search?: { scope: import("../config").SearchScope };
   backend?: "github" | "demo";

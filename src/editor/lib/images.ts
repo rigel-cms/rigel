@@ -1,7 +1,7 @@
 import { getSettings, setSettings } from "./settings";
 import { translate, locale } from "../i18n";
 import { get } from "svelte/store";
-import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, storedMediaFile } from "../../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, validUploadName, storedMediaFile } from "../../media-types";
 import config from "virtual:rigel-config";
 import { mediaBackend, uploadRepositoryMedia } from "./media-backend";
 import type { MediaMeta } from "../../media-metadata";
@@ -192,9 +192,10 @@ export async function uploadMedia(file: File, meta: MediaMeta = {}): Promise<str
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   const metadata = mediaMetadata(file.name);
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  if (file.size > limit) throw new Error(translate("local.mediaTooLarge", { limit: limit / 1024 / 1024 }));
+  if (!validUploadName(file.name) || !metadata) throw new Error(translate("local.unsupportedMedia"));
   if (mediaBackend() === "github") return uploadRepositoryMedia(file, { ...meta, author: currentAuthor() });
-  const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "Accept-Language": get(locale), "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
+  const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "Accept-Language": get(locale), "X-Rigel-Filename": encodeURIComponent(file.name), "X-Rigel-Author": currentAuthor() }, body: file });
   if (!response.ok) throw new Error(translate("media.uploadFailed", { status: response.status, body: await response.text() }));
   const result = await response.json();
   if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !mediaMetadata(result.url)) throw new Error(translate("media.invalidUploadedUrl"));

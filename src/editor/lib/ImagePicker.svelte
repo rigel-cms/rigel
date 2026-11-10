@@ -8,7 +8,7 @@
   import ActionDialog from "./ActionDialog.svelte";
   import Select from "./Select.svelte";
   import { getSettings, setSettings } from "./settings";
-  import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, safeMediaName, matchesMediaAccept, safeFileUrl } from "../../media-types";
+  import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, validUploadName, matchesMediaAccept, safeFileUrl } from "../../media-types";
   import config from "virtual:rigel-config";
   import { onMediaReset, refreshMediaPreviews, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
@@ -197,8 +197,9 @@
     error = "";
     const limit = maxFileSize;
     if (kind === "file" && !matchesMediaAccept(file.name, accept)) { error = $t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }); return; }
-    if (!safeMediaName(file.name) || (!inline && kind !== "file" && mediaMetadata(file.name)?.category !== (kind === "video" ? "Video" : "Images")) || file.size > limit) {
-      error = $t(inline || kind === "file" ? "media.chooseSupportedFile" : kind === "video" ? "media.chooseSupportedVideo" : "media.chooseSupportedImage", { limit: limit / 1024 / 1024 }); return;
+    if (file.size > limit) { error = $t("local.mediaTooLarge", { limit: limit / 1024 / 1024 }); return; }
+    if (!validUploadName(file.name) || (!inline && kind !== "file" && mediaMetadata(file.name)?.category !== (kind === "video" ? "Video" : "Images"))) {
+      error = $t("local.unsupportedMedia"); return;
     }
     const type = mediaMetadata(file.name)!.type;
     releaseFile(); objectURL = URL.createObjectURL(new Blob([file], { type: type === "text/plain" ? "text/plain; charset=utf-8" : type }));

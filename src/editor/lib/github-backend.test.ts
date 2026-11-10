@@ -520,6 +520,16 @@ test("repository media initializes file and ledger atomically, previews bytes an
   expect(s.files.has(`playground/public${url}`)).toBe(false);
 });
 
+test.each(["Chambre (1).txt", "Océan d'Atlantique (été).txt", "海辺 🌊 100%.txt"])("GitHub upload preserves label %s and stores only UUID paths", async name => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const url = await uploadRemoteMedia(ctx, m, new File(["Draft attachment"], name, { type: "text/plain" }));
+  expect(url).toMatch(/^\/rigel-media\/[a-f0-9-]+\.txt$/);
+  expect(s.files.get(`playground/public${url}`)!.text).toBe("Draft attachment");
+  expect((await listRemoteMedia(ctx, m)).find(asset => asset.url === url)!.name).toBe(name);
+  await updateRemoteMedia(ctx, m, { url, name, title: "Updated title" });
+  expect((await listRemoteMedia(ctx, m)).find(asset => asset.url === url)).toMatchObject({ name, title: "Updated title" });
+});
+
 test("media rejects invalid bytes, MIME, size, unsafe folders and symlinks without writes", async () => {
   const s = server(), original = blueprint(), m = await loadEditingFixture(ctx, original);
   const before = s.calls.filter(call => call.method !== "GET").length;

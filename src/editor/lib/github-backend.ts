@@ -1,5 +1,5 @@
 import { translate } from "../i18n";
-import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, safeFileUrl } from "../../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, validUploadName, safeMediaName, safeFileUrl } from "../../media-types";
 import { validateMetaUpdate, META_KEYS, type MediaMeta } from "../../media-metadata";
 import { validMediaBytes } from "../../routes/media-validation";
 import type { MediaAsset } from "./media-library";
@@ -980,7 +980,8 @@ function queueRemoteWrite<T>(ctx: GitContext, manifest: Manifest, operation: () 
 const mediaUploads = new WeakMap<Blob, string>();
 export async function uploadRemoteMedia(ctx: GitContext, manifest: Manifest, file: File, metadata: MediaMeta = {}): Promise<string> {
   const info = mediaMetadata(file.name), limit = manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (!safeMediaName(file.name) || !info || (file.type && file.type !== info.type) || !file.size || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  if (file.size > limit) throw new Error(translate("local.mediaTooLarge", { limit: limit / 1024 / 1024 }));
+  if (!validUploadName(file.name) || !info || (file.type && file.type !== info.type) || !file.size) throw new Error(translate("local.unsupportedMedia"));
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!validMediaBytes(bytes, info.extension)) throw new Error(translate("local.mediaBytesMismatch"));
   const filename = mediaUploads.get(file) ?? `${crypto.randomUUID()}.${info.extension === "jpeg" ? "jpg" : info.extension}`;

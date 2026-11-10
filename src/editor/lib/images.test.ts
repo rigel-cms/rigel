@@ -29,9 +29,17 @@ test.each(["a".repeat(64), "b7d9894c-2c3d-4d82-a6aa-52f75ee551ea"])("upload and 
   await expect(importImageUrl("https://example.com/photo.png")).resolves.toBe(url);
 });
 
+test.each(["Chambre (1).png", "Océan d'Atlantique (été).png", "海辺 🌊 100%.png"])("upload keeps normal original filename %s out of the storage path", async name => {
+  const url = `/rigel-media/${"a".repeat(64)}.png`;
+  fetchMock.mockResolvedValueOnce(Response.json({ url }));
+  await expect(uploadMedia(new File(["image"], name, { type: "image/png" }))).resolves.toBe(url);
+  const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+  expect(decodeURIComponent(headers.get("X-Rigel-Filename")!)).toBe(name);
+});
+
 test("upload and image imports use the configured byte limit", async () => {
   config.maxFileSize = 1024;
-  await expect(uploadMedia(new File([new Uint8Array(1025)], "clip.mp4", { type: "video/mp4" }))).rejects.toThrow(/up to/);
+  await expect(uploadMedia(new File([new Uint8Array(1025)], "clip.mp4", { type: "video/mp4" }))).rejects.toThrow(/Media exceeds/);
   await expect(uploadImage(new Blob([new Uint8Array(1025)], { type: "image/png" }))).rejects.toThrow(/limit/);
   expect(fetchMock).not.toHaveBeenCalled();
   fetchMock.mockResolvedValueOnce(Response.json({ url: `/rigel-media/${"a".repeat(64)}.mp4` }));

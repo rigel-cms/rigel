@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
+const url = process.env.RIGEL_URL || 'http://127.0.0.1:4321/rigel/';
 const root = new URL('../_temp/media-usage-browser/', import.meta.url);
 await mkdir(root, { recursive: true });
 const profile = new URL(`./chrome-${Date.now()}/`, root);
@@ -24,7 +25,7 @@ try {
   await cdp('Runtime.enable'); await cdp('Page.enable'); await cdp('Fetch.enable',{patterns:[{urlPattern:'*'}]});
   await cdp('Emulation.setFocusEmulationEnabled',{enabled:true});
   await cdp('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
-  await cdp('Page.navigate',{url:'http://127.0.0.1:4321/rigel/#/media'});
+  await cdp('Page.navigate',{url:new URL('#/media', url).href});
   await wait(`!!document.querySelector('button[aria-label="Bicho.FYI"]')`,'media library');
   await click('button[aria-label="Bicho.FYI"]');
   const usage = '.media-usage';
@@ -121,14 +122,14 @@ try {
   await wait(`!!document.querySelector('.unsaved-dialog[open]')`,'discard navigation');
   await evaluate(`[...document.querySelectorAll('.unsaved-dialog button')].find(button=>button.textContent.trim()==='Discard changes').click()`);
   await wait(`location.hash==='#/media'`,'discard returns to media without writes');
-  await cdp('Page.navigate',{url:'http://127.0.0.1:4321/rigel/#/media'});
+  await cdp('Page.navigate',{url:new URL('#/media', url).href});
   await wait(`!!document.querySelector('button[aria-label="Blue sky"]')`,'unreferenced library');
   await click('button[aria-label="Blue sky"]');
   await click(trigger); await expanded();
   await wait(`document.querySelector('${usage}')?.textContent.includes('No references in managed content.')`,'honest empty state');
   await screenshot('unreferenced-1280.png');
   assert.deepEqual(errors,[],'no browser exceptions'); assert.deepEqual(writes,[],'no writes attempted');
-  const report = {url:'http://127.0.0.1:4321/rigel/#/media',references,dimensions,colors,themes,unreferenced:'Blue sky',errors,writes};
+  const report = {url:new URL('#/media', url).href,references,dimensions,colors,themes,unreferenced:'Blue sky',errors,writes};
   await writeFile(new URL('report.json',root),JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));
 } finally { ws?.close(); chrome.kill('SIGTERM'); }

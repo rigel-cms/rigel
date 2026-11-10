@@ -7,6 +7,7 @@ import { createServer, build } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 const recoveryMode = process.argv.includes("--recovery");
+const usageMode = process.argv.includes("--usage");
 const recoveryBackend = { fail: false };
 const root = fileURLToPath(new URL("../", import.meta.url));
 const scratch = path.join(root, "_temp/shortcuts");
@@ -31,6 +32,24 @@ const manifest = {
 };
 const pagePreview = '<!doctype html><html><body><main data-rigel-doc="page:home"><h1 data-rigel-text="hero.title">Original title</h1></main></body></html>';
 const postPreview = '<!doctype html><html><body><main data-rigel-doc="blog:test"><h1 data-rigel-text="title">Test post</h1><div data-rigel-richtext="$body" data-rigel-doc="blog:test"><p>Original body</p></div></main></body></html>';
+
+if (usageMode) {
+  manifest.contentLocales = { defaultLocale: "en", locales: [{ code: "en", label: "English" }, { code: "fr", label: "Français" }] };
+  manifest.schema.documents.push(
+    { name: "author", title: "Authors", type: "document", folder: "authors", shared: true, fields: [{ key: "name", label: "Name", type: "string" }] },
+    { name: "page", title: "Pages", type: "document", folder: "pages", locale: "en", fields: [{ key: "title", label: "Title", type: "string" }, { key: "author", label: "Author", type: "reference", to: ["author"] }] },
+    { name: "pageFr", title: "Pages françaises", type: "document", folder: "pages-fr", locale: "fr", fields: [{ key: "title", label: "Titre", type: "string" }, { key: "author", label: "Auteur", type: "reference", to: ["author"] }] },
+  );
+  manifest.documents.push(
+    { id: "author:alex", type: "author", slug: "alex", data: { name: "Alex", _id: "author:alex", _type: "author" } },
+    { id: "author:unused", type: "author", slug: "unused", data: { name: "Unused author", _id: "author:unused", _type: "author" } },
+    { id: "page:landing", type: "page", slug: "landing", data: { title: "Landing", _id: "page:landing", _type: "page", author: { _ref: "author:alex" } } },
+    { id: "pageFr:accueil", type: "pageFr", slug: "accueil", data: { title: "Accueil", _id: "pageFr:accueil", _type: "pageFr", author: { _ref: "author:alex" } } },
+  );
+  manifest.collections[0].locale = "en";
+  manifest.collections[0].fields.push({ key: "author", label: "Author", type: "reference", to: "author" });
+  manifest.collections[0].posts[0].frontmatter.author = "author:alex";
+}
 
 const dictionaries = { en: {} };
 for (const file of await readdir(path.join(root, "src/editor/i18n/en"))) if (file.endsWith(".json")) Object.assign(dictionaries.en, JSON.parse(await readFile(path.join(root, "src/editor/i18n/en", file), "utf8")));
@@ -105,7 +124,9 @@ try {
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await reset();
 
-  if (recoveryMode) {
+  if (usageMode) {
+    await (await import("./entry-usage-browser.mjs")).runEntryUsage({ cdp, evaluate, wait, click, shot, origin, writes, exceptions });
+  } else if (recoveryMode) {
     await (await import("./draft-recovery-browser.mjs")).runRecovery({ cdp, evaluate, wait, click, shot, origin, writes, exceptions, manifest, recoveryBackend, delay });
   } else {
   await check(`document.querySelector('.search-trigger kbd').textContent === '⌘ K'`, "search badge uses the compact platform label");

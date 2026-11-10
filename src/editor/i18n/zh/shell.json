@@ -1,4 +1,5 @@
 {
+  "shell.entryUsageIncomplete": "显示已索引内容中的引用。部分条目尚未检查。",
   "shell.history": "历史记录",
   "shell.historyDescription": "当前工作分支中此文件的版本。重命名的路径可能有单独的历史记录。恢复只会更改未保存的草稿。",
   "shell.historyLoading": "正在加载历史记录…",

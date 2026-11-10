@@ -1,4 +1,5 @@
 {
+  "shell.entryUsageIncomplete": "Riferimenti dai contenuti indicizzati. Alcune voci non sono ancora state controllate.",
   "shell.history": "Cronologia",
   "shell.historyDescription": "Versioni del file nel ramo di lavoro corrente. I percorsi rinominati possono avere una cronologia separata. Il ripristino modifica solo la bozza non salvata.",
   "shell.historyLoading": "Caricamento della cronologia…",

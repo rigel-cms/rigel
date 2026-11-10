@@ -44,6 +44,7 @@
   import CollectionPanel from "./lib/CollectionPanel.svelte";
   import { emptyBody, type ArticleBody } from "../article-body";
   import SchemaPanel from "./lib/SchemaPanel.svelte";
+  import EntryUsage from "./lib/EntryUsage.svelte";
   import { collectionPreviewValues, referenceLabel, referenceOptions } from "../manifest/references";
   import { isSeoField } from "../manifest/seo";
   import { initialCollectionValues, validateCollectionValues } from "../manifest/collections";
@@ -300,6 +301,15 @@
     if (!name || !githubMode || !gitContext || !connected) return;
     const context = gitContext, current = manifest;
     void indexRemoteCollections(context, current, name, () => {}, indexController.signal).catch(handleAuthError);
+  }
+
+  async function loadEntryUsage() {
+    if (!githubMode) return;
+    const context = requireGitContext(), current = manifest, signal = indexController.signal;
+    try {
+      await indexRemoteDocuments(context, current, current.schema?.documents.map(type => type.name) ?? [], () => {}, signal);
+      for (const collection of current.collections ?? []) if (collection.fields.some(field => field.type === "reference" && field.to)) await indexRemoteCollections(context, current, collection.name, () => {}, signal);
+    } catch (error) { handleAuthError(error); throw error; }
   }
 
   function reindexCollections() {
@@ -1757,6 +1767,9 @@
           <h3>{$t("shell.currentDraft")}</h3>
           <pre>{JSON.stringify(sel.kind === "post" ? { frontmatter: draft, body: bodyDraft } : draft, null, 2)}</pre>
         </section>
+      {/if}
+      {#if ready && !articleLoading && !articleError && sel?.kind === "document" && schema && activeDocType && !newDocument}
+        {#key sel.id}<EntryUsage {manifest} docId={sel.id} onload={loadEntryUsage} onselect={entry => selectSearch(entry.target, entry.locale)} />{/key}
       {/if}
     </main>
     {#if manifest.preview && previewTarget}

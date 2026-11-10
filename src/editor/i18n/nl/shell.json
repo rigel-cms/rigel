@@ -1,4 +1,5 @@
 {
+  "shell.entryUsageIncomplete": "Verwijzingen uit geïndexeerde inhoud. Sommige items zijn nog niet gecontroleerd.",
   "shell.history": "Geschiedenis",
   "shell.historyDescription": "Versies van dit bestand op de huidige werkbranch. Hernoemde paden kunnen een aparte geschiedenis hebben. Herstellen wijzigt alleen het niet-opgeslagen concept.",
   "shell.historyLoading": "Geschiedenis laden…",

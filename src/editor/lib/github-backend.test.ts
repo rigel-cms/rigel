@@ -11,6 +11,7 @@ import { serializeCollectionLedger } from "../../manifest/collection-ledger";
 import { readRemoteSelection, indexRemoteDocuments, readRemotePost, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./github-backend";
 
 import { documentLedgerShape, documentMetadata } from "../../manifest/document-ledger";
+import { entryUsage } from "../../manifest/references";
 
 function metadataFixture(indexed = true) {
   const s = server(), original = blueprint();
@@ -28,6 +29,25 @@ function metadataFixture(indexed = true) {
   }
   return { s, original };
 }
+
+test("entry backlinks use document ledgers and article references without loading document bodies or writing", async () => {
+  const { s, original } = metadataFixture();
+  const m = await loadManifestRemote(ctx, original);
+  expect(entryUsage(m, "author:alex")).toEqual({ entries: [], complete: false });
+  await indexRemoteDocuments(ctx, m, m.schema!.documents.map(type => type.name));
+  expect(entryUsage(m, "author:alex")).toEqual({ complete: false, entries: [
+    { label: "room", group: "room", locale: undefined, target: { kind: "document", type: "room", id: "room:first" } },
+  ] });
+  const before = s.calls.length;
+  await indexRemoteCollections(ctx, m, "blog");
+  expect(entryUsage(m, "author:alex")).toEqual({ complete: true, entries: [
+    { label: "room", group: "room", locale: undefined, target: { kind: "document", type: "room", id: "room:first" } },
+    { label: "Hello", group: "Blog", locale: undefined, target: { kind: "post", collection: "blog", slug: "hello" } },
+  ] });
+  expect(m.documents!.every(doc => doc.loaded === "metadata")).toBe(true);
+  expect(blobReads(s, before)).toHaveLength(1);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
 
 function blobReads(s: ReturnType<typeof server>, since = 0) {
   return s.calls.slice(since).filter(call => call.method === "GET" && call.path.startsWith("/git/blobs/"));

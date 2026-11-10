@@ -1,4 +1,5 @@
 {
+  "shell.entryUsageIncomplete": "Referencias del contenido indexado. Algunas entradas aún no se han comprobado.",
   "shell.history": "Historial",
   "shell.historyDescription": "Versiones de este archivo en la rama de trabajo actual. Las rutas renombradas pueden tener un historial separado. Restaurar solo cambia el borrador sin guardar.",
   "shell.historyLoading": "Cargando historial…",

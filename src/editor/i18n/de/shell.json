@@ -1,4 +1,5 @@
 {
+  "shell.entryUsageIncomplete": "Verweise aus indexierten Inhalten. Einige Einträge wurden noch nicht geprüft.",
   "shell.history": "Verlauf",
   "shell.historyDescription": "Versionen dieser Datei im aktuellen Arbeitsbranch. Umbenannte Pfade können einen eigenen Verlauf haben. Die Wiederherstellung ändert nur den ungespeicherten Entwurf.",
   "shell.historyLoading": "Verlauf wird geladen…",

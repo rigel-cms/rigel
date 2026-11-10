@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { collectionPreviewValues, referenceLabel, referenceOptions, validateCollectionReferences } from "./references";
+import { collectionPreviewValues, entryUsage, referenceLabel, referenceOptions, validateCollectionReferences } from "./references";
 import type { CollectionField } from "./types";
 import type { ContentDocument } from "../schema/types";
 
@@ -24,6 +24,60 @@ test("supports fixed config arrays without a document collection", () => {
   expect(referenceOptions(fixed)).toEqual(fixed.options);
   expect(() => validateCollectionReferences([fixed], { author: "editor" }, [])).not.toThrow();
   expect(() => validateCollectionReferences([fixed], { author: "unknown" }, [])).toThrow(/existing/);
+});
+
+test("entry usage links nested document and article references once per entry", () => {
+  const manifest: import("./types").Manifest = {
+    pages: [],
+    schema: { objects: [], documents: [
+      { name: "author", title: "Authors", type: "document", folder: "authors", fields: [] },
+      { name: "page", title: "Pages", type: "document", folder: "pages", fields: [], locale: "fr" },
+    ] },
+    documents: [
+      { ...documents[0], data: { name: "Alex", self: { _ref: "author:alex" } } },
+      { id: "page:home", type: "page", slug: "home", data: { title: "Accueil", sections: [{ _type: "hero", nested: [{ _ref: "author:alex" }, { _ref: "author:alex" }] }] } },
+      { id: "page:plain", type: "page", slug: "plain", data: { title: "Plain", text: 'author:alex and "_ref":"author:alex"' } },
+    ],
+    collections: [{ name: "blog", label: "Blog", locale: "en", fields: [field, { ...field, key: "editors", multiple: true }, { key: "text", label: "Text", type: "string" }], posts: [
+      { slug: "one", frontmatter: { title: "One", author: "author:alex", editors: ["author:alex"] } },
+      { slug: "two", frontmatter: { editors: ["author:studio", "author:alex"] } },
+      { slug: "no", frontmatter: { text: "author:alex", author: "author:alexander" } },
+    ] }],
+  };
+  expect(entryUsage(manifest, "author:alex")).toEqual({ complete: true, entries: [
+    { label: "Accueil", group: "Pages", locale: "fr", target: { kind: "document", type: "page", id: "page:home" } },
+    { label: "One", group: "Blog", locale: "en", target: { kind: "post", collection: "blog", slug: "one" } },
+    { label: "two", group: "Blog", locale: "en", target: { kind: "post", collection: "blog", slug: "two" } },
+  ] });
+  expect(entryUsage(manifest, "author:missing").entries).toEqual([]);
+});
+
+test("entry usage does not claim zero references while documents or reference collections are unindexed", () => {
+  const manifest: import("./types").Manifest = { pages: [], schema: { objects: [], documents: [
+    { name: "page", title: "Pages", type: "document", folder: "pages", fields: [] },
+  ] }, documents: [
+    { id: "page:home", type: "page", slug: "home", loaded: "metadata", data: { title: "Home", _references: [{ _ref: "author:alex" }] } },
+    { id: "page:other", type: "page", slug: "other", loaded: "identity", data: {} },
+  ] };
+  expect(entryUsage(manifest, "author:alex").entries.map(entry => entry.label)).toEqual(["Home"]);
+  expect(entryUsage(manifest, "author:alex").complete).toBe(false);
+  manifest.documents![1].loaded = "metadata";
+  expect(entryUsage(manifest, "author:alex").complete).toBe(true);
+  manifest.collections = [{ name: "blog", label: "Blog", fields: [field], posts: [], index: { state: "error", loaded: 0, total: 1 } }];
+  expect(entryUsage(manifest, "author:alex").complete).toBe(false);
+  manifest.collections[0].index!.state = "complete";
+  expect(entryUsage(manifest, "author:alex").complete).toBe(true);
+  manifest.collections[0].fields = [];
+  manifest.collections[0].index!.state = "pending";
+  expect(entryUsage(manifest, "author:alex").complete).toBe(true);
+});
+
+test("entry usage ignores fixed-choice references even when an option matches a document id", () => {
+  const manifest: import("./types").Manifest = { pages: [], collections: [{
+    name: "legacy", label: "Legacy", fields: [{ ...field, to: undefined, options: [{ value: "author:alex", label: "Legacy author" }] }],
+    posts: [{ slug: "one", frontmatter: { author: "author:alex" } }], index: { state: "pending", loaded: 0, total: 1 },
+  }] };
+  expect(entryUsage(manifest, "author:alex")).toEqual({ entries: [], complete: true });
 });
 
 test("validates single and multiple references and rejects unknown, wrong-type and duplicate ids", () => {

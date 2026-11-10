@@ -190,19 +190,6 @@
 
   function cancelIndexing() { indexController.abort(); indexController = new AbortController(); }
 
-  function refreshCollections() {
-    if (connectionBusy || reindexBusy || saveTask || publishBusy) return;
-    requestNavigation(() => { void (async () => {
-      try {
-        const context = requireGitContext(), hash = currentHash();
-        resetRemoteCollectionCache(manifest); cancelIndexing(); connectionBusy = true;
-        const remote = await loadManifestRemote(context, blueprint!, false, { deferCollections: true, deferContent: true });
-        if (gitContext !== context) return;
-        manifest = remote; restoreHash(hash);
-      } catch (error) { handleAuthError(error); connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
-      finally { connectionBusy = false; }
-    })(); });
-  }
   let publishOpen = $state(false);
   let publishLoading = $state(false);
   let publishBusy = $state(false);
@@ -669,7 +656,7 @@
   });
 
   const sidebar = $derived(buildSidebar(visibleContent, $t));
-  let pagesFilter = $state<string | null>("");
+  let pagesFilter = $state<string | null>(null);
   let pagesQuery = $state("");
   let collectionQueries = $state<Record<string, string>>({});
   const tableQuery = $derived(sel?.kind === "collection" ? Object.hasOwn(collectionQueries, sel.name) ? collectionQueries[sel.name] : "" : pagesQuery);
@@ -767,7 +754,7 @@
     const route = resolveHash(hash, manifest);
     selectedContentLocale = route.locale;
     entryList = null;
-    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? (new URLSearchParams(hash.split("?")[1]).get("all") === "1" ? null : "") : "";
+    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? null : null;
     pagesQuery = "";
     openSelection(route.selection);
     hashNavigation?.write(currentHash(), true);
@@ -881,7 +868,7 @@
     if (sel && next && sameSel(sel, next) && !resetPages && !resetCollection) return;
     requestNavigation(() => {
       if (resetPages) {
-        pagesFilter = next.category ?? "";
+        pagesFilter = next.category ?? null;
         pagesQuery = "";
       }
       if (resetCollection) collectionQueries[next.name] = "";
@@ -1390,7 +1377,6 @@
         {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
           <button class="primary" disabled={articleLoading || !!articleError} onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
         {/if}
-        {#if githubMode && sel.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
         {#if sel.kind === "pages" || (sel.kind === "collection" && coll)}
           <div class="pages-controls">
           {#if sel.kind === "pages" && categories.length}

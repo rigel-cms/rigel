@@ -47,7 +47,7 @@
   } = $props();
 
   let host: HTMLDivElement;
-  let tab = $state<"page" | "content" | "seo">("content");
+  let tab = $state<"page" | "content" | "seo">("page");
   let addType = $state("");
   const protectedPage = $derived(isProtectedDocument(docType, docId.slice(docType.name.length + 1)));
   const sections = $derived(sectionList(values));
@@ -62,7 +62,7 @@
     void focusToken;
     const path = selected?.docId === docId ? selected.path : "";
     const sectionKey = selected?.docId === docId ? selected.sectionKey : undefined;
-    tab = docType.shared || sectionKey || !path || path.includes(".") ? "content" : isSeoField(path) ? "seo" : "page";
+    tab = docType.shared || sectionKey || path.includes(".") ? "content" : isSeoField(path) ? "seo" : "page";
     if (!focusToken || !host) return;
     let cancelled = false;
     void tick().then(() => {

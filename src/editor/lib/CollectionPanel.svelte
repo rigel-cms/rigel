@@ -37,7 +37,7 @@
     onbody: (body: ArticleBody) => void;
   } = $props();
   let host: HTMLDivElement;
-  let tab = $state<"page" | "content" | "seo">("content");
+  let tab = $state<"page" | "content" | "seo">("page");
 
   $effect(() => {
     void focusToken;

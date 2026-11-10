@@ -51,6 +51,15 @@ export async function runEntryUsage({ cdp, evaluate, wait, click, shot, origin, 
   await click('.unsaved-dialog .unsaved-actions button:nth-child(2)');
   await wait(`document.querySelector('.titlebar h2')?.textContent === 'Landing'`);
   assert.equal(await evaluate(`document.querySelector('.save-button').disabled`), true);
+  assert.ok(await evaluate(`!!document.querySelector('.visual-editor.with-panel') && document.querySelector('#properties-tab-page')?.getAttribute('aria-selected') === 'true'`), 'pages open their properties on Page');
+  await click('#properties-tab-content');
+  assert.equal(await evaluate(`document.querySelector('#properties-tab-content').getAttribute('aria-selected')`), 'true');
+  await click('.visual-actions button[aria-pressed]');
+  assert.ok(await evaluate(`!document.querySelector('.visual-editor.with-panel')`), 'editors can close properties');
+  await go('#/pageFr/accueil?locale=fr');
+  await wait(`document.querySelector('.titlebar h2')?.textContent === 'Accueil'`);
+  await wait(`!!document.querySelector('.visual-editor.with-panel') && document.querySelector('#properties-tab-page')?.getAttribute('aria-selected') === 'true'`);
+  assert.equal(await evaluate(`document.querySelector('.save-button').disabled`), true, 'opening Page settings is not a content edit');
   await go('#/author/alex?locale=en');
   await wait(`document.querySelector('.titlebar h2')?.textContent === 'Alex'`);
   await click('.entry-usage .usage-trigger');

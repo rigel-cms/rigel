@@ -244,6 +244,7 @@ try {
   await evaluate(`location.hash = '#/collections/blog/test'`);
   await wait(`!!document.querySelector('.visual-editor .preview-frame iframe.revealed')`, "post preview");
   await check(`document.querySelector('.mode-toggle button[aria-pressed="true"]').textContent === 'Edit'`, "post opens in Edit mode");
+  await check(`document.querySelector('.visual-editor.with-panel') !== null && document.querySelector('#properties-tab-page')?.getAttribute('aria-selected') === 'true'`, "articles open properties on the Page tab");
   await key("E", "KeyE", meta | shift);
   await check(`document.querySelector('.mode-toggle button[aria-pressed="true"]').textContent === 'Browse'`, "Cmd+Shift+E switches to Browse");
   await key("E", "KeyE", meta | shift);

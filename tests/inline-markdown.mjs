@@ -63,7 +63,7 @@ try {
   await cdp('Page.navigate', { url: origin });
   await wait(`!!document.querySelector('iframe.revealed')`, 'preview');
 
-  await check(`!document.querySelector('.with-panel') && document.querySelector('.visual-actions button').getAttribute('aria-pressed') === 'false'`, 'properties closed initially');
+  await check(`!!document.querySelector('.with-panel') && document.querySelector('.visual-actions button').getAttribute('aria-pressed') === 'true' && document.querySelector('#properties-tab-page').getAttribute('aria-selected') === 'true'`, 'properties open on Page initially');
   await delay(400);
   await evaluate(`window.original = {copy:${copy}.outerHTML, color:${frame}.defaultView.getComputedStyle(${copy}).color, font:${frame}.defaultView.getComputedStyle(${copy}).fontFamily};`);
 

@@ -60,7 +60,7 @@
   let removeTooltips: (() => void) | undefined;
   let stopFrameShortcut: (() => void) | undefined;
   let mode = $state<"browse" | "edit">("edit");
-  let panelOpen = $state(false);
+  let panelOpen = $state(true);
   let editorWidth = $state(0);
   let requestedWidth = $state(340);
   let resizing = $state(false);
@@ -544,6 +544,8 @@
   $effect(() => {
     if (docId === lastDocId) return;
     lastDocId = docId;
+    panelOpen = true;
+    focusToken = 0;
     requestedWidth = 340;
     endResize();
     inline = null;

@@ -59,6 +59,23 @@
   import UnsavedChanges from "./lib/UnsavedChanges.svelte";
   import ActionDialog from "./lib/ActionDialog.svelte";
   import PublishDialog from "./lib/PublishDialog.svelte";
+  import HistoryDialog from "./lib/HistoryDialog.svelte";
+  import type { RevisionDraft } from "./lib/github-backend";
+  let history = $state.raw<{ selection: Selection; context: GitContext; current: Manifest; version: number } | null>(null);
+
+  function openHistory() {
+    if (!sel || !gitContext || !githubMode || articleLoading || articleError || saveTask || newEntry || newDocument) return;
+    history = { selection: sel, context: gitContext, current: manifest, version: draftRevision };
+  }
+
+  function restoreHistory(revision: RevisionDraft) {
+    if (!history || history.context !== gitContext || history.current !== manifest || history.selection !== sel || history.version !== draftRevision || saveTask) { history = null; return; }
+    history.context.assertActive?.();
+    draft = JSON.parse(JSON.stringify(revision.values));
+    bodyDraft = JSON.parse(JSON.stringify(revision.body));
+    touch();
+    history = null;
+  }
   import { validateDemoSelection } from "./lib/demo-backend";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
@@ -1353,10 +1370,13 @@
           <p class="back"><button onclick={() => select({ kind: "menus" })}>{$t("shell.backTo", { name: $t("shell.menus") })}</button></p>
         {/if}
           <div class="save-actions">
-            <span class="save-status" role="status" class:dirty={dirty && saveState !== "saving"} class:saving={saveState === "saving"} class:saved={!dirty && saveState === "saved"} class:error={saveState === "error"}>
-              {saveState === "saving" ? $t("shell.saving") : saveState === "error" ? $t("shell.saveFailed") : dirty ? $t("shell.unsaved") : saveState === "saved" ? $t("shell.saved") : ""}
-            </span>
-            <button class="primary save-button" disabled={!dirty || saveState === "saving"} aria-keyshortcuts={shortcutAria("save")} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
+            <div class="save-control">
+              <button class="primary save-button" disabled={!dirty || saveState === "saving"} aria-keyshortcuts={shortcutAria("save")} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
+              <span class="save-status" role="status" class:dirty={dirty && saveState !== "saving"} class:saving={saveState === "saving"} class:saved={!dirty && saveState === "saved"} class:error={saveState === "error"}>
+                {saveState === "saving" ? $t("shell.saving") : saveState === "error" ? $t("shell.saveFailed") : dirty ? $t("shell.unsaved") : saveState === "saved" ? $t("shell.saved") : ""}
+              </span>
+            </div>
+            {#if githubMode && !newEntry && !newDocument}<button class="outlined history-button" disabled={articleLoading || !!articleError || saveState === "saving" || !connected || tokenExpired} onclick={openHistory}>{$t("shell.history")}</button>{/if}
           </div>
         </div>
         {/if}
@@ -1578,6 +1598,9 @@
 {/if}
 {#if pendingNavigation}
   <UnsavedChanges busy={saveState === "saving"} error={saveError} onsave={saveAndLeave} ondiscard={discardAndLeave} oncancel={cancelNavigation} />
+{/if}
+{#if history && history.context === gitContext && history.current === manifest && history.selection === sel && connected && !tokenExpired}
+  <HistoryDialog context={history.context} manifest={history.current} selection={history.selection} {dirty} onrestore={restoreHistory} onclose={() => { history = null; }} />
 {/if}
 {#if actionDialog}
   <ActionDialog {...actionDialog} onclose={() => { actionDialog = null; }} />

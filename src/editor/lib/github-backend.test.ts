@@ -604,6 +604,78 @@ test("media larger than the content decoder limit uses Git blobs for binary read
 
 vi.mock("./github-text-batch", () => ({ readGitHubTextBatch: async () => new Map() }));
 vi.mock("virtual:rigel-extensions", () => ({ default: [{ name: "notes", blocks: [{ name: "note", label: "Note", editor() {}, render() {}, validate(data: Record<string, unknown>) { if (typeof data.text !== "string") throw new Error("Note requires text"); } }] }] }));
+test("history reads one authoritative file at the snapshot head, bounds pagination and preserves current save provenance", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint()), transport = fetch;
+  const { listRemoteHistory, readRemoteRevision } = await import("./github-backend");
+  const selection = { kind: "post", collection: "blog", slug: "hello" } as const;
+  const head = s.head, revision = "c".repeat(40), before = JSON.stringify(m), calls: URL[] = [];
+  const text = JSON.stringify({ frontmatter: { title: "Older" }, body: emptyBody() });
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (url.pathname.endsWith("/commits")) { calls.push(url); return Response.json([{ sha: revision, commit: { message: "Sample older commit", author: { name: "Editor", date: "2026-01-01T12:00:00Z" } } }]); }
+    if (url.pathname.includes("/contents/") && url.search) { calls.push(url); return Response.json({ type: "file", path: "playground/src/content/blog/hello.json", sha: createHash("sha1").update(`blob ${Buffer.byteLength(text)}\0${text}`).digest("hex"), encoding: "base64", content: Buffer.from(text).toString("base64") }); }
+    return transport(input, init);
+  });
+  const history = await listRemoteHistory(ctx, m, selection);
+  expect(history.entries).toEqual([{ sha: revision, message: "Sample older commit", author: "Editor", date: "2026-01-01T12:00:00Z" }]);
+  expect(history.more).toBe(false);
+  expect(calls[0].searchParams.get("sha")).toBe(head);
+  expect(calls[0].searchParams.get("path")).toBe("playground/src/content/blog/hello.json");
+  expect(calls[0].searchParams.get("per_page")).toBe("20");
+  const restored = await readRemoteRevision(ctx, m, selection, revision);
+  expect(restored.values).toEqual({ title: "Older" });
+  expect(restored.body).toEqual(emptyBody());
+  expect(calls[1].searchParams.get("ref")).toBe(revision);
+  expect(JSON.stringify(m)).toBe(before);
+  await expect(listRemoteHistory(ctx, m, selection, 11)).rejects.toThrow();
+  await expect(readRemoteRevision(ctx, m, selection, "drafts")).rejects.toThrow();
+  await expect(listRemoteHistory(ctx, m, { ...selection, slug: "unknown" })).rejects.toThrow();
+  expect(calls).toHaveLength(2);
+  s.put("unrelated/change.json", "{}");
+  await expect(saveRemoteSelection(ctx, m, selection, restored.values, restored.body, false)).rejects.toThrow(/conflict/i);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("historical content uses data-only copy, article, document and menu validation", async () => {
+  server();
+  const { parseRemoteRevision } = await import("./github-backend");
+  const m = await loadEditingFixture(ctx, blueprint());
+  m.pages[0].groups = [{ id: "hero", label: "Hero", fields: [{ key: "title", type: "string", label: "Title" }] }];
+  const copy = (value: string) => `export default defineCopy({values:{hero:{title:${value}}}});`;
+  expect(parseRemoteRevision(m, { kind: "page", slug: "contact" }, copy('"Old"')).values).toEqual({ hero: { title: "Old" } });
+  expect(() => parseRemoteRevision(m, { kind: "page", slug: "contact" }, copy('(()=>{throw Error("Executed")})()'))).toThrow(/data-only/);
+  expect(() => parseRemoteRevision(m, { kind: "page", slug: "contact" }, copy("42"))).toThrow();
+  expect(() => parseRemoteRevision(m, { kind: "document", type: "author", id: "author:alex" }, '{"name":42}')).toThrow();
+  expect(() => parseRemoteRevision(m, { kind: "document", type: "author", id: "author:alex" }, '{"name":"Old","_id":"author:other"}')).toThrow();
+  expect(parseRemoteRevision(m, { kind: "document", type: "author", id: "author:alex" }, '{"name":"Old"}').values).toEqual({ name: "Old" });
+  expect(() => parseRemoteRevision(m, { kind: "post", collection: "blog", slug: "hello" }, '{"frontmatter":{},"body":"<script>alert(1)</script>"}')).toThrow();
+  expect(() => parseRemoteRevision(m, { kind: "post", collection: "blog", slug: "hello" }, '{')).toThrow();
+  expect(parseRemoteRevision(m, { kind: "menu", slug: "main" }, '{"slug":"main","title":"Old","items":[]}').values).toEqual({ title: "Old", items: [] });
+  expect(() => parseRemoteRevision(m, { kind: "menu", slug: "main" }, '{"slug":"other","title":"Old","items":[]}')).toThrow();
+});
+
+test("history rejects expired contexts, failed permissions, missing files and corrupt bytes without mutating the snapshot", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const { listRemoteHistory, readRemoteRevision } = await import("./github-backend");
+  const selection = { kind: "document", type: "author", id: "author:alex" } as const, before = JSON.stringify(m);
+  for (const status of [401, 403, 404, 429]) {
+    s.status = status;
+    await expect(listRemoteHistory(ctx, m, selection)).rejects.toThrow();
+    await expect(readRemoteRevision(ctx, m, selection, "c".repeat(40))).rejects.toThrow();
+  }
+  s.status = 0;
+  await expect(listRemoteHistory({ ...ctx, token: "other" }, m, selection)).rejects.toThrow();
+  let active = true;
+  const context = { ...ctx, assertActive() { if (!active) throw new Error("Inactive account"); } };
+  let complete!: (value: Response) => void;
+  vi.stubGlobal("fetch", () => new Promise<Response>(resolve => { complete = resolve; }));
+  const pending = listRemoteHistory(context, m, selection);
+  active = false; complete(Response.json([]));
+  await expect(pending).rejects.toThrow("Inactive account");
+  expect(JSON.stringify(m)).toBe(before);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
 const ctx = { token: "secret-token", repo: "owner/site", branch: "drafts" };
 
 test("GitHub saves apply registered validation before requests and preserve unknown blocks", async () => {

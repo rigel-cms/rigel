@@ -40,6 +40,14 @@ Replace `example-org/website` with the repository containing your site's content
 
 The default connection uses the [public Rigel CMS GitHub App](https://github.com/apps/rigel-cms). Site developers and editors do not need to deploy a gateway or create an App. The gateway handles the OAuth exchange; the editor uses the resulting GitHub App user token to call GitHub. App secrets belong on the authenticator, never in site configuration.
 
+## Content history
+
+For an existing page, article, schema document or menu in GitHub mode, choose **History** beside Save. Select a commit to inspect its saved field values and article text. The preview is data-only; it does not execute historical templates, HTML or extension code.
+
+**Restore to editor** replaces the current draft, not the repository file. If you have unsaved changes, confirm before replacing them. Save and publishing remain separate, explicit actions, and restoring does not reset conflict detection against the current workspace snapshot.
+
+History is read on demand for the selected file from the loaded workspace head, in pages of 20 commits up to 200. Renamed paths can have separate history. A missing file or a revision incompatible with the current schema cannot be restored. Local and demo modes do not expose GitHub history.
+
 ## Prepare repository access
 
 An editor needs write access to the configured repository. The GitHub App must be installed for that repository, active, and granted Contents read/write permission. Authorizing a GitHub identity alone does not grant editing access.

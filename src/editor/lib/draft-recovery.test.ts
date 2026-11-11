@@ -68,10 +68,11 @@ test.each([false, true])("explicit signout purges recovery before invalidating a
     const closePublish = () => {};
     const requestNavigation = action => action();
     const forgetRecovery = broadcast => events.push('purge:' + broadcast);
+    const resetToasts = () => events.push('reset-notifications');
     const invalidateSession = () => events.push('invalidate');
     ${code}; signOut(); return events;
   `)(publishBusy);
-  expect(events).toEqual(["purge:true", "invalidate"]);
+  expect(events).toEqual(["purge:true", "reset-notifications", "invalidate"]);
 });
 
 test("quota and denied storage failures are reported without deleting existing backups", () => {

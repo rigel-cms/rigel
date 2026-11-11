@@ -49,7 +49,7 @@ export function isTypingTarget(target: unknown): boolean {
 
 export function shortcutOverlayOpen(doc: Document | null = typeof document === "undefined" ? null : document): boolean {
   if (!doc) return false;
-  const selector = 'dialog[open], .rigel-modal-backdrop, .palette-backdrop, [popover]:popover-open:not([role="tooltip"])';
+  const selector = 'dialog[open], .rigel-modal-backdrop, .palette-backdrop, [popover]:popover-open:not([role="tooltip"]):not(.toast-stack)';
   const roots = [doc];
   for (const frame of doc.querySelectorAll("iframe")) {
     try { const inner = frame.contentDocument; if (inner) roots.push(inner); } catch {}

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createServer, build } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
+const toastMode = process.argv.includes("--toasts");
 const recoveryMode = process.argv.includes("--recovery");
 const usageMode = process.argv.includes("--usage");
 const recoveryBackend = { fail: false };
@@ -79,9 +80,10 @@ try {
     if (usageMode && req.url === "/preview-fr/accueil.html") return send(200, "text/html", '<!doctype html><html><body><main data-rigel-doc="pageFr:accueil"><h1 data-rigel-text="title">Accueil</h1></main></body></html>');
     if (req.url === "/preview-page.html") return send(200, "text/html", pagePreview);
     if (req.url === "/preview-post.html") return send(200, "text/html", postPreview);
-    if (recoveryMode && req.method !== "GET" && req.url.startsWith("/rigel/api/local/")) {
+    if ((recoveryMode || toastMode) && req.method !== "GET" && req.url.startsWith("/rigel/api/local/")) {
       writes.push(req.url);
       let text = ""; for await (const chunk of req) text += chunk;
+      if (toastMode) await delay(800);
       if (recoveryBackend.fail) return send(503, "text/plain", "Simulated save failure");
       const data = JSON.parse(text);
       if (req.url === "/rigel/api/local/save") manifest.pages[0].values = data.values;
@@ -134,7 +136,74 @@ try {
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await reset();
 
-  if (usageMode) {
+  if (toastMode) {
+    assert.equal(await evaluate(`document.querySelectorAll('.toast').length`), 0, 'no mount notification');
+    await evaluate(`location.hash='#/copy/home'`);
+    await wait(`!!document.querySelector('main input:not([readonly])')`, 'page form');
+    await evaluate(`(()=>{const input=document.querySelector('main input:not([readonly])');input.value='Toast saved draft';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await click('button.save-button');
+    await until(() => writes.length === 1, 'save request');
+    assert.equal(await evaluate(`document.querySelectorAll('.toast[data-kind="success"]').length`), 0, 'no success before backend acknowledgement');
+    await delay(1000);
+    assert.equal(await evaluate(`[...document.querySelectorAll('.toast[data-kind="success"]')].some(el=>el.textContent.includes('Saved'))`),true,'acknowledged explicit Save produces success toast');
+    assert.equal(manifest.pages[0].values.hero.title, 'Toast saved draft');
+    console.log('PASS: explicit Save toast only after backend acknowledgement');
+    const success = '.toast[data-kind="success"]';
+    const hover = await evaluate(`(()=>{const r=document.querySelector('${success}').getBoundingClientRect();return {x:r.left+20,y:r.top+15};})()`);
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...hover});
+    await delay(6300);
+    assert.equal(await evaluate(`!!document.querySelector('${success}')`),true,'hover pauses expiry');
+    await evaluate(`document.querySelector('${success} button').focus()`);
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});
+    await delay(6300);
+    assert.equal(await evaluate(`document.activeElement===document.querySelector('${success} button')`),true,'focused close remains available');
+    await evaluate(`document.querySelector('main input:not([readonly])').focus()`);
+    await wait(`!document.querySelector('${success}')`,'success expires after blur');
+    recoveryBackend.fail=true;
+    await evaluate(`(()=>{const input=document.querySelector('main input:not([readonly])');input.value='Keep failed draft';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await click('button.save-button');
+    await wait(`!!document.querySelector('.toast[data-kind="error"] .toast-actions button')`,'retryable save error');
+    await delay(6300);
+    assert.equal(await evaluate(`document.querySelector('.toast[data-kind="error"]').textContent.includes('Simulated save failure')`),true,'errors never auto-expire');
+    assert.equal(manifest.pages[0].values.hero.title,'Toast saved draft','failed save does not alter backend');
+    await evaluate(`document.activeElement?.blur()`);
+    await key('b','KeyB',meta);
+    assert.equal(await evaluate(`document.querySelector('.rigel.sidebar-collapsed')!==null`),true,'nonmodal toasts do not block editor shortcuts');
+    await key('b','KeyB',meta);
+    for (const width of [1280,390,320]) {
+      await cdp('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<600});
+      for (const theme of ['light','dark']) for (const contrast of ['normal','high']) {
+        await evaluate(`document.documentElement.dataset.theme='${theme}';document.documentElement.dataset.contrast='${contrast}'`);
+        await delay(250);
+        assert.equal(await evaluate(`(()=>{const r=document.querySelector('.toast-stack').getBoundingClientRect();return Math.abs(r.left+r.width/2-innerWidth/2)<2 && r.bottom<=innerHeight-15 && r.bottom>=innerHeight-33 && r.height<=innerHeight*.4+1 && r.left>=15 && r.right<=innerWidth-15;})()`),true,'bottom-center bounded geometry '+width+theme+contrast);
+        assert.equal(await evaluate(`(()=>{const el=document.querySelector('.toast[data-kind="error"]'),s=getComputedStyle(el),b=getComputedStyle(el.querySelector('button'));const rgb=v=>v.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4});const lum=v=>rgb(v).reduce((n,c,i)=>n+c*[.2126,.7152,.0722][i],0);const ratio=(a,c)=>(Math.max(lum(a),lum(c))+.05)/(Math.min(lum(a),lum(c))+.05);return s.borderTopStyle==='solid' && s.borderTopWidth==='1px' && ratio(s.color,s.backgroundColor)>=4.5 && ratio(b.color,b.backgroundColor)>=4.5 && ratio(s.borderTopColor,s.backgroundColor)>=3;})()`),true,'measured toast text/button/status-border contrast '+theme+contrast);
+        await shot('toast-save-'+width+'-'+theme+'-'+contrast);
+      }
+    }
+    await cdp('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
+    const field=await evaluate(`(()=>{const r=document.querySelector('main input:not([readonly])').getBoundingClientRect();return {x:r.left+20,y:r.top+10};})()`);
+    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...field});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...field});
+    assert.equal(await evaluate(`document.activeElement===document.querySelector('main input:not([readonly])')`),true,'toast top layer does not swallow app clicks');
+    await click('#nav-media');
+    await wait(`!!document.querySelector('.unsaved-dialog[open] .toast-stack:popover-open')`,'toast follows native modal');
+    const closePoint=await evaluate(`(()=>{const el=document.querySelector('.toast[data-kind="error"] > button');const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('button')===el};})()`);
+    assert.equal(closePoint.hit,true,'toast dismiss is above modal and not inert');
+    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:closePoint.x,y:closePoint.y});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:closePoint.x,y:closePoint.y});
+    await wait(`!document.querySelector('.toast[data-kind="error"]')`,'dismiss error');
+    assert.equal(await evaluate(`document.querySelector('.unsaved-dialog > .rigel-modal > [role="alert"]').textContent`),'Simulated save failure','dismiss leaves essential unsaved error intact');
+    await click('.unsaved-actions button');
+    assert.equal(await evaluate(`document.querySelector('main input:not([readonly])').value`),'Keep failed draft');
+    await click('button.save-button');
+    await wait(`!!document.querySelector('.toast[data-kind="error"] .toast-actions button')`,'retry available again');
+    recoveryBackend.fail=false;
+    await click('.toast-actions button');
+    await wait(`!!document.querySelector('.toast[data-kind="success"]')`,'retry writes successfully');
+    assert.equal(manifest.pages[0].values.hero.title,'Keep failed draft');
+    assert.deepEqual(exceptions,[]);
+    console.log('PASS: save error persistence/retry/draft protection, modal-layer dismissal, hover/focus expiry, click-through, light/dark/high-contrast bottom-center 1280/390/320 geometry');
+  } else if (usageMode) {
     await (await import("./entry-usage-browser.mjs")).runEntryUsage({ cdp, evaluate, wait, click, shot, origin, writes, exceptions });
   } else if (recoveryMode) {
     await (await import("./draft-recovery-browser.mjs")).runRecovery({ cdp, evaluate, wait, click, shot, origin, writes, exceptions, manifest, recoveryBackend, delay });

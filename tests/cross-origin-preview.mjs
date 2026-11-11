@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer as httpServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, build } from 'vite';
@@ -49,11 +49,17 @@ function manifest() {
 }
 await writeFile(path.join(scratch, 'index.html'), '<html><body><div id="app"></div><script type="module" src="/main.js"></script></body></html>');
 await writeFile(path.join(scratch, 'main.js'), `import { mount } from 'svelte'; import App from '/src/editor/App.svelte'; import '/src/editor/styles.css'; mount(App, { target: document.getElementById('app') });`);
+const dictionaries = { en: {} };
+for (const file of await readdir(path.join(root, 'src/editor/i18n/en'))) if (file.endsWith('.json')) Object.assign(dictionaries.en, JSON.parse(await readFile(path.join(root, 'src/editor/i18n/en', file), 'utf8')));
 const options = {
   configFile: false, root: scratch, logLevel: 'warn', plugins: [svelte(), {
     name: 'rigel-config-fixture',
-    resolveId(id) { if (id === 'virtual:rigel-config') return '\0virtual:rigel-config'; },
-    load(id) { if (id === '\0virtual:rigel-config') return 'export default { maxFileSize: 2097152 };'; },
+    resolveId(id) { if (['virtual:rigel-config', 'virtual:rigel-i18n', 'virtual:rigel-extensions'].includes(id)) return '\0' + id; },
+    load(id) {
+      if (id === '\0virtual:rigel-config') return 'export default { maxFileSize: 2097152, backend: "local", languages: ["en"] };';
+      if (id === '\0virtual:rigel-i18n') return 'export default ' + JSON.stringify(dictionaries);
+      if (id === '\0virtual:rigel-extensions') return 'export default [];';
+    },
   }],
   resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] },
   build: { outDir: path.join(scratch, 'dist'), emptyOutDir: true },
@@ -66,6 +72,10 @@ try {
   vite = await createServer({ ...options, root: path.join(scratch, 'dist'), plugins: [{ name: 'preview-fixture', configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       if (req.url === '/rigel/manifest.json') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(manifest())); }
+      else if (req.url?.startsWith('/rigel/api/local/blog/') && req.method === 'GET') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(req.url.endsWith('/first-post') ? article : savedPost));
+      }
       else if (req.url?.startsWith('/rigel/api/local/')) {
         writes++;
         let raw = ''; for await (const chunk of req) raw += chunk;

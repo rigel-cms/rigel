@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createToast, updateToast, dismissToast } from "./toasts";
   import { processImage, imageSourceLimit, heicName } from "./process-image";
   import { safeMediaLabel } from "../../media-types";
   import { locale, t } from "../i18n";
@@ -73,8 +74,7 @@
   let confirmDelete = $state(false);
   let deleteTrigger = $state<HTMLButtonElement>();
   let savingMeta = $state(false);
-  let metaError = $state("");
-  let metaNotice = $state("");
+  let metadataToast = 0;
   let trigger: HTMLButtonElement;
   let dialog: HTMLDialogElement;
   let cancel: HTMLButtonElement;
@@ -87,29 +87,36 @@
     librarySelection = asset.url; selected = {url: asset.url, asset};
     metaName = asset.name; metaTitle = asset.title ?? ""; metaDescription = asset.description ?? ""; metaAlt = asset.alt ?? "";
     alt = value ? altText : asset.alt ?? "";
-    metaError = ""; metaNotice = "";
     if (inline) { tab = "library"; open = true; }
   }
   async function saveMetadata() {
     if (demoMode || !selected?.asset || !writable || savingMeta) return;
-    const url = selected.asset.url;
-    savingMeta = true; metaError = ""; metaNotice = "";
+    const url = selected.asset.url, request = requestId;
+    savingMeta = true;
+    dismissToast(metadataToast);
+    metadataToast = createToast({ kind: "progress", message: $t("media.saving") });
     try {
       await saveMediaMetadata({ url, name: metaName.trim() || undefined, title: metaTitle.trim(), description: metaDescription.trim(), ...(selected.asset.type?.startsWith("image/") ? { alt: metaAlt } : {}) });
       await library();
+      if (request !== requestId) { dismissToast(metadataToast); return; }
       selected = { url, asset: assets.find(a => a.url === url) };
-      metaNotice = $t("media.metadataSaved");
-    } catch { metaError = $t("media.metadataSaveFailed"); }
+      updateToast(metadataToast, { kind: "success", message: $t("media.metadataSaved") });
+    } catch {
+      if (request === requestId) updateToast(metadataToast, { kind: "error", message: $t("media.metadataSaveFailed") });
+      else dismissToast(metadataToast);
+    }
     finally { savingMeta = false; }
   }
   async function deleteFile() {
     if (!selected?.asset || !writable || picking || savingMeta) return;
-    const url = selected.asset.url;
+    const url = selected.asset.url, request = requestId;
     picking = true;
     try {
       await deleteMedia(url);
+      if (request !== requestId) return;
       assets = assets.filter(asset => asset.url !== url);
-      librarySelection = ""; notice = $t("media.fileDeleted");
+      librarySelection = "";
+      createToast({ kind: "success", message: $t("media.fileDeleted") });
       close();
     } finally { picking = false; }
   }
@@ -131,9 +138,9 @@
   }
   onMount(() => {
     if (inline) void run();
-    return onMediaReset(() => { close(); assets = []; writable = false; }, () => { if (inline) void run(); });
+    return onMediaReset(() => { dismissToast(metadataToast); close(); assets = []; writable = false; }, () => { if (inline) void run(); });
   });
-  onDestroy(() => { requestId++; releaseFile(); });
+  onDestroy(() => { dismissToast(metadataToast); requestId++; releaseFile(); });
   $effect(() => {
     if (open && dialog) { dialog.showModal(); cancel?.focus(); }
   });
@@ -326,7 +333,6 @@
           {#if needsImport}<p class="hint">{$t(selected.file ? "media.confirmUpload" : "media.confirmDownload")}</p>{/if}
           </div>
           <div class="media-actions" class:with-media-path={!!selected.asset}>
-          {#if metaError || metaNotice}<p class="media-feedback" class:error={!!metaError} role={metaError ? "alert" : "status"}>{metaError || metaNotice}</p>{/if}
           {#if selected.asset}
             <a class="outlined media-download" href={selected.asset.url} download={assetFile(selected.asset.url)}>{$t("media.downloadFile")}</a>
             {#if inline && writable}<button bind:this={deleteTrigger} type="button" class="danger-btn" aria-label={$t("media.deleteFile")} disabled={picking || savingMeta} onclick={() => { confirmDelete = true; }}>{$t("media.deleteFile")}</button>{/if}

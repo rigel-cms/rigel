@@ -31,7 +31,7 @@ export async function runRecovery({ cdp, evaluate, wait, click, shot, origin, wr
   await wait(`document.querySelector('${input}').value === 'Recovered page title' && !document.querySelector('.save-button').disabled`);
   assert.equal(writes.length, 0, 'restore is unsaved');
   recoveryBackend.fail = true;
-  await click('.save-button'); await wait(`document.querySelector('.save-status').textContent.includes('Save failed') || !!document.querySelector('.save-toast')`);
+  await click('.save-button'); await wait(`document.querySelector('.save-status').textContent.includes('Save failed') || !!document.querySelector('.toast[data-kind="error"]')`);
   await reload(); await wait(`!!document.querySelector('.recovery-notice')`);
   await click('.recovery-notice .primary');
   recoveryBackend.fail = false;

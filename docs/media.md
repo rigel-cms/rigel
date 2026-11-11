@@ -65,6 +65,8 @@ Images have thumbnails, videos have playback previews, and PDF and text files ha
 
 Open Upload to choose a local file, an image URL, Lorem Picsum or an enabled stock provider. Choose a result, review its preview and confirm. Back changes the selection; cancelling before confirmation leaves content unchanged. Confirmation writes imported bytes immediately, separately from saving the document. Cancelling a later document edit does not remove an uploaded file.
 
+Content Save, metadata Save and confirmed deletion share the same compact, scrollable notification stack. Success appears only after the backend acknowledges the write. Informational and success notices expire after six seconds, paused while hovered or focused; progress stays until completion and errors stay until dismissed or resolved. Essential confirmation, connection and unsaved-draft notices remain in place.
+
 The library's Delete file action removes the file and its metadata after confirmation. Check its uses first: deleting an asset can break existing content links.
 
 ## Labels and metadata

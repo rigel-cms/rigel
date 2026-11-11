@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Toaster from "./lib/Toaster.svelte";
+  import { createToast, updateToast, dismissToast, resetToasts } from "./lib/toasts";
+  onDestroy(resetToasts);
   import { t, locale } from "./i18n";
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { selectionHash, resolveHash, createHashNavigation } from "./lib/hash-navigation";
@@ -265,6 +268,14 @@
   let saveState = $state<"idle" | "saving" | "saved" | "error">("idle");
   let saveTask: Promise<boolean> | null = null;
   let saveError = $state("");
+  let saveToast = 0;
+  $effect(() => {
+    if (!saveError) return;
+    updateToast(saveToast, { actions: [
+      { label: $t("shell.retrySave"), run: () => { void save(); }, disabled: saveState === "saving" },
+      ...(githubMode ? [{ label: $t("shell.reconnectGithub"), run: () => { void connectGitHub(); }, disabled: connectionBusy || saveState === "saving" }] : [])
+    ] });
+  });
   let articleLoading = $state(false);
   let articleError = $state("");
   let articleRevision = 0;
@@ -571,10 +582,11 @@
   function signOut() {
     if (saveState === "saving" || connectionBusy) return;
     userOpen = false;
-    if (publishBusy) { forgetRecovery(true); invalidateSession(); connected = false; return; }
+    if (publishBusy) { forgetRecovery(true); resetToasts(); invalidateSession(); connected = false; return; }
     closePublish();
     requestNavigation(() => {
       forgetRecovery(true);
+      resetToasts();
       invalidateSession();
       connected = false;
       connectionError = "";
@@ -610,6 +622,8 @@
     saveTask = (async () => {
       if (dirty) {
         saveState = "saving";
+        dismissToast(saveToast);
+        saveToast = createToast({ kind: "progress", message: $t("shell.saving") });
 
         const values = JSON.parse(JSON.stringify(draft));
         const body = JSON.parse(JSON.stringify(bodyDraft));
@@ -657,10 +671,12 @@
           if (dirty) backupDraft(); else discardRecoveryDraft();
           saveState = dirty ? "idle" : "saved";
           saveError = "";
+          updateToast(saveToast, { kind: "success", message: $t(demoMode ? "shell.demoBanner" : "shell.saved"), actions: [] });
         } catch (error) {
           handleAuthError(error);
           saveState = "error";
           saveError = error instanceof Error ? error.message : $t("shell.saveChangesError");
+          updateToast(saveToast, { kind: "error", message: $t("shell.saveChangesError") + "\n" + saveError });
           return false;
         }
       }
@@ -1174,7 +1190,7 @@
       requireGitContext();
       if (connectionError) throw new Error("Reconnect GitHub and verify editing access first.");
     }
-    const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open';
+    const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open:not(.toast-stack)';
     const overlay = [document, ...[...document.querySelectorAll('iframe')].map(frame => frame.contentDocument)].some(doc => doc && [...doc.querySelectorAll(blocked)].some(element => element.getClientRects().length > 0 && doc.defaultView?.getComputedStyle(element).visibility !== "hidden"));
     if (articleLoading || articleError || reindexBusy || connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
   }
@@ -1579,17 +1595,6 @@
         {/if}
         </div>
       {/if}
-      {#if saveError}
-        <div class="save-toast" role="alert">
-          <div class="save-toast-content">
-            <strong>{$t("shell.saveChangesError")}</strong>
-            <p>{saveError}</p>
-            <button class="outlined" disabled={saveState === "saving"} onclick={() => save()}>{$t("shell.retrySave")}</button>
-            {#if githubMode}<button class="outlined github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{$t("shell.reconnectGithub")}</button>{/if}
-          </div>
-          <button type="button" class="icon-btn" aria-label={$t("shell.dismissSaveError")} onclick={() => { saveError = ""; }}><Icon name="x" size={18} /></button>
-        </div>
-      {/if}
       {#if !ready}
         <p>{$t("shell.loading")}</p>
       {:else if articleLoading}
@@ -1788,6 +1793,7 @@
 </div>
 {/if}
 
+<div class="rigel" style="display: contents"><Toaster /></div>
 {#if settingsOpen}
   <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} onreindex={reindexCollections} oncancelindex={cancelIndexing} onclearcache={clearFiles} {canClearFileCache} {fileCacheBusy} {fileCacheMessage} {reindexBusy} {reindexMessage} collections={manifest.collections ?? []} maintenanceDisabled={demoMode || dirty || saveState === "saving" || publishBusy} />
 {/if}

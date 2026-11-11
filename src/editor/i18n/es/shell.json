@@ -1,4 +1,6 @@
 {
+  "shell.entryUsageArticlesHint": "Los artículos no se pueden seleccionar en los campos de referencia. No se registran los enlaces en el texto.",
+  "shell.linkedFrom": "Enlazado desde",
   "shell.entryUsageIncomplete": "Referencias del contenido indexado. Algunas entradas aún no se han comprobado.",
   "shell.history": "Historial",
   "shell.historyDescription": "Versiones de este archivo en la rama de trabajo actual. Las rutas renombradas pueden tener un historial separado. Restaurar solo cambia el borrador sin guardar.",

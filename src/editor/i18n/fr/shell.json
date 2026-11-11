@@ -1,4 +1,6 @@
 {
+  "shell.entryUsageArticlesHint": "Les articles ne peuvent pas être sélectionnés dans les champs de référence. Les liens dans le texte ne sont pas suivis.",
+  "shell.linkedFrom": "Référencé par",
   "shell.entryUsageIncomplete": "Références du contenu indexé. Certaines entrées n’ont pas encore été vérifiées.",
   "shell.history": "Historique",
   "shell.historyDescription": "Révisions de ce fichier dans la branche de travail. Les anciens chemins peuvent avoir un historique distinct. La restauration modifie uniquement le brouillon non enregistré.",

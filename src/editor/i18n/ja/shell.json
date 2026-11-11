@@ -1,4 +1,6 @@
 {
+  "shell.entryUsageArticlesHint": "参照フィールドでは記事を選択できません。本文中のリンクは追跡されません。",
+  "shell.linkedFrom": "参照元",
   "shell.entryUsageIncomplete": "インデックス済みコンテンツの参照を表示しています。まだ確認されていない項目があります。",
   "shell.history": "履歴",
   "shell.historyDescription": "現在の作業ブランチにあるファイルの履歴です。名前を変更したパスには別の履歴がある場合があります。復元は未保存の下書きだけを変更します。",

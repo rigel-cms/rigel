@@ -19,7 +19,7 @@
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
   let {
-    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {}, shortcutsEnabled = true, onshortcut = () => {},
+    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, metadata, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {}, shortcutsEnabled = true, onshortcut = () => {},
   }: {
     docId: string;
     schema?: Schema;
@@ -32,6 +32,7 @@
     ondelete?: () => void;
     deleteDisabled?: boolean;
     body?: "" | import("../../article-body").ArticleBody;
+    metadata?: Snippet;
     properties?: Snippet<[SelectedField | null, number, boolean, () => void, boolean, string[], (path: string) => void]>;
     bodyInline?: boolean;
     onbody?: (body: ArticleBody) => void;
@@ -614,6 +615,7 @@
     {@render properties(selected, focusToken, inlineBodyEnabled || inlineBodyLoading, focusBody, inlineBodyLoading, richtextPaths, editField)}
   {:else if panelOpen && schema && docType}
     <SchemaPanel
+      {metadata}
       {schema}
       {docType}
       {values}

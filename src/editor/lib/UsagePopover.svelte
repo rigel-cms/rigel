@@ -4,11 +4,12 @@
   import type { MediaUsageEntry } from "../../manifest/media-usage";
   import { selectionHash } from "./hash-navigation";
 
-  let { entries, complete, loading = false, error = false, incompleteKey = "media.usageIncomplete", onopen, onselect }: {
+  let { entries, complete, loading = false, error = false, labelKey = "media.usedIn", incompleteKey = "media.usageIncomplete", onopen, onselect }: {
     entries: MediaUsageEntry[] | null;
     complete: boolean;
     loading?: boolean;
     error?: boolean;
+    labelKey?: string;
     incompleteKey?: string;
     onopen?: () => void;
     onselect: (entry: MediaUsageEntry) => void;
@@ -46,9 +47,9 @@
 </script>
 
 <button bind:this={trigger} type="button" class="outlined usage-trigger" aria-expanded={open} aria-controls={`${id}-usage`} popovertarget={`${id}-usage`} onkeydown={event => { if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); close(); } }}>
-  {$t("media.usedIn")} {#if entries && (complete || entries.length)}<span class="usage-count">{entries.length}{complete ? "" : "+"}</span>{/if}<span class:expanded={open}><Icon name="caretDown" size={14} /></span>
+  {$t(labelKey)} {#if entries && (complete || entries.length)}<span class="usage-count">{entries.length}{complete ? "" : "+"}</span>{/if}<span class:expanded={open}><Icon name="caretDown" size={14} /></span>
 </button>
-<div bind:this={menu} id={`${id}-usage`} class="media-usage" popover="auto" role="region" aria-label={$t("media.usedIn")} aria-busy={loading} style={placement} ontoggle={event => { open = event.currentTarget.matches(":popover-open"); if (open) onopen?.(); }} onkeydown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}>
+<div bind:this={menu} id={`${id}-usage`} class="media-usage" popover="auto" role="region" aria-label={$t(labelKey)} aria-busy={loading} style={placement} ontoggle={event => { open = event.currentTarget.matches(":popover-open"); if (open) onopen?.(); }} onkeydown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}>
   {#if loading || !entries}<p class="hint" role="status">{$t("media.usageLoading")}</p>{/if}
   {#if error}<p class="error" role="alert">{$t("media.usageError")}</p>
   {:else if entries && !loading && !complete}<p class="hint" role="status">{$t(incompleteKey)}</p>{/if}

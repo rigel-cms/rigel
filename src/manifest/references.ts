@@ -4,8 +4,10 @@ import { referrers } from "../schema/validate";
 import type { ContentDocument } from "../schema/types";
 import { systemMessage, type Translator } from "../editor/i18n/format";
 
-export function entryUsage(manifest: Manifest, id: string) {
+export function entryUsage(manifest: Manifest, target: string | Selection) {
   const entries: { label: string; group: string; locale?: string; target: Selection }[] = [];
+  if (typeof target !== "string" && target.kind !== "document") return { entries, complete: true };
+  const id = typeof target === "string" ? target : target.id;
   let complete = !(manifest.documents ?? []).some(doc => doc.loaded === "identity");
   for (const doc of referrers(manifest.documents ?? [], id)) {
     const type = manifest.schema?.documents.find(type => type.name === doc.type);

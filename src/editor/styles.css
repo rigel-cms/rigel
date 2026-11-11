@@ -472,7 +472,7 @@
   min-width: 0;
 }
 .rigel main.wide { max-width: 100%; }
-.rigel .entry-usage { display: flex; flex-shrink: 0; max-width: 720px; margin-top: 1rem; }
+
 .rigel .menu-details { max-width: 720px; }
 .rigel main:not(.wide) { max-width: 720px; }
 

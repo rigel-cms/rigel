@@ -1,4 +1,6 @@
 {
+  "shell.entryUsageArticlesHint": "Artikel können in Referenzfeldern nicht ausgewählt werden. Links im Text werden nicht erfasst.",
+  "shell.linkedFrom": "Verlinkt von",
   "shell.entryUsageIncomplete": "Verweise aus indexierten Inhalten. Einige Einträge wurden noch nicht geprüft.",
   "shell.history": "Verlauf",
   "shell.historyDescription": "Versionen dieser Datei im aktuellen Arbeitsbranch. Umbenannte Pfade können einen eigenen Verlauf haben. Die Wiederherstellung ändert nur den ungespeicherten Entwurf.",

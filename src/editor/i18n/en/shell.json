@@ -1,4 +1,6 @@
 {
+  "shell.entryUsageArticlesHint": "Articles cannot be selected in reference fields. Links in text are not tracked.",
+  "shell.linkedFrom": "Linked from",
   "shell.entryUsageIncomplete": "Showing references from indexed content. Some entries have not been checked yet.",
   "shell.history": "History",
   "shell.historyDescription": "Revisions of this file on the current workspace branch. Renamed paths may have separate history. Restoring changes only your unsaved draft.",

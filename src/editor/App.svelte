@@ -1652,12 +1652,18 @@
         {/if}
 
       {:else if sel?.kind === "document" && schema && activeDocType}
+        {#snippet entryMetadata()}
+          {#if !newDocument && sel?.kind === "document"}
+            {#key sel.id}<EntryUsage {manifest} target={sel} onload={loadEntryUsage} onselect={entry => selectSearch(entry.target, entry.locale)} />{/key}
+          {/if}
+        {/snippet}
         {#if standaloneDocument}
           <div class="document-form">
-            <SchemaPanel {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={updateDraft} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
+            <SchemaPanel metadata={entryMetadata} {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={updateDraft} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
           </div>
         {:else}
         <VisualEditor
+          metadata={entryMetadata}
           docId={sel.id}
           {schema}
           docType={activeDocType}
@@ -1716,6 +1722,11 @@
         {/if}
 
       {:else if sel?.kind === "post" && coll && post}
+        {#snippet articleMetadata()}
+          {#if !newEntry && sel?.kind === "post"}
+            <EntryUsage {manifest} target={sel} onload={loadEntryUsage} onselect={entry => selectSearch(entry.target, entry.locale)} />
+          {/if}
+        {/snippet}
         {#key `${coll.name}/${post.slug}`}
           <VisualEditor
             docId={`${coll.name}:${post.slug}`}
@@ -1733,7 +1744,7 @@
             onshortcut={runShortcut}
           >
             {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading, inlineFields, oneditfield)}
-              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
+              <CollectionPanel metadata={articleMetadata} fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
             {/snippet}
           </VisualEditor>
         {/key}
@@ -1767,9 +1778,6 @@
           <h3>{$t("shell.currentDraft")}</h3>
           <pre>{JSON.stringify(sel.kind === "post" ? { frontmatter: draft, body: bodyDraft } : draft, null, 2)}</pre>
         </section>
-      {/if}
-      {#if ready && !articleLoading && !articleError && sel?.kind === "document" && schema && activeDocType && !newDocument}
-        {#key sel.id}<EntryUsage {manifest} docId={sel.id} onload={loadEntryUsage} onselect={entry => selectSearch(entry.target, entry.locale)} />{/key}
       {/if}
     </main>
     {#if manifest.preview && previewTarget}

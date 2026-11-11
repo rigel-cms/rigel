@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../i18n";
-  import { tick } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import type { CollectionField } from "../../manifest/types";
   import type { SelectedField } from "./schema-edit";
   import ImagePicker from "./ImagePicker.svelte";
@@ -16,7 +16,8 @@
   import type { ContentDocument } from "../../schema/types";
   import { slugify } from "../../slugs";
 
-  let { fields, values, storageSlug, pagePath = null, ondelete, deleteDisabled = false, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, inlineFields = [], oneditbody = () => {}, oneditfield = () => {}, onchange, onbody }: {
+  let { metadata, fields, values, storageSlug, pagePath = null, ondelete, deleteDisabled = false, body, selected, focusToken, devMode, documents = [], bodyInline = false, bodyLoading = false, inlineFields = [], oneditbody = () => {}, oneditfield = () => {}, onchange, onbody }: {
+    metadata?: Snippet;
     fields: CollectionField[];
     values: Record<string, unknown>;
     storageSlug: string;
@@ -99,6 +100,7 @@
   <section>
     <button type="button" class="danger-btn" aria-label={$t("shell.deletePost")} disabled={deleteDisabled} onclick={ondelete}>{$t("shell.deletePost")}</button>
   </section>
+  {@render metadata?.()}
   </div>
   <div id="properties-content" role="tabpanel" aria-labelledby="properties-tab-content" hidden={tab !== "content"}>
   <section data-collection-field="$body">

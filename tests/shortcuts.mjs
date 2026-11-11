@@ -36,19 +36,25 @@ const postPreview = '<!doctype html><html><body><main data-rigel-doc="blog:test"
 if (usageMode) {
   manifest.contentLocales = { defaultLocale: "en", locales: [{ code: "en", label: "English" }, { code: "fr", label: "Français" }] };
   manifest.schema.documents.push(
-    { name: "author", title: "Authors", type: "document", folder: "authors", shared: true, fields: [{ key: "name", label: "Name", type: "string" }] },
+    { name: "author", title: "Authors", type: "document", folder: "authors", shared: true, fields: [{ key: "name", label: "Name", type: "string" }, { key: "related", label: "Related page", type: "reference", to: ["page"] }] },
     { name: "page", title: "Pages", type: "document", folder: "pages", locale: "en", fields: [{ key: "title", label: "Title", type: "string" }, { key: "author", label: "Author", type: "reference", to: ["author"] }] },
     { name: "pageFr", title: "Pages françaises", type: "document", folder: "pages-fr", locale: "fr", fields: [{ key: "title", label: "Titre", type: "string" }, { key: "author", label: "Auteur", type: "reference", to: ["author"] }] },
   );
   manifest.documents.push(
     { id: "author:alex", type: "author", slug: "alex", data: { name: "Alex", _id: "author:alex", _type: "author" } },
-    { id: "author:unused", type: "author", slug: "unused", data: { name: "Unused author", _id: "author:unused", _type: "author" } },
+    { id: "author:unused", type: "author", slug: "unused", data: { name: "Unused author", _id: "author:unused", _type: "author", related: { _ref: "page:landing" } } },
+    { id: "offlinePage:offline", type: "offlinePage", slug: "offline", data: { title: "Offline page", _id: "offlinePage:offline", _type: "offlinePage" } },
     { id: "page:landing", type: "page", slug: "landing", data: { title: "Landing", _id: "page:landing", _type: "page", author: { _ref: "author:alex" } } },
     { id: "pageFr:accueil", type: "pageFr", slug: "accueil", data: { title: "Accueil", _id: "pageFr:accueil", _type: "pageFr", author: { _ref: "author:alex" } } },
   );
+  manifest.schema.documents.push({ ...manifest.schema.documents.find(type => type.name === "page"), name: "offlinePage", title: "Offline pages", folder: "offline-pages" });
+  manifest.preview.documents = { page: { url: "/preview-document/{slug}.html" }, pageFr: { url: "/preview-fr/{slug}.html" } };
+  manifest.collections.push({ name: "notes", label: "News", fields: [{ key: "title", label: "Title", type: "string" }], columns: ["title"], posts: [{ slug: "plain", frontmatter: { title: "Plain article" } }] });
   manifest.collections[0].locale = "en";
   manifest.collections[0].fields.push({ key: "author", label: "Author", type: "reference", to: "author" });
   manifest.collections[0].posts[0].frontmatter.author = "author:alex";
+  manifest.collections[0].fields.push({ key: "cover", label: "Cover", type: "image" });
+  manifest.collections[0].posts[0].frontmatter.cover = "/usage-fixture.svg";
 }
 
 const dictionaries = { en: {} };
@@ -67,7 +73,10 @@ try {
   vite = await createServer({ ...options, root: path.join(scratch, "dist"), plugins: [{ name: "shortcut-backend", configureServer(server) { server.middlewares.use(async (req, res, next) => {
     const send = (status, type, value) => { res.statusCode = status; if (type) res.setHeader("Content-Type", type); res.end(value); };
     if (req.url === "/rigel/manifest.json") return send(200, "application/json", JSON.stringify(manifest));
-    if (req.url === "/rigel/media.json") return send(200, "application/json", JSON.stringify({ assets: [], writable: false }));
+    if (req.url === "/rigel/media.json") return send(200, "application/json", JSON.stringify({ assets: usageMode ? [{ name: "Usage fixture", url: "/usage-fixture.svg", type: "image/svg+xml", size: 100 }] : [], writable: false }));
+    if (usageMode && req.url === "/usage-fixture.svg") return send(200, "image/svg+xml", '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="blue"/></svg>');
+    if (usageMode && req.url === "/preview-document/landing.html") return send(200, "text/html", '<!doctype html><html><body><main data-rigel-doc="page:landing"><h1 data-rigel-text="title">Landing</h1></main></body></html>');
+    if (usageMode && req.url === "/preview-fr/accueil.html") return send(200, "text/html", '<!doctype html><html><body><main data-rigel-doc="pageFr:accueil"><h1 data-rigel-text="title">Accueil</h1></main></body></html>');
     if (req.url === "/preview-page.html") return send(200, "text/html", pagePreview);
     if (req.url === "/preview-post.html") return send(200, "text/html", postPreview);
     if (recoveryMode && req.method !== "GET" && req.url.startsWith("/rigel/api/local/")) {
@@ -81,7 +90,8 @@ try {
       else { const slug = decodeURIComponent(req.url.split("/").pop()); const post = manifest.collections[0].posts.find(post => post.slug === slug); if (post) Object.assign(post, data); else manifest.collections[0].posts.push({ slug, ...data }); }
       return send(200, "application/json", "{}");
     }
-    if (req.url === "/rigel/api/local/blog/test" && req.method === "GET") return send(200, "application/json", JSON.stringify({ frontmatter: { title: "Test post" }, body }));
+    if (usageMode && req.url === "/rigel/api/local/notes/plain" && req.method === "GET") return send(200, "application/json", JSON.stringify({ frontmatter: { title: "Plain article" }, body }));
+    if (req.url === "/rigel/api/local/blog/test" && req.method === "GET") return send(200, "application/json", JSON.stringify({ frontmatter: { title: "Test post", ...(usageMode ? { author: "author:alex", cover: "/usage-fixture.svg" } : {}) }, body }));
     if (req.url === "/rigel/api/local/blog/test" && req.method === "POST") { writes.push(req.url); await delay(120); return send(200, "application/json", "{}"); }
     if (req.url === "/rigel/api/local/save" && req.method === "POST") { writes.push(req.url); await delay(120); return send(200, "application/json", "{}"); }
     if (req.method !== "GET") { writes.push("unexpected " + req.method + " " + req.url); return send(500, "text/plain", "Unexpected content write"); }

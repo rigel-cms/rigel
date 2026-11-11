@@ -89,3 +89,12 @@ test("validates single and multiple references and rejects unknown, wrong-type a
   expect(() => validateCollectionReferences([multiple], { author: [] }, documents)).not.toThrow();
   for (const author of ["author:alex", ["author:alex", "author:alex"], ["page:home"]]) expect(() => validateCollectionReferences([multiple], { author }, documents)).toThrow();
 });
+
+test("article identity never aliases a schema document with the same type and slug", () => {
+  const manifest: import("./types").Manifest = { pages: [], schema: { objects: [], documents: [{ name: "blog", title: "Blog pages", type: "document", folder: "pages", fields: [] }] }, documents: [
+    { id: "blog:source", type: "blog", slug: "source", data: { title: "Source", target: { _ref: "blog:test" } } },
+  ], collections: [{ name: "blog", label: "Blog", fields: [], posts: [{ slug: "test", frontmatter: {} }] }] };
+  expect(entryUsage(manifest, { kind: "post", collection: "blog", slug: "test" })).toEqual({ entries: [], complete: true });
+  expect(entryUsage(manifest, { kind: "document", type: "blog", id: "blog:test" }).entries).toHaveLength(1);
+  expect(entryUsage(manifest, "blog:test").entries).toHaveLength(1);
+});

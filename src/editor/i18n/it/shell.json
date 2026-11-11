@@ -1,4 +1,6 @@
 {
+  "shell.entryUsageArticlesHint": "Gli articoli non possono essere selezionati nei campi di riferimento. I collegamenti nel testo non vengono tracciati.",
+  "shell.linkedFrom": "Collegato da",
   "shell.entryUsageIncomplete": "Riferimenti dai contenuti indicizzati. Alcune voci non sono ancora state controllate.",
   "shell.history": "Cronologia",
   "shell.historyDescription": "Versioni del file nel ramo di lavoro corrente. I percorsi rinominati possono avere una cronologia separata. Il ripristino modifica solo la bozza non salvata.",

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { createHash } from 'node:crypto';
 
 const url = process.env.RIGEL_URL || "http://127.0.0.1:4322/rigel/";
 assert.ok(["localhost", "127.0.0.1"].includes(new URL(url).hostname), "Run against a local fixture host only");
@@ -19,7 +20,8 @@ let sequence = 0, writes = 0;
 const id = () => (++sequence).toString(16).padStart(40, "0");
 const blobs = new Map(), trees = new Map(), commits = new Map();
 const files = new Map();
-const put = (path, bytes) => { const sha = id(); blobs.set(sha, Buffer.from(bytes)); files.set(path, sha); };
+const blobSha = bytes => createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+const put = (path, bytes) => { bytes = Buffer.from(bytes); const sha = blobSha(bytes); blobs.set(sha, bytes); files.set(path, sha); };
 put("site/src/fields/entry.json", JSON.stringify({ title: "Media fields", image: "", file: "" }));
 put("site/src/blog/article.json", JSON.stringify({ frontmatter: { title: "Article", cover: "" }, body: emptyBody }));
 put("site/src/copy/copy.ts", 'import { defineCopy } from "@rigel-cms/rigel/content";\nexport default defineCopy({slug:"copy",label:"Copy",shared:true,groups:[],values:{content:{body:"Copy"}}});');
@@ -29,6 +31,7 @@ const requests = [], errors = [];
 const api = (path, method, body) => {
   requests.push({ path, method, body });
   if (method === "OPTIONS") return [204, null];
+  if (path === '/graphql') return [404, {}];
   if (path === "/user") return [200, { login: "fixture-user", name: "Fixture user", avatar_url: "https://avatars.githubusercontent.com/u/1", html_url: "https://github.com/fixture-user" }];
   const repository = { id: 42, full_name: manifest.github.repo, name: "fixture-site", default_branch: "main", owner: { login: "fixture-owner" }, permissions: { push: true, pull: true }, archived: false, disabled: false };
   if (path.startsWith("/user/installations?")) return [200, { total_count: 1, installations: [{ id: 7, app_slug: "rigel-cms", account: { login: "fixture-owner", type: "User" }, permissions: { contents: "write" }, suspended_at: null, html_url: "https://github.com/settings/installations/7" }] }];
@@ -44,7 +47,7 @@ const api = (path, method, body) => {
   }
   if (path.startsWith("/git/blobs/")) { const sha = path.slice(11); assert.ok(blobs.has(sha)); return [200, { sha, encoding: "base64", content: blobs.get(sha).toString("base64") }]; }
   if (path.startsWith("/git/commits/")) { const commit = commits.get(path.slice(13)); assert.ok(commit); return [200, { tree: { sha: commit.tree } }]; }
-  if (path === "/git/blobs" && method === "POST") { const sha = id(); blobs.set(sha, Buffer.from(body.content, "base64")); return [201, { sha }]; }
+  if (path === "/git/blobs" && method === "POST") { const bytes = Buffer.from(body.content, "base64"), sha = blobSha(bytes); blobs.set(sha, bytes); return [201, { sha }]; }
   if (path === "/git/trees" && method === "POST") {
     assert.equal(body.base_tree, commits.get(head).tree);
     const next = new Map(trees.get(body.base_tree));
@@ -108,7 +111,7 @@ try {
   const evaluate = async expression => { const result = await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, userGesture: true }); if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text); return result.result.value; };
   const waitFor = async expression => { for (let i = 0; i < 150; i++) { if (await evaluate(expression)) return; await new Promise(resolve => setTimeout(resolve, 100)); } throw new Error(`Timed out ${expression}\n${JSON.stringify(errors)}\n${await evaluate("document.body.innerText.slice(-2500)")}`); };
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  const button = text => evaluate(`[...document.querySelectorAll('button')].find(el=>el.getBoundingClientRect().width && el.textContent.trim()===${JSON.stringify(text)}).click()`);
+  const button = text => evaluate(`(()=>{const button=[...document.querySelectorAll('button')].find(el=>el.getBoundingClientRect().width && el.textContent.trim()===${JSON.stringify(text)});if(!button) throw Error('Missing button '+${JSON.stringify(text)}+'\\n'+document.body.innerText);button.click();})()`);
   const field = (selector, value) => evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   const chooseFile = async (name, type, bytes) => {
     await waitFor("!!document.querySelector('dialog[open] input[type=file]')");
@@ -146,6 +149,36 @@ try {
   await click("dialog[open] .media-actions .primary");
   await waitFor("!document.querySelector('dialog[open]') && document.querySelectorAll('.media-library .thumb').length===2");
   const fileUrl = Object.keys(ledger()).find(url => url.endsWith(".txt"));
+  if (process.argv.includes('--image-processing')) {
+  let heic;
+  try { heic = await readFile('_temp/image-processing/example.heic'); }
+  catch { const response = await fetch('https://raw.githubusercontent.com/strukturag/libheif/master/examples/example.heic'); assert.ok(response.ok); heic = Buffer.from(await response.arrayBuffer()); }
+  assert.equal(createHash('sha256').update(heic).digest('hex'), '7f8b363e4936c0666a25f64f3a92fda10bd8e5453be4592530b65a55dd98f3f2');
+  const beforeProcessing = writes;
+  const oldSettings = await evaluate(`localStorage.getItem('rigelcms.settings')`);
+  await evaluate(`localStorage.setItem('rigelcms.settings',JSON.stringify({...JSON.parse(localStorage.getItem('rigelcms.settings')),imageProcessing:{convertHeic:true,resize:true,quality:90,maxEdge:320}}))`);
+  await button('Upload'); await chooseFile('Phone (1).heic', 'image/heic', heic);
+  await waitFor("document.querySelector('dialog[open] .media-preview img')?.naturalWidth === 320");
+  assert.equal(writes, beforeProcessing, 'Real HEIC decoding stages a preview without writing GitHub');
+  await click('dialog[open] .media-actions .primary');
+  await waitFor("!document.querySelector('dialog[open]') && document.querySelectorAll('.media-library .thumb').length===3");
+  const processedUrl = Object.keys(ledger()).find(url => ledger()[url].name === 'Phone (1).webp');
+  assert.match(processedUrl, /\.webp$/);
+  const processedBytes = blobs.get(files.get('site/static' + processedUrl));
+  assert.equal(processedBytes.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(processedBytes.toString('ascii', 8, 12), 'WEBP');
+  assert.equal(writes, beforeProcessing + 1, 'Converted bytes and metadata commit once');
+  const processingTree = requests.filter(request => request.path.endsWith('/git/trees') && request.method === 'POST').at(-1);
+  assert.deepEqual(processingTree.body.tree.map(entry => entry.path).sort(), ['site/static' + processedUrl, 'site/static/uploads/media/.rigel-media.json'].sort());
+  await evaluate(`document.querySelector('.media-library button[aria-label="Phone (1).webp"]').click()`);
+  await waitFor("document.querySelector('dialog[open] .media-preview img')?.naturalWidth === 320");
+  await button('Delete file'); await waitFor("!!document.querySelector('.action-dialog')");
+  await evaluate("[...document.querySelectorAll('.action-dialog button')].find(button=>button.textContent.trim()==='Delete file').click()");
+  await waitFor("!document.querySelector('dialog[open]') && document.querySelectorAll('.media-library .thumb').length===2");
+  await evaluate(`localStorage.setItem('rigelcms.settings',${JSON.stringify(oldSettings)})`);
+  console.log('PASS: real HEIC → resized WebP → mocked GitHub atomic commit/readback');
+  assert.deepEqual(errors, []);
+  } else {
   await button("Media fields"); await waitFor("!!document.querySelector('main .table-link')"); await click("main .table-link");
   await waitFor("!!document.querySelector('.document-form')");
   await button("Choose…"); await waitFor("!!document.querySelector('dialog[open] .thumb')"); await click("dialog[open] .thumb"); await click("dialog[open] .media-actions .primary");
@@ -256,6 +289,7 @@ try {
   assert.deepEqual(errors, []);
   await writeFile("_temp/github-media-results.json", JSON.stringify({ writes, requests: requests.length, assertions: "atomic upload, binary private preview/download, metadata, schema image/file unsaved Save, deletion, no publish/local API/token leaks, object URL cleanup", liveGitHub: false }, null, 2));
   console.log("PASS GitHub media: real App, mocked GitHub transport; no live GitHub writes");
+  }
 } finally {
   socket?.close(); chrome.kill("SIGTERM");
   await once(chrome, "exit").catch(() => {}); await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { processImage, imageSourceLimit, heicName } from "./process-image";
+  import { safeMediaLabel } from "../../media-types";
   import { locale, t } from "../i18n";
   import { onMount, onDestroy, tick } from "svelte";
   import Icon from "./Icon.svelte";
@@ -191,16 +193,22 @@
     } catch (e) { if (request === requestId) error = e instanceof Error ? e.message : $t(kind === "file" ? "media.uploadFailedGeneric" : "media.photoImportFailed"); }
     finally { if (request === requestId) picking = false; }
   }
-  function upload(file?: File) {
+  async function upload(file?: File) {
     if (demoMode) return;
     if (!file || picking) return;
     error = "";
-    const limit = maxFileSize;
+    const limit = imageSourceLimit(file.name, getSettings().imageProcessing, maxFileSize);
     if (kind === "file" && !matchesMediaAccept(file.name, accept)) { error = $t("media.chooseAcceptedFile", { accept: accept ?? mediaAccept() }); return; }
     if (file.size > limit) { error = $t("local.mediaTooLarge", { limit: limit / 1024 / 1024 }); return; }
-    if (!validUploadName(file.name) || (!inline && kind !== "file" && mediaMetadata(file.name)?.category !== (kind === "video" ? "Video" : "Images"))) {
+    if ((!validUploadName(file.name) && !(heicName(file.name) && safeMediaLabel(file.name))) || (!inline && kind !== "file" && (heicName(file.name) ? "Images" : mediaMetadata(file.name)?.category) !== (kind === "video" ? "Video" : "Images"))) {
       error = $t("local.unsupportedMedia"); return;
     }
+    const request = ++requestId;
+    picking = true;
+    try { file = await processImage(file, getSettings().imageProcessing); }
+    catch (e) { if (request === requestId) error = e instanceof Error ? e.message : $t("media.imageProcessingFailed"); return; }
+    finally { if (request === requestId) picking = false; }
+    if (request !== requestId) return;
     const type = mediaMetadata(file.name)!.type;
     releaseFile(); objectURL = URL.createObjectURL(new Blob([file], { type: type === "text/plain" ? "text/plain; charset=utf-8" : type }));
     metaTitle = file.name.replace(/\.[^.]+$/, "").slice(0, 200); metaDescription = ""; alt = altText;
@@ -353,7 +361,7 @@
         {:else if tab === "upload"}
           <p class="hint">{$t("media.localFileHint")}</p>
           {#if kind === "file" && accept}<p class="hint">{$t("media.chooseAcceptedFile", { accept })}</p>{/if}
-          {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline)} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
+          {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline) + ",.heic,.heif"} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
         {:else if tab === "url"}
           <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="url" bind:value={urlInput} placeholder={$t(kind === "video" ? "media.videoUrlPlaceholder" : "media.imageUrlPlaceholder")} /></label>
           <button type="button" class="primary" onclick={() => run()}>{$t("media.useUrl")}</button>

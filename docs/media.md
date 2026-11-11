@@ -19,6 +19,29 @@ The local development server writes media to the filesystem. The GitHub backend 
 
 A static build still emits `/rigel/media.json` with an `assets` array for all supported files and an `images` array for images only. Local read-only views and demo mode use this snapshot; the authenticated GitHub library does not.
 
+## Image processing
+
+New HEIC/HEIF photos are converted to WebP in the browser at quality 90. Other images are not converted to WebP. Resizing is enabled by default with a 2048px longest-edge limit. It keeps the aspect ratio and never enlarges an image:
+
+```ts
+rigel({
+  imageProcessing: {
+    convertHeic: true,
+    resize: true,
+    quality: 90,
+    maxEdge: 2048,
+  },
+})
+```
+
+All four options are optional. `quality` is an integer from 1 to 100; `maxEdge` is an integer from 1 to 16384. JPEG, PNG and WebP keep their original format when resized. Images already within the cap remain byte-for-byte unchanged, except HEIC/HEIF conversion. GIF, animated PNG/WebP and AVIF are left unchanged; HEIC sequences are rejected rather than flattened. PNG encoding does not use the lossy quality setting.
+
+Settings → Media can adjust or disable processing in this browser. Saved browser preferences take precedence over website defaults. Turning off HEIC conversion makes HEIC/HEIF uploads unsupported. Existing assets are never rewritten. A local file is processed for its staged preview; nothing is stored until confirmation. URL and stock imports are processed on confirmation (Unsplash hotlinks are not imported).
+
+Processing accepts source images up to 32 MiB, with a decoded limit of 64 megapixels and 16384 pixels on either edge. The resulting file must still pass the configured `maxFileSize`, format and byte checks on either storage backend. A source above the storage-size limit can therefore be resized before that limit is applied. Re-encoding can discard metadata, including GPS/EXIF data.
+
+Safari's native decoder is tried first. Other browsers lazily load the bundled `@discourse/heic` WebAssembly decoder in a dedicated worker. There is no third-party runtime CDN or conversion server. A failed decoder or unsupported encoder produces an error, not a differently labelled file.
+
 ## Supported files
 
 The library reads subfolders recursively, skips hidden files and symlinks, and accepts these six categories:

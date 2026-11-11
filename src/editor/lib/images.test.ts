@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getKeys, setKeys, searchImages, importStockImage, importImageUrl, uploadMedia, uploadImage } from "./images";
 import config from "virtual:rigel-config";
 
-vi.mock("virtual:rigel-config", () => ({ default: { maxFileSize: undefined } }));
+vi.mock("virtual:rigel-config", () => ({ default: { maxFileSize: undefined, imageProcessing: { resize: false } } }));
 
 const fetchMock = vi.fn();
 

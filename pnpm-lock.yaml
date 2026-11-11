@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@discourse/heic':
+        specifier: 1.0.0
+        version: 1.0.0
       '@lexical/code':
         specifier: ~0.52.0
         version: 0.52.0(typescript@6.0.3)
@@ -246,6 +249,9 @@ packages:
   '@clack/prompts@1.8.1':
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
+
+  '@discourse/heic@1.0.0':
+    resolution: {integrity: sha512-YMW5o0bHvhL4rjzGt7kpr8geqMEhP7yS20Hh5eMJtDOmHuCqn+icpNLr1ImFygU/yN39MUHVenETXcpDG6PPww==}
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -1831,6 +1837,8 @@ snapshots:
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
+
+  '@discourse/heic@1.0.0': {}
 
   '@emnapi/core@1.11.1':
     dependencies:

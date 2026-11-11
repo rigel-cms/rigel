@@ -64,13 +64,14 @@
     "vitest": "^5.0.0"
   },
   "dependencies": {
-    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@discourse/heic": "1.0.0",
     "@lexical/code": "~0.52.0",
     "@lexical/history": "~0.52.0",
     "@lexical/link": "~0.52.0",
     "@lexical/list": "~0.52.0",
     "@lexical/rich-text": "~0.52.0",
     "@lexical/table": "~0.52.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "dompurify": "^3.4.15",
     "lexical": "~0.52.0",
     "markdown-it": "^14.3.2",

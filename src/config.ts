@@ -6,6 +6,7 @@ import { withSeoFields } from "./manifest/seo";
 import { previewBaseUrl, previewRoute } from "./preview-urls";
 import type { JsonOutput } from "./json-output";
 import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
+import { imageProcessingOptions, type ImageProcessing } from "./image-processing";
 import { systemMessage } from "./editor/i18n/format";
 import { localeNames, type Locale } from "./editor/i18n/locales";
 import { validateContentLocales, validateContentLocale } from "./manifest/content-locales";
@@ -22,6 +23,7 @@ export interface RigelConfig {
   copyDir: string;
   mediaDir?: string;
   maxFileSize?: number;
+  imageProcessing?: Partial<ImageProcessing>;
   preview?: import("./preview").PreviewConfig;
   backend: "local" | "github" | "demo";
   jsonOutput?: JsonOutput;
@@ -62,6 +64,12 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
   if (!["local", "github", "demo"].includes(cfg.backend)) throw new Error("rigel: backend must be local, github or demo");
   cfg.search = { scope: effectiveSearchScope(cfg.search, undefined) };
+  if (cfg.imageProcessing !== undefined) {
+    const value = cfg.imageProcessing;
+    const normalized = imageProcessingOptions(value);
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => !Object.hasOwn(normalized, key) || value[key as keyof ImageProcessing] !== normalized[key as keyof ImageProcessing])) throw new Error("rigel: invalid imageProcessing options");
+  }
+  cfg.imageProcessing = imageProcessingOptions(cfg.imageProcessing);
   if (cfg.contentLocales !== undefined) {
     validateContentLocales(cfg.contentLocales);
     cfg.contentLocales = { ...cfg.contentLocales, locales: cfg.contentLocales.locales.map(locale => ({ ...locale })) };

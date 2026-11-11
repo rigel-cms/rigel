@@ -192,6 +192,7 @@ export const menus = {
           publicDir: publicDir?.href,
           mediaDir: cfg.mediaDir,
           maxFileSize: cfg.maxFileSize,
+          imageProcessing: cfg.imageProcessing,
           root: root?.href,
           menus: cfg.menus,
           collections: cfg.collections ?? [],

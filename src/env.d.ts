@@ -27,6 +27,6 @@ declare module "virtual:rigel-content" {
 
 declare module "virtual:rigel-config" {
   import type { RigelConfig } from "@rigel-cms/rigel";
-  const config: Pick<RigelConfig, "copyDir" | "backend" | "jsonOutput" | "demo" | "languages" | "collections" | "menus" | "mediaDir" | "maxFileSize" | "schema" | "preview"> & { publicDir?: string; root?: string };
+  const config: Pick<RigelConfig, "copyDir" | "backend" | "jsonOutput" | "demo" | "languages" | "collections" | "menus" | "mediaDir" | "maxFileSize" | "imageProcessing" | "schema" | "preview"> & { publicDir?: string; root?: string };
   export default config;
 }

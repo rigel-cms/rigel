@@ -1,6 +1,8 @@
 import { readStorage, writeStorage } from "./storage";
 import type { StockKeys } from "./images";
 import { availableLocales, setLocale, type Locale } from "../i18n";
+import { imageProcessingOptions, type ImageProcessing } from "../../image-processing";
+import config from "virtual:rigel-config";
 
 export interface RigelUserPref {
   searchScope?: "all" | "currentLocale";
@@ -11,6 +13,7 @@ export interface RigelUserPref {
 }
 
 export interface RigelSettings {
+  imageProcessing: ImageProcessing;
   theme: "system" | "light" | "dark";
   language: Locale;
 
@@ -27,6 +30,7 @@ const prefs = (theme: "system" | "light" | "dark" = "system", language: Locale =
 
 const DEFAULTS: RigelSettings = {
   ...prefs(),
+  imageProcessing: imageProcessingOptions(config.imageProcessing),
   apiKeys: {},
   userPref: { previewSplit: 0.5, mediaView: "grid", sidebarCollapsed: false, editorExperience: "inline" },
 };
@@ -46,6 +50,7 @@ export function getSettings(): RigelSettings {
       devMode: typeof saved?.devMode === "boolean" ? saved.devMode : DEFAULTS.devMode,
       highContrast: typeof saved?.highContrast === "boolean" ? saved.highContrast : DEFAULTS.highContrast,
       apiKeys: mergedKeys,
+      imageProcessing: imageProcessingOptions(saved?.imageProcessing, imageProcessingOptions(config.imageProcessing)),
       userPref: {
         searchScope: saved?.userPref?.searchScope === "all" || saved?.userPref?.searchScope === "currentLocale" ? saved.userPref.searchScope : undefined,
         sidebarCollapsed: saved?.userPref?.sidebarCollapsed === true,
@@ -60,7 +65,7 @@ export function getSettings(): RigelSettings {
       },
     };
   } catch {
-    return { ...DEFAULTS, apiKeys: readLegacyKeys(), userPref: { ...DEFAULTS.userPref, ...readLegacyPref() } };
+    return { ...DEFAULTS, imageProcessing: imageProcessingOptions(config.imageProcessing), apiKeys: readLegacyKeys(), userPref: { ...DEFAULTS.userPref, ...readLegacyPref() } };
   }
 }
 

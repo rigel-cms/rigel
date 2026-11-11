@@ -13,7 +13,7 @@
   import { getSettings, setSettings } from "./settings";
   import { DEFAULT_MAX_FILE_SIZE, MEDIA_CATEGORIES, mediaMetadata, mediaAccept, validUploadName, matchesMediaAccept, safeFileUrl } from "../../media-types";
   import config from "virtual:rigel-config";
-  import { onMediaReset, refreshMediaPreviews, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
+  import { onMediaReset, mediaUploadGuard, refreshMediaPreviews, mediaBackend, listMedia, saveMediaMetadata, deleteMedia } from "./media-backend";
   import { parseEmbedUrl, embedWatchUrl, type EmbedProvider } from "./embeds";
   import type { EmbedData } from "../blocks/embed";
   import type { VideoData } from "../blocks/video";
@@ -57,6 +57,94 @@
   let assets = $state<MediaAsset[]>([]);
   let writable = $state(false);
   let folder = $state("");
+  let dragDepth = $state(0);
+  let uploadQueue = $state<{ name: string; file?: File; state: "queued" | "uploading" | "done" | "error"; error?: string }[]>([]);
+  let queueRunning = false;
+  let queueGeneration = 0;
+  let queueGuard: (() => void) | undefined;
+  let progressToast = 0;
+  const queueToasts = new Set<number>();
+  function queueNotice(kind: "success" | "error", message: string) { queueToasts.add(createToast({ kind, message })); }
+  function queueProgress(finished = false) {
+    const completed = uploadQueue.filter(item => item.state === "done").length;
+    const failed = uploadQueue.filter(item => item.state === "error").length;
+    const total = uploadQueue.length;
+    updateToast(progressToast, { kind: finished ? "info" : "progress", message: finished ? $t("media.uploadSummary", { completed, failed, total }) : $t("media.uploadingBatch", { total }) + "\n" + $t("media.uploadCount", { completed: completed + failed, total }) });
+  }
+  function stopQueue() {
+    queueGeneration++; queueGuard = undefined; uploadQueue = []; dragDepth = 0;
+    for (const id of queueToasts) dismissToast(id);
+    queueToasts.clear(); dismissToast(metadataToast);
+  }
+  async function enqueue(files: File[]) {
+    if (!inline || !writable || demoMode || picking || savingMeta) return;
+    if (!queueGuard) {
+      try { queueGuard = mediaUploadGuard(); }
+      catch (e) { error = e instanceof Error ? e.message : $t("media.uploadFailedGeneric"); return; }
+    }
+    const guard = queueGuard;
+    if (!guard) return;
+    if (!queueRunning && !uploadQueue.some(item => item.state === "queued")) {
+      if (!files.length) return;
+      uploadQueue = [];
+      progressToast = createToast({ kind: "progress", message: $t("media.uploadingBatch", { total: files.length }) });
+      queueToasts.add(progressToast);
+    }
+    uploadQueue.push(...files.map(file => ({ name: file.name, file, state: "queued" as const })));
+    queueProgress();
+    if (open) close();
+    if (queueRunning) return;
+    queueRunning = true;
+    const generation = queueGeneration;
+    const assertActive = () => {
+      guard();
+      if (generation !== queueGeneration || !writable) throw new Error($t("connection.reloadDraft"));
+    };
+    try {
+      for (const item of uploadQueue) {
+        if (generation !== queueGeneration) break;
+        if (item.state !== "queued" || !item.file) continue;
+        item.state = "uploading";
+        try {
+          assertActive();
+          await uploadMedia(item.file, {}, assertActive);
+          assertActive();
+          item.state = "done";
+          queueNotice("success", $t("media.fileUploaded", { name: item.name }));
+        } catch (e) {
+          if (generation !== queueGeneration) break;
+          item.state = "error"; item.error = e instanceof Error ? e.message : $t("media.uploadFailedGeneric");
+          queueNotice("error", `${item.name}: ${item.error}`);
+        } finally { item.file = undefined; }
+        if (generation === queueGeneration) queueProgress();
+      }
+      if (generation === queueGeneration) {
+        assertActive();
+        await library();
+      }
+    } catch (e) {
+      if (generation === queueGeneration) {
+        error = e instanceof Error ? e.message : $t("media.uploadFailedGeneric");
+        queueNotice("error", error);
+        for (const item of uploadQueue) if (item.state === "queued") { item.state = "error"; item.error = error; item.file = undefined; }
+      }
+    } finally {
+      if (generation === queueGeneration) queueProgress(!uploadQueue.some(item => item.state === "queued"));
+      queueRunning = false;
+      if (uploadQueue.some(item => item.state === "queued")) void enqueue([]);
+    }
+  }
+  function fileDrag(event: DragEvent) { return Array.from(event.dataTransfer?.types ?? []).includes("Files"); }
+  function dragOver(event: DragEvent) {
+    if (!fileDrag(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = writable && !demoMode ? "copy" : "none";
+  }
+  function dropFiles(event: DragEvent) {
+    if (!fileDrag(event)) return;
+    event.preventDefault(); dragDepth = 0;
+    void enqueue(Array.from(event.dataTransfer?.files ?? []));
+  }
   let loading = $state(false);
   let picking = $state(false);
   let searched = $state(false);
@@ -138,9 +226,9 @@
   }
   onMount(() => {
     if (inline) void run();
-    return onMediaReset(() => { dismissToast(metadataToast); close(); assets = []; writable = false; }, () => { if (inline) void run(); });
+    return onMediaReset(() => { stopQueue(); close(); assets = []; writable = false; }, () => { if (inline) void run(); });
   });
-  onDestroy(() => { dismissToast(metadataToast); requestId++; releaseFile(); });
+  onDestroy(() => { stopQueue(); requestId++; releaseFile(); });
   $effect(() => {
     if (open && dialog) { dialog.showModal(); cancel?.focus(); }
   });
@@ -242,9 +330,17 @@
   export function launchVideo(source: "library" | EmbedProvider) { onopen?.(); open = true; muted = video?.muted === true; controls = video?.controls !== false; changeTab(source); }
 </script>
 
+<style>
+  .media-library { position: relative; flex: 1; min-height: 12rem; padding: 1.5rem 1.75rem 4rem; outline: 2px solid transparent; outline-offset: -2px; }
+  .media-library.media-dragging { outline-color: var(--accent); background: var(--accent-soft); }
+  .media-drop-hint { position: absolute; right: 1.75rem; bottom: 1rem; left: 1.75rem; margin: 0; color: var(--text-muted); text-align: right; pointer-events: none; }
+  @media (max-width: 600px) { .media-library { padding: 1rem 1rem 4rem; } .media-drop-hint { right: 1rem; left: 1rem; } }
+</style>
+
 {#if inline}
-  <div class="titlebar"><h2>{$t("media.heading")}</h2><button bind:this={trigger} type="button" class="primary" disabled={demoMode} onclick={launch}>{$t("media.upload")}</button></div>
-  <div class="media-library">
+  <div class="media-library" class:media-dragging={dragDepth > 0 && writable && !demoMode} role="region" aria-label={$t("media.library")} ondragenter={event => { if (fileDrag(event)) { event.preventDefault(); dragDepth++; } }} ondragleave={event => { if (fileDrag(event)) dragDepth = Math.max(0, dragDepth - 1); }} ondragover={dragOver} ondrop={dropFiles}>
+  <div class="titlebar"><h2>{$t("media.heading")}</h2><button bind:this={trigger} type="button" class="primary" disabled={demoMode || !writable} onclick={launch}>{$t("media.upload")}</button></div>
+    {#if writable}<p class="media-drop-hint">{$t("media.dropFiles")}</p>{/if}
     {@render libraryBrowser()}
     {#if notice}<p role="status">{notice}</p>{/if}
     {#if error && !open}<p class="error" role="alert">{error}</p>{/if}
@@ -292,7 +388,7 @@
 {/snippet}
 
 {#if open}
-  <dialog bind:this={dialog} class="rigel-modal-backdrop rigel image-dialog" class:media-insert={providerTab} aria-label={$t(providerTab ? editing ? "media.editVideo" : "media.addVideoLink" : inline ? "media.uploadMedia" : kind === "file" ? "media.chooseFile" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")} oncancel={e => { e.preventDefault(); if (!picking) close(); }} onclick={e => { if (e.target === dialog && !picking) close(); }}>
+  <dialog ondragover={inline ? dragOver : undefined} ondrop={inline ? dropFiles : undefined} bind:this={dialog} class="rigel-modal-backdrop rigel image-dialog" class:media-insert={providerTab} aria-label={$t(providerTab ? editing ? "media.editVideo" : "media.addVideoLink" : inline ? "media.uploadMedia" : kind === "file" ? "media.chooseFile" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")} oncancel={e => { e.preventDefault(); if (!picking) close(); }} onclick={e => { if (e.target === dialog && !picking) close(); }}>
     <div class="rigel-modal image-picker">
       <div class="media-head"><h2>{providerTab ? $t(editing ? "media.editProviderVideo" : "media.addProviderVideo", { provider: tab === "youtube" ? "YouTube" : "Vimeo" }) : $t(selected ? "media.previewMedia" : inline ? "media.uploadMedia" : kind === "file" ? "media.chooseFile" : kind === "video" ? "media.chooseVideo" : "media.chooseImage")}</h2><button bind:this={cancel} type="button" class="close" aria-label={$t("media.close")} disabled={picking} onclick={close}><Icon name="x" size={14} weight="bold" /></button></div>
       {#if selected}
@@ -336,7 +432,7 @@
           {#if selected.asset}
             <a class="outlined media-download" href={selected.asset.url} download={assetFile(selected.asset.url)}>{$t("media.downloadFile")}</a>
             {#if inline && writable}<button bind:this={deleteTrigger} type="button" class="danger-btn" aria-label={$t("media.deleteFile")} disabled={picking || savingMeta} onclick={() => { confirmDelete = true; }}>{$t("media.deleteFile")}</button>{/if}
-            <pre class="media-path" role="region" aria-label={$t("media.filePath")} tabindex="0"><code>{selected.asset.url}</code></pre>
+            <div class="media-path" role="textbox" aria-readonly="true" aria-label={$t("media.filePath")} tabindex="0"><code>{selected.asset.url}</code></div>
           {/if}
           <div class="media-button-actions">
           {#if inline && selected.asset}
@@ -365,9 +461,9 @@
         {:else if tab === "library"}
           {@render libraryBrowser()}
         {:else if tab === "upload"}
-          <p class="hint">{$t("media.localFileHint")}</p>
+          <p class="hint">{$t(inline ? "media.dropFiles" : "media.localFileHint")}</p>
           {#if kind === "file" && accept}<p class="hint">{$t("media.chooseAcceptedFile", { accept })}</p>{/if}
-          {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline) + ",.heic,.heif"} onchange={e => upload(e.currentTarget.files?.[0])} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
+          {#if writable}<label><span>{$t(kind === "video" ? "media.uploadVideoLimit" : inline || kind === "file" ? "media.uploadMediaLimit" : "media.uploadImageLimit", { limit: maxFileSize / 1024 / 1024 })}</span><input type="file" accept={kind === "file" ? accept ?? mediaAccept() : kind === "video" ? ".mp4,.webm,.mov" : mediaAccept(!inline) + ",.heic,.heif"} multiple={inline} onchange={e => { if (inline) { void enqueue(Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ""; } else void upload(e.currentTarget.files?.[0]); }} /></label>{:else}<p role="status">{$t("media.readOnlyUploads")}</p>{/if}
         {:else if tab === "url"}
           <label><span>{$t(kind === "video" ? "media.videoUrl" : "media.imageUrl")}</span><input type="url" bind:value={urlInput} placeholder={$t(kind === "video" ? "media.videoUrlPlaceholder" : "media.imageUrlPlaceholder")} /></label>
           <button type="button" class="primary" onclick={() => run()}>{$t("media.useUrl")}</button>

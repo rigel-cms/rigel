@@ -32,7 +32,7 @@
   "media.noImage": "Geen afbeelding",
   "media.choose": "Kiezen…",
   "media.removeImage": "Afbeelding verwijderen",
-  "media.repositoryWritable": "Repositorymedia: {folder}. Bij bevestiging van een upload worden de bestanden direct weggeschreven; inhoud moet nog steeds via Opslaan worden opgeslagen.",
+  "media.repositoryWritable": "Repositorymedia: {folder}. Uploads schrijven bestanden direct weg; inhoud moet nog steeds via Opslaan worden opgeslagen.",
   "media.repositorySnapshot": "Repositorymedia: {folder}. Momentopname van de build. Uploads en het importeren van stockfoto's vereisen de lokale ontwikkelserver; GitHub-uploads zijn niet aangesloten.",
   "media.view": "Mediaweergave",
   "media.gridView": "Rasterweergave",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "De bronafbeelding is groter dan 32 MB.",
   "media.imageDimensionsExceeded": "De afbeelding overschrijdt de decodeerlimiet (64 megapixels of 16384 pixels per zijde).",
   "media.imageProcessingFailed": "Deze afbeelding kon niet worden verwerkt. Controleer het formaat of kies een kleinere afbeelding.",
-  "media.heicSequenceUnsupported": "Geanimeerde HEIC/HEIF wordt niet ondersteund; kies GIF, WebP of PNG."
+  "media.heicSequenceUnsupported": "Geanimeerde HEIC/HEIF wordt niet ondersteund; kies GIF, WebP of PNG.",
+  "media.dropFiles": "Sleep bestanden hierheen om ze direct te uploaden.",
+  "media.uploadCount": "{completed} van {total} bestanden voltooid",
+  "media.queue.queued": "In wachtrij",
+  "media.queue.uploading": "Uploaden…",
+  "media.queue.done": "Klaar",
+  "media.queue.error": "Mislukt",
+  "media.uploadingBatch": "{total} bestanden uploaden…",
+  "media.fileUploaded": "{name} geüpload.",
+  "media.uploadSummary": "{completed} geüpload, {failed} mislukt ({total} bestanden)."
 }

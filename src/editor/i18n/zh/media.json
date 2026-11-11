@@ -32,7 +32,7 @@
   "media.noImage": "无图片",
   "media.choose": "选择…",
   "media.removeImage": "移除图片",
-  "media.repositoryWritable": "仓库媒体：{folder}。确认上传后会立即写入文件；内容仍需点击“保存”。",
+  "media.repositoryWritable": "仓库媒体：{folder}。上传会立即写入文件；内容仍需点击“保存”。",
   "media.repositorySnapshot": "仓库媒体：{folder}。此处为构建时的快照。上传和图库导入需要本地开发服务器；尚未接入 GitHub 上传。",
   "media.view": "媒体视图",
   "media.gridView": "网格视图",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "源图像超过 32 MB。",
   "media.imageDimensionsExceeded": "图像超过解码限制（6400 万像素或单边 16384 像素）。",
   "media.imageProcessingFailed": "无法处理此图像。请检查格式或选择更小的图像。",
-  "media.heicSequenceUnsupported": "不支持动画 HEIC/HEIF；请选择 GIF、WebP 或 PNG。"
+  "media.heicSequenceUnsupported": "不支持动画 HEIC/HEIF；请选择 GIF、WebP 或 PNG。",
+  "media.dropFiles": "将文件拖到此处即可立即上传。",
+  "media.uploadCount": "已完成 {completed}/{total} 个文件",
+  "media.queue.queued": "排队中",
+  "media.queue.uploading": "上传中…",
+  "media.queue.done": "完成",
+  "media.queue.error": "失败",
+  "media.uploadingBatch": "正在上传 {total} 个文件…",
+  "media.fileUploaded": "已上传 {name}。",
+  "media.uploadSummary": "已上传 {completed} 个，失败 {failed} 个（共 {total} 个文件）。"
 }

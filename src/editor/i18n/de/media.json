@@ -32,7 +32,7 @@
   "media.noImage": "Kein Bild",
   "media.choose": "Auswählen…",
   "media.removeImage": "Bild entfernen",
-  "media.repositoryWritable": "Repository-Medien: {folder}. Beim Bestätigen eines Uploads werden die Dateien sofort geschrieben; Inhalte müssen weiterhin mit „Speichern“ gespeichert werden.",
+  "media.repositoryWritable": "Repository-Medien: {folder}. Uploads schreiben Dateien sofort; Inhalte müssen weiterhin mit „Speichern“ gespeichert werden.",
   "media.repositorySnapshot": "Repository-Medien: {folder}. Stand zum Zeitpunkt des Builds. Uploads und Importe von Stockfotos erfordern den lokalen Entwicklungsserver; GitHub-Uploads sind nicht angebunden.",
   "media.view": "Medienansicht",
   "media.gridView": "Rasteransicht",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "Die Bildquelle überschreitet 32 MB.",
   "media.imageDimensionsExceeded": "Das Bild überschreitet die Dekodierungsgrenze (64 Megapixel oder 16384 Pixel pro Kante).",
   "media.imageProcessingFailed": "Bildverarbeitung fehlgeschlagen. Prüfen Sie das Format oder wählen Sie ein kleineres Bild.",
-  "media.heicSequenceUnsupported": "Animiertes HEIC/HEIF wird nicht unterstützt; wählen Sie GIF, WebP oder PNG."
+  "media.heicSequenceUnsupported": "Animiertes HEIC/HEIF wird nicht unterstützt; wählen Sie GIF, WebP oder PNG.",
+  "media.dropFiles": "Dateien hier ablegen, um sie sofort hochzuladen.",
+  "media.uploadCount": "{completed} von {total} Dateien abgeschlossen",
+  "media.queue.queued": "Wartend",
+  "media.queue.uploading": "Wird hochgeladen…",
+  "media.queue.done": "Fertig",
+  "media.queue.error": "Fehlgeschlagen",
+  "media.uploadingBatch": "{total} Dateien werden hochgeladen…",
+  "media.fileUploaded": "{name} hochgeladen.",
+  "media.uploadSummary": "{completed} hochgeladen, {failed} fehlgeschlagen ({total} Dateien)."
 }

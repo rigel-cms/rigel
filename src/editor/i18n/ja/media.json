@@ -32,7 +32,7 @@
   "media.noImage": "画像なし",
   "media.choose": "選択…",
   "media.removeImage": "画像を削除",
-  "media.repositoryWritable": "リポジトリのメディア：{folder}。アップロードは確認後すぐにファイルに書き込まれます。コンテンツは別途保存が必要です。",
+  "media.repositoryWritable": "リポジトリのメディア：{folder}。アップロードはすぐにファイルに書き込まれます。コンテンツは別途保存が必要です。",
   "media.repositorySnapshot": "リポジトリのメディア：{folder}。ビルド時点のスナップショットです。アップロードとストック写真のインポートにはローカル開発サーバーが必要です。GitHubへのアップロードは未接続です。",
   "media.view": "メディアの表示",
   "media.gridView": "グリッド表示",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "元画像が 32 MB を超えています。",
   "media.imageDimensionsExceeded": "画像がデコード上限 (6400 万画素または一辺 16384 ピクセル) を超えています。",
   "media.imageProcessingFailed": "画像を処理できませんでした。形式を確認するか、小さい画像を選んでください。",
-  "media.heicSequenceUnsupported": "アニメーション HEIC/HEIF には対応していません。GIF、WebP、PNG を選んでください。"
+  "media.heicSequenceUnsupported": "アニメーション HEIC/HEIF には対応していません。GIF、WebP、PNG を選んでください。",
+  "media.dropFiles": "ここにファイルをドロップするとすぐにアップロードします。",
+  "media.uploadCount": "{total} 件中 {completed} 件完了",
+  "media.queue.queued": "待機中",
+  "media.queue.uploading": "アップロード中…",
+  "media.queue.done": "完了",
+  "media.queue.error": "失敗",
+  "media.uploadingBatch": "{total} 個のファイルをアップロード中…",
+  "media.fileUploaded": "{name} をアップロードしました。",
+  "media.uploadSummary": "{completed} 個成功、{failed} 個失敗（全 {total} 個）。"
 }

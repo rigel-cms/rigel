@@ -32,7 +32,7 @@
   "media.noImage": "Sin imagen",
   "media.choose": "Elegir…",
   "media.removeImage": "Quitar imagen",
-  "media.repositoryWritable": "Archivos multimedia del repositorio: {folder}. Al confirmar una subida, los archivos se escriben de inmediato; el contenido aún requiere Guardar.",
+  "media.repositoryWritable": "Archivos multimedia del repositorio: {folder}. Las subidas escriben los archivos de inmediato; el contenido aún requiere Guardar.",
   "media.repositorySnapshot": "Archivos multimedia del repositorio: {folder}. Instantánea generada durante la compilación. Las subidas y las importaciones de fotos de bancos de imágenes requieren el servidor de desarrollo local; las subidas a GitHub no están conectadas.",
   "media.view": "Vista de archivos multimedia",
   "media.gridView": "Vista de cuadrícula",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "La imagen de origen supera 32 MB.",
   "media.imageDimensionsExceeded": "La imagen supera el límite de decodificación (64 megapíxeles o 16384 píxeles por lado).",
   "media.imageProcessingFailed": "No se pudo procesar la imagen. Compruebe el formato o elija una imagen más pequeña.",
-  "media.heicSequenceUnsupported": "HEIC/HEIF animado no es compatible; elija GIF, WebP o PNG."
+  "media.heicSequenceUnsupported": "HEIC/HEIF animado no es compatible; elija GIF, WebP o PNG.",
+  "media.dropFiles": "Suelta archivos aquí para subirlos inmediatamente.",
+  "media.uploadCount": "{completed} de {total} archivos completados",
+  "media.queue.queued": "En cola",
+  "media.queue.uploading": "Subiendo…",
+  "media.queue.done": "Completado",
+  "media.queue.error": "Error",
+  "media.uploadingBatch": "Subiendo {total} archivos…",
+  "media.fileUploaded": "{name} subido.",
+  "media.uploadSummary": "{completed} subidos, {failed} fallidos ({total} archivos)."
 }

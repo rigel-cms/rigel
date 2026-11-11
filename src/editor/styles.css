@@ -467,6 +467,7 @@
   min-width: 0;
 }
 .rigel main.wide { max-width: 100%; }
+.rigel main:has(> .media-library) { display: flex; flex-direction: column; min-height: 100dvh; padding: 0; }
 
 .rigel .menu-details { max-width: 720px; }
 .rigel main:not(.wide) { max-width: 720px; }

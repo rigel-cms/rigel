@@ -37,6 +37,17 @@ test.each(["Chambre (1).png", "Océan d'Atlantique (été).png", "海辺 🌊 10
   expect(decodeURIComponent(headers.get("X-Rigel-Filename")!)).toBe(name);
 });
 
+test("queued upload rechecks its scope after asynchronous processing before writing", async () => {
+  let active = true;
+  const guard = vi.fn(() => { if (!active) throw new Error("stale upload scope"); });
+  const pending = uploadMedia(new File(["text"], "queued.txt", { type: "text/plain" }), {}, guard);
+  expect(guard).toHaveBeenCalledTimes(1);
+  active = false;
+  await expect(pending).rejects.toThrow("stale upload scope");
+  expect(guard).toHaveBeenCalledTimes(2);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 test("upload and image imports use the configured byte limit", async () => {
   config.maxFileSize = 1024;
   await expect(uploadMedia(new File([new Uint8Array(1025)], "clip.mp4", { type: "video/mp4" }))).rejects.toThrow(/Media exceeds/);

@@ -32,7 +32,7 @@
   "media.noImage": "No image",
   "media.choose": "Choose…",
   "media.removeImage": "Remove image",
-  "media.repositoryWritable": "Repository media: {folder}. Uploads write files immediately on confirmation; content still requires Save.",
+  "media.repositoryWritable": "Repository media: {folder}. Uploads write files immediately; content still requires Save.",
   "media.repositorySnapshot": "Repository media: {folder}. Build-time snapshot. Uploads and stock imports require the local dev server; GitHub uploads are not connected.",
   "media.view": "Media view",
   "media.gridView": "Grid view",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "Image source exceeds 32 MB.",
   "media.imageDimensionsExceeded": "Image exceeds the decoding limit (64 megapixels or 16384 pixels per edge).",
   "media.imageProcessingFailed": "Could not process this image. Check the format or choose a smaller image.",
-  "media.heicSequenceUnsupported": "Animated HEIC/HEIF is unsupported; choose GIF, WebP or PNG instead."
+  "media.heicSequenceUnsupported": "Animated HEIC/HEIF is unsupported; choose GIF, WebP or PNG instead.",
+  "media.dropFiles": "Drop files here to upload immediately.",
+  "media.uploadCount": "{completed} of {total} files completed",
+  "media.queue.queued": "Queued",
+  "media.queue.uploading": "Uploading…",
+  "media.queue.done": "Done",
+  "media.queue.error": "Failed",
+  "media.uploadingBatch": "Uploading {total} files…",
+  "media.fileUploaded": "Uploaded {name}.",
+  "media.uploadSummary": "{completed} uploaded, {failed} failed ({total} files)."
 }

@@ -191,9 +191,11 @@ export function currentAuthor(): string {
   } catch { return "Local user"; }
 }
 
-export async function uploadMedia(file: File, meta: MediaMeta = {}): Promise<string> {
+export async function uploadMedia(file: File, meta: MediaMeta = {}, assertActive: () => void = () => {}): Promise<string> {
+  assertActive();
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
   file = await processImage(file, getSettings().imageProcessing);
+  assertActive();
   const metadata = mediaMetadata(file.name);
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   if (file.size > limit) throw new Error(translate("local.mediaTooLarge", { limit: limit / 1024 / 1024 }));

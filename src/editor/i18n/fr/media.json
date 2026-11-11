@@ -32,7 +32,7 @@
   "media.noImage": "Aucune image",
   "media.choose": "Choisir…",
   "media.removeImage": "Retirer l’image",
-  "media.repositoryWritable": "Médias du dépôt : {folder}. Les fichiers sont écrits dès la confirmation de l’importation ; le contenu doit toujours être enregistré avec Enregistrer.",
+  "media.repositoryWritable": "Médias du dépôt : {folder}. Les fichiers sont écrits immédiatement ; le contenu doit toujours être enregistré avec Enregistrer.",
   "media.repositorySnapshot": "Médias du dépôt : {folder}. Instantané créé lors de la compilation. Les importations de fichiers et de photos de banques d’images nécessitent le serveur de développement local ; l’importation via GitHub n’est pas connectée.",
   "media.view": "Affichage des médias",
   "media.gridView": "Vue en grille",
@@ -186,5 +186,14 @@
   "media.imageSourceExceeded": "La source dépasse 32 Mo.",
   "media.imageDimensionsExceeded": "L’image dépasse la limite de décodage (64 mégapixels ou 16384 pixels par côté).",
   "media.imageProcessingFailed": "Impossible de traiter cette image. Vérifiez le format ou choisissez une image plus petite.",
-  "media.heicSequenceUnsupported": "HEIC/HEIF animé non pris en charge ; choisissez GIF, WebP ou PNG."
+  "media.heicSequenceUnsupported": "HEIC/HEIF animé non pris en charge ; choisissez GIF, WebP ou PNG.",
+  "media.dropFiles": "Déposez des fichiers ici pour les téléverser immédiatement.",
+  "media.uploadCount": "{completed} fichiers sur {total} traités",
+  "media.queue.queued": "En attente",
+  "media.queue.uploading": "Téléversement…",
+  "media.queue.done": "Terminé",
+  "media.queue.error": "Échec",
+  "media.uploadingBatch": "Téléversement de {total} fichiers…",
+  "media.fileUploaded": "{name} téléversé.",
+  "media.uploadSummary": "{completed} téléversés, {failed} en échec ({total} fichiers)."
 }

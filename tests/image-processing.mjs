@@ -130,7 +130,9 @@ try {
   await evaluate(`document.documentElement.dataset.theme='dark'`);
   await writeFile(path.join(scratch, 'settings-dark.png'), Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
   await click('.settings-head .close');
-  await evaluate(`[...document.querySelectorAll('.titlebar button')].find(b=>b.textContent==='Upload').click()`);
+  await click('[data-staged-picker] button.outlined');
+  await wait(`!!document.querySelector('dialog[open] [data-source=upload]')`, 'content picker sources');
+  await click('dialog[open] [data-source=upload]');
   await wait(`!!document.querySelector('dialog[open] input[type=file]')`, 'local picker input');
   const beforePicker = uploads;
   await evaluate(`(async()=>{const file=new File([await (await fetch('/example.heic')).blob()],'Picker.heic',{type:'image/heic'});const input=document.querySelector('dialog[open] input[type=file]'), transfer=new DataTransfer();transfer.items.add(file);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);

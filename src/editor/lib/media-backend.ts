@@ -32,6 +32,14 @@ function context() {
   if (!current) throw new Error(translate("connection.connectFirst"));
   return current();
 }
+export function mediaUploadGuard() {
+  const request = revision, selectedBackend = mediaBackend();
+  const active = selectedBackend === "github" ? context() : undefined;
+  return () => {
+    const next = selectedBackend === "github" ? context() : undefined;
+    if (request !== revision || mediaBackend() !== selectedBackend || (active && (next?.ctx !== active.ctx || next?.manifest !== active.manifest))) throw new Error(translate("connection.reloadDraft"));
+  };
+}
 async function remote<T>(operation: (ctx: GitContext, manifest: Manifest) => Promise<T>): Promise<T> {
   const active = context(), request = revision;
   const assertActive = () => { const next = context(); if (request !== revision || next.ctx !== active.ctx || next.manifest !== active.manifest) throw new Error(translate("connection.reloadDraft")); };

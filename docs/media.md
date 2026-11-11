@@ -36,7 +36,7 @@ rigel({
 
 All four options are optional. `quality` is an integer from 1 to 100; `maxEdge` is an integer from 1 to 16384. JPEG, PNG and WebP keep their original format when resized. Images already within the cap remain byte-for-byte unchanged, except HEIC/HEIF conversion. GIF, animated PNG/WebP and AVIF are left unchanged; HEIC sequences are rejected rather than flattened. PNG encoding does not use the lossy quality setting.
 
-Settings → Media can adjust or disable processing in this browser. Saved browser preferences take precedence over website defaults. Turning off HEIC conversion makes HEIC/HEIF uploads unsupported. Existing assets are never rewritten. A local file is processed for its staged preview; nothing is stored until confirmation. URL and stock imports are processed on confirmation (Unsplash hotlinks are not imported).
+Settings → Media can adjust or disable processing in this browser. Saved browser preferences take precedence over website defaults. Turning off HEIC conversion makes HEIC/HEIF uploads unsupported. Existing assets are never rewritten. Content pickers process a local file for its staged preview; nothing is stored until confirmation. Standalone Media uploads process and store selected or dropped local files immediately. URL and stock imports are processed on confirmation (Unsplash hotlinks are not imported).
 
 Processing accepts source images up to 32 MiB, with a decoded limit of 64 megapixels and 16384 pixels on either edge. The resulting file must still pass the configured `maxFileSize`, format and byte checks on either storage backend. A source above the storage-size limit can therefore be resized before that limit is applied. Re-encoding can discard metadata, including GPS/EXIF data.
 
@@ -63,9 +63,11 @@ Use Grid or List view, search, category and modified-month filters. Filters comb
 
 Images have thumbnails, videos have playback previews, and PDF and text files have document previews. Other files show a type icon and metadata with a download link. Previewing a file is not a safety check.
 
-Open Upload to choose a local file, an image URL, Lorem Picsum or an enabled stock provider. Choose a result, review its preview and confirm. Back changes the selection; cancelling before confirmation leaves content unchanged. Confirmation writes imported bytes immediately, separately from saving the document. Cancelling a later document edit does not remove an uploaded file.
+In standalone Media, open Upload to select one or more local files, or drop files onto the library. Local files upload immediately, one at a time. A bottom-center notification shows the batch size and completed count, followed by a summary separating uploaded and failed files. Each successful file gets a notification; failures stay dismissible and do not stop the others. You can add files while uploads run. Existing filters stay in place, so a new upload may be hidden by them. Leaving Media or changing the connection stops unstarted work; an upload already being written can still finish. The queue is not persisted.
 
 Content Save, metadata Save and confirmed deletion share the same compact, scrollable notification stack. Success appears only after the backend acknowledges the write. Informational and success notices expire after six seconds, paused while hovered or focused; progress stays until completion and errors stay until dismissed or resolved. Essential confirmation, connection and unsaved-draft notices remain in place.
+
+Upload also offers an image URL, Lorem Picsum or an enabled stock provider. These sources keep their preview and confirmation step. Image, video and file pickers inside content remain single-file, staged controls: cancelling before confirmation writes nothing. Uploads are separate from saving content; a later cancelled document edit does not remove an uploaded file.
 
 The library's Delete file action removes the file and its metadata after confirmation. Check its uses first: deleting an asset can break existing content links.
 

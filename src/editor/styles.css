@@ -614,7 +614,6 @@
   border-radius: 0;
   padding: 1rem 1.25rem 1.25rem;
   margin-top: 1rem;
-  box-shadow: var(--shadow-sm);
 }
 .rigel h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
 .rigel h3 {

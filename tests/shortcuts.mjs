@@ -163,6 +163,7 @@ try {
   await check(`document.querySelector('.sidebar-toggle').getAttribute('aria-keyshortcuts') === 'Meta+B Control+B'`, "sidebar toggle exposes its shortcut");
   await evaluate(`location.hash = '#/copy/home'`);
   await wait(`!!document.querySelector('main input:not([readonly])')`, "page form");
+  await check(`(() => { const sections = [...document.querySelectorAll('.rigel section')]; return sections.length > 0 && sections.every(section => getComputedStyle(section).boxShadow === 'none'); })()`, "editor section cards have no shadows");
   await evaluate(`document.querySelector('main input:not([readonly])').focus()`);
   await key("b", "KeyB", meta);
   await check(`!document.querySelector('.rigel').classList.contains('sidebar-collapsed')`, "sidebar shortcut is ignored while a text field has focus");

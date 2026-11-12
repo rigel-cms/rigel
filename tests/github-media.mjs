@@ -25,6 +25,7 @@ const put = (path, bytes) => { bytes = Buffer.from(bytes); const sha = blobSha(b
 put("site/src/fields/entry.json", JSON.stringify({ title: "Media fields", image: "", file: "" }));
 put("site/src/blog/article.json", JSON.stringify({ frontmatter: { title: "Article", cover: "" }, body: emptyBody }));
 put("site/src/copy/copy.ts", 'import { defineCopy } from "@rigel-cms/rigel/content";\nexport default defineCopy({slug:"copy",label:"Copy",shared:true,groups:[],values:{content:{body:"Copy"}}});');
+if (process.argv.includes('--cache-reload')) put("site/static/uploads/media/cached.png", await readFile(new URL('../src/editor/assets/rigelcms-icon.png', import.meta.url)));
 let tree = id(); trees.set(tree, new Map(files));
 let head = id(); commits.set(head, { tree, parents: [] });
 const requests = [], errors = [];
@@ -119,6 +120,20 @@ try {
     await waitFor("!!document.querySelector('dialog[open] .media-selection')");
   };
   const ledger = () => JSON.parse(blobs.get(files.get("site/static/uploads/media/.rigel-media.json")));
+  if (process.argv.includes('--cache-reload')) {
+    await cdp("Page.navigate", { url: new URL('#/media', url).href });
+    await waitFor("document.querySelector('.media-library img[src^=blob]')?.naturalWidth>0");
+    assert.equal(await evaluate(`new Promise((resolve,reject)=>{const request=indexedDB.open('rigelcms-files',2);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,count=db.transaction('thumbnails').objectStore('thumbnails').count();count.onsuccess=()=>{db.close();resolve(count.result)};count.onerror=()=>{db.close();reject(count.error)}}})`), 1, 'Thumbnail is persisted before reload');
+    const imageSha = files.get('site/static/uploads/media/cached.png');
+    const before = requests.length, timeOrigin = await evaluate('performance.timeOrigin');
+    await cdp('Page.reload');
+    await waitFor(`performance.timeOrigin !== ${timeOrigin} && document.querySelector('.media-library img[src^=blob]')?.naturalWidth>0`);
+    const imageReads = requests.slice(before).filter(request => request.method === 'GET' && request.path.endsWith('/git/blobs/' + imageSha));
+    assert.equal(imageReads.length, 0, 'Reload reuses persisted thumbnail without fetching original GitHub image');
+    assert.equal(writes, 0);
+    assert.deepEqual(errors, []);
+    console.log('PASS: real App reload reuses persistent thumbnail, zero GitHub image downloads or writes');
+  } else {
   await cdp("Page.navigate", { url });
   await waitFor("!!document.querySelector('#rigel-sidebar')");
   await button("Media"); await waitFor("document.querySelector('.media-library')?.textContent.includes('No media')");
@@ -289,6 +304,7 @@ try {
   assert.deepEqual(errors, []);
   await writeFile("_temp/github-media-results.json", JSON.stringify({ writes, requests: requests.length, assertions: "atomic upload, binary private preview/download, metadata, schema image/file unsaved Save, deletion, no publish/local API/token leaks, object URL cleanup", liveGitHub: false }, null, 2));
   console.log("PASS GitHub media: real App, mocked GitHub transport; no live GitHub writes");
+  }
   }
 } finally {
   socket?.close(); chrome.kill("SIGTERM");

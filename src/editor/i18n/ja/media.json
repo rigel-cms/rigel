@@ -142,6 +142,8 @@
   "media.noPhotos": "写真が見つかりません。別の検索語をお試しください。",
   "media.deleteTitle": "「{name}」を削除しますか？",
   "media.deleteDescription": "ファイルとそのメタデータを完全に削除します。この操作は取り消せません。このファイルを使用しているページでは、メディアの表示やリンクが機能しなくなります。",
+  "media.deleteInUse": "このファイルはまだ使用されています。先にそれらの参照を削除してください。",
+  "media.deleteUnverified": "一部のコンテンツの参照を確認できませんでした。削除するとそれらのページが壊れる可能性があり、元に戻せません。",
   "media.pexelsKeyPlaceholder": "例：Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "例：12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "例：AbCdEf12_GhIjKl34…",

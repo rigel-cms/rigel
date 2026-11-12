@@ -142,6 +142,8 @@
   "media.noPhotos": "No photos found. Try another search.",
   "media.deleteTitle": "Delete “{name}”?",
   "media.deleteDescription": "This permanently deletes the file and its metadata. This cannot be undone. Any pages using this file will have broken media or links.",
+  "media.deleteInUse": "This file is still used. Remove those references first.",
+  "media.deleteUnverified": "Some content could not be checked for references. Deleting this file may break those pages, and this cannot be undone.",
   "media.pexelsKeyPlaceholder": "e.g. Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "e.g. 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "e.g. AbCdEf12_GhIjKl34…",

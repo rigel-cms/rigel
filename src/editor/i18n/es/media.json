@@ -142,6 +142,8 @@
   "media.noPhotos": "No se encontraron fotos. Prueba otra búsqueda.",
   "media.deleteTitle": "¿Eliminar “{name}”?",
   "media.deleteDescription": "Esto elimina permanentemente el archivo y sus metadatos. Esta acción no se puede deshacer. Las páginas que usen este archivo tendrán archivos multimedia o enlaces rotos.",
+  "media.deleteInUse": "Este archivo aún se usa. Elimina antes esas referencias.",
+  "media.deleteUnverified": "No se pudo comprobar si algunos contenidos usan el archivo. Eliminarlo puede romper esas páginas y no se puede deshacer.",
   "media.pexelsKeyPlaceholder": "p. ej., Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "p. ej., 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "p. ej., AbCdEf12_GhIjKl34…",

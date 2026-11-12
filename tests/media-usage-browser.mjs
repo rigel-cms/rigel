@@ -128,8 +128,21 @@ try {
   await click(trigger); await expanded();
   await wait(`document.querySelector('${usage}')?.textContent.includes('No references in managed content.')`,'honest empty state');
   await screenshot('unreferenced-1280.png');
+  await evaluate(`document.querySelector('.media-usage').hidePopover()`);
+  await click('.media-actions .danger-btn');
+  await wait(`!!document.querySelector('.action-dialog')`,'unreferenced file asks for confirmation');
+  assert.equal(await evaluate(`document.querySelector('.action-dialog').textContent.includes('cannot be undone')`),true,'unreferenced deletion keeps the irreversible warning');
+  await key('Escape','Escape',27);
+  await wait(`!document.querySelector('.action-dialog')`,'confirmation cancelled');
+  await cdp('Page.navigate',{url:new URL('#/media', url).href});
+  await wait(`!!document.querySelector('button[aria-label="Bicho.FYI"]')`,'referenced library');
+  await click('button[aria-label="Bicho.FYI"]');
+  await click('.media-actions .danger-btn');
+  await wait(`document.querySelector('.toast-stack')?.textContent.includes('still used')`,'referenced file refuses deletion');
+  assert.equal(await evaluate(`!!document.querySelector('.action-dialog')`),false,'referenced file never reaches confirmation');
+  await screenshot('delete-in-use-1280.png');
   assert.deepEqual(errors,[],'no browser exceptions'); assert.deepEqual(writes,[],'no writes attempted');
-  const report = {url:new URL('#/media', url).href,references,dimensions,colors,themes,unreferenced:'Blue sky',errors,writes};
+  const report = {url:new URL('#/media', url).href,references,dimensions,colors,themes,unreferenced:'Blue sky',deletion:{referenced:'Bicho.FYI',unreferenced:'Blue sky'},errors,writes};
   await writeFile(new URL('report.json',root),JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));
 } finally { ws?.close(); chrome.kill('SIGTERM'); }

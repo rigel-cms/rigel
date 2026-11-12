@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mediaUsage } from "./media-usage";
+import { mediaDeletion, mediaUsage } from "./media-usage";
 import type { Manifest } from "./types";
 
 test("finds exact structured and parsed richtext references once per entry", () => {
@@ -29,4 +29,11 @@ test("checks unsupported richtext even when the same entry already references th
 test("never claims complete coverage for unloaded documents or collection bodies", () => {
   expect(mediaUsage({ pages: [], backend: "github", documents: [{ id: "page:one", type: "page", slug: "one", loaded: "metadata", data: { title: "One" } }] }, "/rigel-media/a.png").complete).toBe(false);
   expect(mediaUsage({ pages: [], collections: [{ name: "blog", label: "Blog", fields: [], posts: [{ slug: "one", frontmatter: {} }] }] }, "/rigel-media/a.png").complete).toBe(false);
+});
+
+test("blocks deletion only for assets still referenced in checked content", () => {
+  const used: Manifest = { pages: [{ slug: "home", label: "Home", groups: [{ id: "hero", label: "Hero", fields: [{ key: "image", label: "Image", type: "image" }] }], values: { hero: { image: "/rigel-media/a.png" } } }] };
+  expect(mediaDeletion(used, "/rigel-media/a.png")).toEqual({ blocked: true, count: 1, unverified: false });
+  expect(mediaDeletion({ pages: [] }, "/rigel-media/a.png")).toEqual({ blocked: false, count: 0, unverified: false });
+  expect(mediaDeletion({ pages: [], documents: [{ id: "page:one", type: "page", slug: "one", loaded: "metadata", data: { title: "One" } }] }, "/rigel-media/a.png")).toEqual({ blocked: false, count: 0, unverified: true });
 });

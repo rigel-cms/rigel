@@ -142,6 +142,8 @@
   "media.noPhotos": "未找到照片。请尝试其他搜索词。",
   "media.deleteTitle": "删除“{name}”？",
   "media.deleteDescription": "此操作将永久删除文件及其元数据，且无法撤销。使用此文件的页面将出现媒体无法显示或链接失效的问题。",
+  "media.deleteInUse": "此文件仍在使用中。请先移除这些引用。",
+  "media.deleteUnverified": "无法检查所有内容中的引用。删除此文件可能导致这些页面出错，且无法撤销。",
   "media.pexelsKeyPlaceholder": "例如 Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "例如 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "例如 AbCdEf12_GhIjKl34…",

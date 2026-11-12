@@ -2,7 +2,7 @@
   import UsagePopover from "./UsagePopover.svelte";
   import type { Manifest } from "../../manifest/types";
   import { mediaUsage, type MediaUsageEntry } from "../../manifest/media-usage";
-  import { readLocalArticle } from "./local-articles";
+  import { mediaUsageSnapshot } from "./media-usage-data";
   let { manifest, url, onselect }: { manifest: Manifest; url: string; onselect: (entry: MediaUsageEntry) => void } = $props();
   let result = $state<ReturnType<typeof mediaUsage> | null>(null);
   let error = $state(false);
@@ -10,20 +10,7 @@
     const current = manifest, asset = url;
     let active = true;
     result = null; error = false;
-    async function load() {
-      const snapshot: Manifest = { ...current, collections: current.collections?.map(collection => ({ ...collection, posts: collection.posts.map(post => ({ ...post })) })) };
-      try {
-        if (!current.backend) for (const collection of snapshot.collections ?? []) for (const post of collection.posts) {
-          if (!active) return;
-          const article = await readLocalArticle(collection.name, post.slug);
-          post.frontmatter = article.frontmatter; post.body = article.body;
-        }
-        if (active) result = mediaUsage(snapshot, asset);
-      } catch {
-        if (active) { result = mediaUsage(snapshot, asset); error = true; }
-      }
-    }
-    void load();
+    void mediaUsageSnapshot(current, asset).then(next => { if (active) { result = next; error = next.error; } });
     return () => { active = false; };
   });
 </script>

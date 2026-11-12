@@ -66,3 +66,8 @@ export function mediaUsage(manifest: Manifest, url: string) {
   for (const menu of manifest.menus?.entries ?? []) if (links(menu.items)) entries.push({ label: menu.title, group: "", target: { kind: "menu", slug: menu.slug } });
   return { entries, complete };
 }
+
+export function mediaDeletion(manifest: Manifest, url: string) {
+  const { entries, complete } = mediaUsage(manifest, url);
+  return { blocked: entries.length > 0, count: entries.length, unverified: !complete };
+}

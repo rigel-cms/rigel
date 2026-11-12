@@ -142,6 +142,8 @@
   "media.noPhotos": "Geen foto's gevonden. Probeer een andere zoekopdracht.",
   "media.deleteTitle": "‘{name}’ verwijderen?",
   "media.deleteDescription": "Hiermee worden het bestand en de bijbehorende metadata definitief verwijderd. Dit kan niet ongedaan worden gemaakt. Op alle pagina's die dit bestand gebruiken, werken de bijbehorende media of links daarna niet meer.",
+  "media.deleteInUse": "Dit bestand wordt nog gebruikt. Verwijder eerst die verwijzingen.",
+  "media.deleteUnverified": "Sommige inhoud kon niet op verwijzingen worden gecontroleerd. Als je dit bestand verwijdert, kunnen die pagina’s kapotgaan. Dit kan niet ongedaan worden gemaakt.",
   "media.pexelsKeyPlaceholder": "bijv. Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "bijv. 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "bijv. AbCdEf12_GhIjKl34…",

@@ -6,6 +6,7 @@
   import { onMount, onDestroy, tick } from "svelte";
   import Icon from "./Icon.svelte";
   import MediaUsage from "./MediaUsage.svelte";
+  import { mediaDeletionSnapshot } from "./media-usage-data";
   import type { Manifest } from "../../manifest/types";
   import type { MediaUsageEntry } from "../../manifest/media-usage";
   import ActionDialog from "./ActionDialog.svelte";
@@ -160,6 +161,7 @@
   let metaDescription = $state("");
   let metaAlt = $state("");
   let confirmDelete = $state(false);
+  let deleteUnverified = $state(false);
   let deleteTrigger = $state<HTMLButtonElement>();
   let savingMeta = $state(false);
   let metadataToast = 0;
@@ -194,6 +196,20 @@
       else dismissToast(metadataToast);
     }
     finally { savingMeta = false; }
+  }
+  async function requestDelete() {
+    if (!selected?.asset || !writable || picking || savingMeta) return;
+    const asset = selected.asset;
+    picking = true;
+    deleteUnverified = false;
+    try {
+      if (manifest) {
+        const usage = await mediaDeletionSnapshot(manifest, asset.url);
+        if (usage.blocked) { createToast({ kind: "error", message: $t("media.deleteInUse") }); return; }
+        deleteUnverified = usage.unverified || usage.error;
+      }
+      confirmDelete = true;
+    } finally { picking = false; }
   }
   async function deleteFile() {
     if (!selected?.asset || !writable || picking || savingMeta) return;
@@ -431,7 +447,7 @@
           <div class="media-actions" class:with-media-path={!!selected.asset}>
           {#if selected.asset}
             <a class="outlined media-download" href={selected.asset.url} download={assetFile(selected.asset.url)}>{$t("media.downloadFile")}</a>
-            {#if inline && writable}<button bind:this={deleteTrigger} type="button" class="danger-btn" aria-label={$t("media.deleteFile")} disabled={picking || savingMeta} onclick={() => { confirmDelete = true; }}>{$t("media.deleteFile")}</button>{/if}
+            {#if inline && writable}<button bind:this={deleteTrigger} type="button" class="danger-btn" aria-label={$t("media.deleteFile")} disabled={picking || savingMeta} onclick={() => { void requestDelete(); }}>{$t("media.deleteFile")}</button>{/if}
             <div class="media-path" role="textbox" aria-readonly="true" aria-label={$t("media.filePath")} tabindex="0"><code>{selected.asset.url}</code></div>
           {/if}
           <div class="media-button-actions">
@@ -482,6 +498,6 @@
     </div>
   </dialog>
   {#if confirmDelete && selected?.asset}
-    <ActionDialog title={$t("media.deleteTitle", { name: selected.asset.name })} description={$t("media.deleteDescription")} confirmLabel={$t("media.deleteFile")} danger onconfirm={deleteFile} onclose={async () => { confirmDelete = false; await tick(); deleteTrigger?.focus(); }} />
+    <ActionDialog title={$t("media.deleteTitle", { name: selected.asset.name })} description={$t(deleteUnverified ? "media.deleteUnverified" : "media.deleteDescription")} confirmLabel={$t("media.deleteFile")} danger onconfirm={deleteFile} onclose={async () => { confirmDelete = false; await tick(); deleteTrigger?.focus(); }} />
   {/if}
 {/if}

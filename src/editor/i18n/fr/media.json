@@ -142,6 +142,8 @@
   "media.noPhotos": "Aucune photo trouvée. Essayez une autre recherche.",
   "media.deleteTitle": "Supprimer « {name} » ?",
   "media.deleteDescription": "Le fichier et ses métadonnées seront définitivement supprimés. Cette action est irréversible. Les pages utilisant ce fichier afficheront des médias ou des liens rompus.",
+  "media.deleteInUse": "Ce fichier est encore utilisé. Supprimez d’abord ces références.",
+  "media.deleteUnverified": "Certains contenus n’ont pas pu être vérifiés. Supprimer ce fichier peut casser ces pages, et cette action est irréversible.",
   "media.pexelsKeyPlaceholder": "p. ex. Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "p. ex. 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "p. ex. AbCdEf12_GhIjKl34…",

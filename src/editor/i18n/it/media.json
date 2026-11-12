@@ -142,6 +142,8 @@
   "media.noPhotos": "Nessuna foto trovata. Prova un'altra ricerca.",
   "media.deleteTitle": "Eliminare “{name}”?",
   "media.deleteDescription": "Il file e i suoi metadati verranno eliminati definitivamente. L'operazione non può essere annullata. Nelle pagine che usano questo file, i media o i link non funzioneranno più.",
+  "media.deleteInUse": "Questo file è ancora in uso. Rimuovi prima quei riferimenti.",
+  "media.deleteUnverified": "Non è stato possibile verificare tutti i contenuti. Eliminare questo file può rompere quelle pagine e non può essere annullato.",
   "media.pexelsKeyPlaceholder": "es. Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "es. 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "es. AbCdEf12_GhIjKl34…",

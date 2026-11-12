@@ -142,6 +142,8 @@
   "media.noPhotos": "Keine Fotos gefunden. Versuche es mit einer anderen Suche.",
   "media.deleteTitle": "„{name}“ löschen?",
   "media.deleteDescription": "Die Datei und ihre Metadaten werden dauerhaft gelöscht. Dies kann nicht rückgängig gemacht werden. Auf allen Seiten, die diese Datei verwenden, funktionieren die zugehörigen Medien oder Links danach nicht mehr.",
+  "media.deleteInUse": "Diese Datei wird noch verwendet. Entfernen Sie zuerst diese Verweise.",
+  "media.deleteUnverified": "Einige Inhalte konnten nicht auf Verweise geprüft werden. Das Löschen dieser Datei kann diese Seiten beschädigen; dies kann nicht rückgängig gemacht werden.",
   "media.pexelsKeyPlaceholder": "z. B. Ab3dE6fG9hJ2…",
   "media.pixabayKeyPlaceholder": "z. B. 12345678-abcdef012345…",
   "media.unsplashKeyPlaceholder": "z. B. AbCdEf12_GhIjKl34…",

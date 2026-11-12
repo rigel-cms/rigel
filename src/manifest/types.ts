@@ -46,6 +46,7 @@ export interface Manifest {
   backend?: "github" | "demo";
   github?: GitHubBackendConfig;
   sidebar?: import("./navigation").SidebarEntry[];
+  siteLinks?: import("../config").SiteLink[];
   preview?: import("../preview").PreviewConfig;
   pages: CopyPage[];
   collections?: ManifestCollection[];

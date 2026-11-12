@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "Sitelinks",
+  "shell.dashboard": "Dashboard",
+  "shell.liveWebsite": "Livewebsite",
+  "shell.sitePreview": "Voorbeeld",
   "shell.entryUsageArticlesHint": "Artikelen kunnen niet worden geselecteerd in verwijzingsvelden. Links in tekst worden niet bijgehouden.",
   "shell.linkedFrom": "Gelinkt vanuit",
   "shell.entryUsageIncomplete": "Verwijzingen uit geïndexeerde inhoud. Sommige items zijn nog niet gecontroleerd.",

@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "网站链接",
+  "shell.dashboard": "控制台",
+  "shell.liveWebsite": "已发布网站",
+  "shell.sitePreview": "预览",
   "shell.entryUsageArticlesHint": "引用字段无法选择文章。不统计正文中的链接。",
   "shell.linkedFrom": "引用来源",
   "shell.entryUsageIncomplete": "显示已索引内容中的引用。部分条目尚未检查。",

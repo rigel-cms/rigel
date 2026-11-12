@@ -120,7 +120,7 @@ export { validateMenu } from "./manifest/menu";
 export type { MenuItem, MenuDocument } from "./manifest/menu";
 export { defineCopy } from "./manifest/types";
 export type { CopyField, CopyGroup, CopyPage, Manifest, CollectionField } from "./manifest/types";
-export type { RigelConfig, CollectionConfig, ContentLocalesConfig, SearchScope } from "./config";
+export type { RigelConfig, CollectionConfig, ContentLocalesConfig, SearchScope, SiteLink } from "./config";
 export type { JsonOutput } from "./json-output";
 export type { ReferenceOption } from "./manifest/references";
 export type { SidebarEntry, SidebarTarget, SidebarIconName } from "./manifest/navigation";

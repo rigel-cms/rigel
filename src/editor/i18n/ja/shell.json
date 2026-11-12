@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "サイトリンク",
+  "shell.dashboard": "ダッシュボード",
+  "shell.liveWebsite": "公開サイト",
+  "shell.sitePreview": "プレビュー",
   "shell.entryUsageArticlesHint": "参照フィールドでは記事を選択できません。本文中のリンクは追跡されません。",
   "shell.linkedFrom": "参照元",
   "shell.entryUsageIncomplete": "インデックス済みコンテンツの参照を表示しています。まだ確認されていない項目があります。",

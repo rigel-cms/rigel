@@ -3,7 +3,7 @@ import { validateSchema } from "./schema/validate";
 import type { Schema } from "./schema/types";
 import { validateSidebar, type SidebarEntry } from "./manifest/navigation";
 import { withSeoFields } from "./manifest/seo";
-import { previewBaseUrl, previewRoute } from "./preview-urls";
+import { previewBaseUrl, previewRoute, safePreviewUrl } from "./preview-urls";
 import type { JsonOutput } from "./json-output";
 import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
 import { imageProcessingOptions, type ImageProcessing } from "./image-processing";
@@ -18,6 +18,11 @@ export interface ContentLocalesConfig {
 }
 
 export type SearchScope = "all" | "currentLocale";
+
+export interface SiteLink {
+  label: string;
+  href: string;
+}
 
 export interface RigelConfig {
   copyDir: string;
@@ -36,6 +41,7 @@ export interface RigelConfig {
   menus?: { folder: string; maxDepth?: number };
   schema?: Schema;
   sidebar?: SidebarEntry[];
+  siteLinks?: SiteLink[];
   repo?: string;
   branch?: string;
   publishBranch?: string;
@@ -149,6 +155,17 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
     }
   }
   if (cfg.sidebar !== undefined) validateSidebar(cfg.sidebar);
+  if (cfg.siteLinks !== undefined) {
+    if (!Array.isArray(cfg.siteLinks) || Array.from(cfg.siteLinks).some(link => {
+      if (!link || typeof link.label !== "string" || !link.label.trim() || typeof link.href !== "string" || !safePreviewUrl(link.href)) return true;
+      try {
+        if (/^[a-z][a-z\d+.-]*:/i.test(link.href) && !/^https?:\/\//i.test(link.href)) return true;
+        const url = new URL(link.href, "https://rigel.invalid/");
+        return !!(url.username || url.password) || (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)));
+      } catch { return true; }
+    })) throw new Error("rigel: siteLinks must be an array of label and safe relative or HTTPS href links (HTTP allowed on loopback)");
+    cfg.siteLinks = cfg.siteLinks.map(({ label, href }) => ({ label, href }));
+  }
 
   return cfg;
 }

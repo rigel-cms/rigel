@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "Website-Links",
+  "shell.dashboard": "Dashboard",
+  "shell.liveWebsite": "Live-Website",
+  "shell.sitePreview": "Vorschau",
   "shell.entryUsageArticlesHint": "Artikel können in Referenzfeldern nicht ausgewählt werden. Links im Text werden nicht erfasst.",
   "shell.linkedFrom": "Verlinkt von",
   "shell.entryUsageIncomplete": "Verweise aus indexierten Inhalten. Einige Einträge wurden noch nicht geprüft.",

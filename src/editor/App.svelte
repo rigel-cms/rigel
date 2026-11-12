@@ -34,7 +34,7 @@
   function dismissVersion() {
     if (updateVersion) dismissUpdate(updateVersion);
     updateVersion = null;
-    document.querySelector<HTMLAnchorElement>(".brand")?.focus({ preventScroll: true });
+    document.querySelector<HTMLButtonElement>(".brand")?.focus({ preventScroll: true });
   }
   import { effectiveSearchScope } from "../manifest/search";
   import TopBar from "./lib/TopBar.svelte";
@@ -920,6 +920,31 @@
     void select(null);
   }
 
+  const siteLinks = $derived(manifest.siteLinks ?? [
+    { label: $t("shell.dashboard"), href: null },
+    ...(manifest.preview?.liveUrl ? [{ label: $t("shell.liveWebsite"), href: manifest.preview.liveUrl }] : []),
+    ...(manifest.preview?.draftUrl ? [{ label: $t("shell.sitePreview"), href: manifest.preview.draftUrl }] : []),
+  ]);
+  let siteMenu: HTMLDivElement;
+  let siteLinksOpen = $state(false);
+  let siteLinksPosition = $state("");
+  let desktopSidebar = $state(false);
+  const starOpensLinks = $derived(desktopSidebar && settings.userPref.sidebarCollapsed && siteLinks.length > 0);
+  onMount(() => {
+    const media = matchMedia("(min-width: 768px)");
+    const update = () => { desktopSidebar = media.matches; if (siteMenu?.matches(":popover-open")) siteMenu.hidePopover(); };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  });
+  function positionSiteLinks(event: MouseEvent) {
+    const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
+    if (rect) {
+      const fitsRight = rect.right + 228 <= innerWidth - 8;
+      siteLinksPosition = `left:${fitsRight ? rect.right + 4 : Math.max(8, innerWidth - 232)}px;top:${fitsRight ? rect.top : rect.bottom + 4}px`;
+    }
+  }
+
   $effect(() => {
     void loadBlueprint();
   });
@@ -1433,10 +1458,26 @@
 {:else}
 <div class="rigel" use:mediaPreviews class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
   <aside id="rigel-sidebar" data-tooltip-position="right">
-    <a class="brand" href="/rigel/" role="button" aria-label={$t("shell.welcome")} onclick={(event) => { event.preventDefault(); goWelcome(); }}>
+    <div class="brand-row">
+    <button type="button" class="brand" aria-label={starOpensLinks ? $t("shell.siteLinks") : $t("shell.dashboard")} aria-expanded={starOpensLinks ? siteLinksOpen : undefined} aria-controls={starOpensLinks ? "rigel-site-links" : undefined} popovertarget={starOpensLinks ? "rigel-site-links" : undefined} onclick={(event) => { if (starOpensLinks) positionSiteLinks(event); else goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
-    </a>
+    </button>
+    {#if siteLinks.length}
+      <button type="button" class="site-links-trigger" aria-label={$t("shell.siteLinks")} aria-expanded={siteLinksOpen} aria-controls="rigel-site-links" popovertarget="rigel-site-links" onclick={positionSiteLinks}><Icon name="arrowUpRight" size={16} /></button>
+    {/if}
+    </div>
+    {#if siteLinks.length}
+      <div bind:this={siteMenu} id="rigel-site-links" class="block-menu site-links" popover="auto" role="region" aria-label={$t("shell.siteLinks")} style={siteLinksPosition} ontoggle={event => { siteLinksOpen = event.currentTarget.matches(':popover-open'); }}>
+        {#each siteLinks as link}
+          {#if link.href !== null}
+            <a href={link.href} target="_blank" rel="noopener noreferrer" onclick={() => siteMenu.hidePopover()}>{link.label}</a>
+          {:else}
+            <button type="button" onclick={() => { siteMenu.hidePopover(); goWelcome(); }}>{link.label}</button>
+          {/if}
+        {/each}
+      </div>
+    {/if}
     <TopBar {manifest} {sel} {contentLocale} bind:open={searchOpen} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>

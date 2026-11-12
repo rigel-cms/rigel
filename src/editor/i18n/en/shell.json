@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "Site links",
+  "shell.dashboard": "Dashboard",
+  "shell.liveWebsite": "Live website",
+  "shell.sitePreview": "Preview",
   "shell.entryUsageArticlesHint": "Articles cannot be selected in reference fields. Links in text are not tracked.",
   "shell.linkedFrom": "Linked from",
   "shell.entryUsageIncomplete": "Showing references from indexed content. Some entries have not been checked yet.",

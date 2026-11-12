@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "Link del sito",
+  "shell.dashboard": "Pannello",
+  "shell.liveWebsite": "Sito pubblicato",
+  "shell.sitePreview": "Anteprima",
   "shell.entryUsageArticlesHint": "Gli articoli non possono essere selezionati nei campi di riferimento. I collegamenti nel testo non vengono tracciati.",
   "shell.linkedFrom": "Collegato da",
   "shell.entryUsageIncomplete": "Riferimenti dai contenuti indicizzati. Alcune voci non sono ancora state controllate.",

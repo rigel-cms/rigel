@@ -1,4 +1,8 @@
 {
+  "shell.siteLinks": "Ссылки сайта",
+  "shell.dashboard": "Панель управления",
+  "shell.liveWebsite": "Опубликованный сайт",
+  "shell.sitePreview": "Предпросмотр",
   "shell.entryUsageArticlesHint": "Статьи нельзя выбрать в полях ссылок на записи. Ссылки в тексте не отслеживаются.",
   "shell.linkedFrom": "Ссылки из",
   "shell.entryUsageIncomplete": "Показаны ссылки из проиндексированного контента. Некоторые записи ещё не проверены.",

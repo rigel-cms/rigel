@@ -499,6 +499,36 @@ export async function readRemotePost(ctx: GitContext, manifest: Manifest, name: 
   return { slug, frontmatter: post.frontmatter, body: post.body as ArticleBody };
 }
 
+export async function readRemoteMediaContent(ctx: GitContext, manifest: Manifest, signal?: AbortSignal) {
+  const snapshot = loaded(ctx, manifest);
+  const guard = () => { ctx.assertActive?.(); signal?.throwIfAborted(); };
+  const guarded = { ...ctx, assertActive: guard };
+  const copy: Manifest = {
+    ...manifest,
+    pages: manifest.pages.map(page => ({ ...page, values: {} })),
+    documents: (manifest.schema?.documents ?? []).flatMap(type => [...snapshot.documents.get(type.name)!.files.keys()].map(slug => ({ id: `${type.name}:${slug}`, type: type.name, slug, data: {}, loaded: "identity" as const }))),
+    collections: manifest.collections?.map(collection => ({ ...collection, posts: [], index: { state: "complete", loaded: 0, total: snapshot.collections.get(collection.name)!.files.size } })),
+    menus: manifest.menus ? { ...manifest.menus, entries: manifest.menus.entries.map(menu => ({ ...menu, items: [] })) } : undefined,
+  };
+  Object.defineProperty(copy, REMOTE_SNAPSHOT, { value: { ...snapshot, copies: new Set(), menus: new Set() } });
+  const tasks = [
+    ...copy.pages.map(page => () => readRemoteSelection(guarded, copy, { kind: "page", slug: page.slug })),
+    ...copy.documents!.map(doc => () => readRemoteSelection(guarded, copy, { kind: "document", type: doc.type, id: doc.id })),
+    ...(copy.collections ?? []).flatMap(collection => [...snapshot.collections.get(collection.name)!.files.keys()].map(slug => async () => { collection.posts.push(await readRemotePost(guarded, copy, collection.name, slug, false)); })),
+    ...(copy.menus?.entries ?? []).map(menu => () => readRemoteSelection(guarded, copy, { kind: "menu", slug: menu.slug })),
+  ];
+  let next = 0, error: unknown;
+  await Promise.all(Array.from({ length: Math.min(4, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      guard();
+      try { await tasks[next++](); } catch (failure) { guard(); error ??= failure; }
+      guard();
+    }
+  }));
+  guard();
+  return { copy, error };
+}
+
 export async function indexRemoteCollections(ctx: GitContext, manifest: Manifest, name?: string, changed: () => void = () => {}, signal?: AbortSignal): Promise<void> {
   const snapshot = loaded(ctx, manifest);
   for (const collection of manifest.collections ?? []) {

@@ -7,9 +7,9 @@ import type { MenuItem } from "./menu";
 const markdown = new MarkdownIt({ html: true });
 export type MediaUsageEntry = { label: string; group: string; locale?: string; target: Selection };
 
-export function mediaUsage(manifest: Manifest, url: string) {
+export function mediaUsage(manifest: Manifest, url: string, remoteComplete = false) {
   const entries: MediaUsageEntry[] = [];
-  let complete = manifest.backend !== "github";
+  let complete = manifest.backend !== "github" || remoteComplete;
   const path = (value: unknown) => {
     if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return "";
     try { return decodeURIComponent(value.split(/[?#]/)[0]); } catch { return ""; }
@@ -67,7 +67,7 @@ export function mediaUsage(manifest: Manifest, url: string) {
   return { entries, complete };
 }
 
-export function mediaDeletion(manifest: Manifest, url: string) {
-  const { entries, complete } = mediaUsage(manifest, url);
+export function mediaDeletion(manifest: Manifest, url: string, remoteComplete = false) {
+  const { entries, complete } = mediaUsage(manifest, url, remoteComplete);
   return { blocked: entries.length > 0, count: entries.length, unverified: !complete };
 }

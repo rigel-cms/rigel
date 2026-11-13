@@ -49,6 +49,95 @@ test("entry backlinks use document ledgers and article references without loadin
   expect(s.calls.every(call => call.method === "GET")).toBe(true);
 });
 
+test("media usage loads saved GitHub bodies on demand for nested images, articles, copy and menus without writes", async () => {
+  const s = server(), original = blueprint(), url = "/rigel-media/used.png";
+  original.backend = "github";
+  original.schema!.objects.push({ name: "photo", title: "Photo", type: "object", fields: [{ key: "images", label: "Images", type: "array", items: [{ type: "image" }] }] });
+  original.schema!.documents[0].fields.push({ key: "gallery", label: "Gallery", type: "array", items: [{ type: "object", name: "photo" }] });
+  original.pages[0].groups = [{ id: "contact", label: "Contact", fields: [{ key: "title", label: "Title", type: "image" }] }];
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Saved author", gallery: [{ _key: "photo", _type: "photo", images: [url] }] }));
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Saved article" }, body: { root: { ...emptyBody().root, children: [{ type: "image", version: 1, src: url, alt: "Saved" }] } } }));
+  s.put("playground/src/content/copy/contact.ts", `export default defineCopy({ values: { contact: { title: "${url}" } } });`);
+  s.put("playground/src/content/menus/main.json", JSON.stringify({ slug: "main", title: "Saved menu", items: [{ id: "file", label: "File", url, children: [] }] }));
+  const m = await loadManifestRemote(ctx, original);
+  expect(blobReads(s)).toEqual([]);
+  const { configureMediaBackend } = await import("./media-backend");
+  const { mediaUsageSnapshot, mediaDeletionSnapshot } = await import("./media-usage-data");
+  const errors: unknown[] = [];
+  const stop = configureMediaBackend(() => ({ ctx, manifest: m }), error => { errors.push(error); }, () => "github");
+  try {
+    const before = JSON.stringify(m);
+    const usage = await mediaUsageSnapshot(m, url);
+    expect(errors).toEqual([]);
+    expect(usage.entries.map(entry => entry.label)).toEqual(["Contact", "Saved author", "Saved article", "Saved menu"]);
+    expect(usage.complete).toBe(true); expect(usage.error).toBe(false);
+    expect(await mediaDeletionSnapshot(m, url)).toEqual({ blocked: true, count: 4, unverified: false, error: false });
+    expect(await mediaDeletionSnapshot(m, "/rigel-media/unused.png")).toEqual({ blocked: false, count: 0, unverified: false, error: false });
+    expect(JSON.stringify(m)).toBe(before);
+    const { remoteSelectionReady } = await import("./github-backend");
+    expect(remoteSelectionReady(ctx, m, { kind: "page", slug: "contact" })).toBe(false);
+    expect(remoteSelectionReady(ctx, m, { kind: "menu", slug: "main" })).toBe(false);
+    expect(s.calls.every(call => call.method === "GET")).toBe(true);
+    expect(blobReads(s)).toHaveLength(4);
+  } finally { stop(); }
+});
+
+test("media snapshots retain partial saved matches, exclude drafts and retry failed bodies", async () => {
+  const s = server(), original = blueprint(), url = "/rigel-media/saved.png";
+  original.backend = "github";
+  original.schema!.documents[0].fields.push({ key: "portrait", label: "Portrait", type: "image" });
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Saved", portrait: url }));
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Article" }, body: { root: { ...emptyBody().root, children: [{ type: "image", version: 1, src: url, alt: "Saved" }] } } }));
+  const m = await loadManifestRemote(ctx, original), originalFetch = fetch;
+  m.documents![0].data = { name: "Draft", portrait: "/draft.png" }; m.documents![0].loaded = "complete";
+  m.collections![0].posts.push({ slug: "unsaved", frontmatter: {}, body: { root: { ...emptyBody().root, children: [{ ...{ type: "image", version: 1, src: "/draft.png", alt: "Draft" } }] } } });
+  let fail = true;
+  const articleSha = s.files.get("playground/src/content/blog/hello.json")!.sha;
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => fail && url.endsWith(articleSha) ? Promise.resolve(Response.json({}, { status: 503 })) : originalFetch(url, init));
+  const { configureMediaBackend } = await import("./media-backend");
+  const { mediaUsageSnapshot, mediaDeletionSnapshot } = await import("./media-usage-data");
+  const stop = configureMediaBackend(() => ({ ctx, manifest: m }), () => {}, () => "github");
+  const before = JSON.stringify(m);
+  try {
+    const partial = await mediaUsageSnapshot(m, url);
+    expect(partial.entries.map(entry => entry.label)).toEqual(["Saved"]);
+    expect(partial.complete).toBe(false); expect(partial.error).toBe(true);
+    expect(await mediaDeletionSnapshot(m, url)).toEqual({ blocked: true, count: 1, unverified: true, error: true });
+    fail = false;
+    const retried = await mediaUsageSnapshot(m, url);
+    expect(retried.entries.map(entry => entry.label)).toEqual(["Saved", "Article"]);
+    expect(retried.complete).toBe(true); expect(retried.error).toBe(false);
+    expect(await mediaUsageSnapshot(m, "/draft.png")).toEqual({ entries: [], complete: true, error: false });
+    expect(JSON.stringify(m)).toBe(before);
+    expect(s.calls.every(call => call.method === "GET")).toBe(true);
+  } finally { stop(); }
+});
+
+test.each(["abort", "session", "manifest"])("media snapshots reject late %s results without changing the editor", async mode => {
+  const s = server(), original = blueprint(); original.backend = "github";
+  let active = true;
+  const session = { ...ctx, assertActive: () => { if (!active) throw new Error("Expired"); } };
+  const m = await loadManifestRemote(session, original), originalFetch = fetch, controller = new AbortController();
+  const { configureMediaBackend } = await import("./media-backend");
+  const { mediaUsageSnapshot } = await import("./media-usage-data");
+  let current = m, release!: () => void, started!: () => void;
+  const held = new Promise<void>(done => { release = done; }), fetching = new Promise<void>(done => { started = done; });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { if (url.includes("/git/blobs/")) { started(); await held; } return originalFetch(url, init); });
+  const stop = configureMediaBackend(() => { session.assertActive(); return { ctx: session, manifest: current }; }, () => {}, () => "github");
+  const before = JSON.stringify(m);
+  try {
+    const task = mediaUsageSnapshot(m, "/unused.png", controller.signal);
+    await fetching;
+    if (mode === "abort") controller.abort();
+    else if (mode === "session") active = false;
+    else current = { ...m };
+    release();
+    expect(await task).toEqual({ entries: [], complete: false, error: true });
+    expect(JSON.stringify(m)).toBe(before);
+    expect(s.calls.every(call => call.method === "GET")).toBe(true);
+  } finally { release(); stop(); }
+});
+
 function blobReads(s: ReturnType<typeof server>, since = 0) {
   return s.calls.slice(since).filter(call => call.method === "GET" && call.path.startsWith("/git/blobs/"));
 }

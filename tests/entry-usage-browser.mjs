@@ -118,10 +118,11 @@ export async function runEntryUsage({ cdp, evaluate, wait, click, shot, origin, 
   await go('#/media');
   await wait(`!!document.querySelector('button[aria-label="Usage fixture"]')`);
   await click('button[aria-label="Usage fixture"]');
-  await wait(`document.querySelector('.usage-trigger')?.textContent.includes('Used in') && !!document.querySelector('.media-usage a')`);
+  await wait(`document.querySelector('.usage-trigger')?.textContent.includes('Used in')`);
+  assert.equal(await evaluate(`document.querySelectorAll('.media-usage a').length`), 0, 'media lookup waits for Used in to open');
   assert.equal(await evaluate(`document.querySelectorAll('.image-picker .entry-usage').length`), 0, 'media keeps its original Used in popover');
   await click('.usage-trigger');
-  await wait(`document.querySelector('.media-usage').matches(':popover-open')`);
+  await wait(`document.querySelector('.media-usage').matches(':popover-open') && !!document.querySelector('.media-usage a')`);
   await evaluate(`document.querySelector('.media-usage a').focus()`);
   await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });

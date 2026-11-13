@@ -199,12 +199,13 @@
   }
   async function requestDelete() {
     if (!selected?.asset || !writable || picking || savingMeta) return;
-    const asset = selected.asset;
+    const asset = selected.asset, request = requestId, current = manifest;
     picking = true;
     deleteUnverified = false;
     try {
       if (manifest) {
         const usage = await mediaDeletionSnapshot(manifest, asset.url);
+        if (request !== requestId || selected?.asset !== asset || manifest !== current) return;
         if (usage.blocked) { createToast({ kind: "error", message: $t("media.deleteInUse") }); return; }
         deleteUnverified = usage.unverified || usage.error;
       }

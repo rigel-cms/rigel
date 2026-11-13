@@ -869,7 +869,7 @@
   });
   const draftDocuments = $derived.by(() => {
     const map: Record<string, Record<string, unknown>> = {};
-    for (const doc of manifest.documents ?? []) map[doc.id] = doc.data;
+    for (const doc of manifest.documents ?? []) if (doc.loaded === undefined || doc.loaded === "complete") map[doc.id] = doc.data;
     const current = sel;
     if (current?.kind === "document") map[current.id] = draft;
     return map;

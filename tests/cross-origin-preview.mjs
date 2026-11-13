@@ -21,10 +21,23 @@ let writes = 0;
 let rejectSave = false;
 let savedPost;
 const article = JSON.parse(await readFile(path.join(root, 'tests/fixtures/site/src/content/blog/first-post.json'), 'utf8'));
-const html = `<!doctype html><html><head><base href="https://wrong.invalid/"><meta http-equiv="refresh" content="0;url=https://wrong.invalid/"><link rel="stylesheet" href="/styles.css"><style>body { min-height: 2000px }</style><script>parent.previewScriptRan = true</script></head><body onload="parent.previewScriptRan=true"><h1 data-rigel-doc="page:about" data-rigel-text="title">Deployed title</h1><h2 data-rigel-text="intro.title">Deployed copy</h2><div data-rigel-richtext="$body"><p>Deployed body</p></div><img src="/pixel.svg" data-rigel-image="image" onerror="parent.previewScriptRan=true"><a href="/escape/">Leave preview</a><form action="/escape/"><button>Submit</button></form><iframe src="/escape/"></iframe><object data="/escape/"></object><template data-rigel-item-template=""><p data-rigel-text="items.__item__.title"></p></template></body></html>`;
+const icons = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="0" height="0"><defs>
+<symbol id="astro:phone" viewBox="0 0 24 24"><path d="M2 2h20v20H2z" onclick="parent.previewScriptRan=true"/><script>parent.previewScriptRan=true</script></symbol>
+<symbol id="nested" viewBox="0 0 24 24"><use href="#astro:phone"/></symbol>
+<symbol id="cycle-a"><use href="#cycle-b"/></symbol><symbol id="cycle-b"><use href="#cycle-a"/></symbol>
+<symbol id="duplicate"><path d="M0 0h10v10z"/></symbol><symbol id="duplicate"><circle r="10"/></symbol>
+<symbol id="external"><use href="/external.svg#icon"/></symbol>
+</defs></svg>
+<svg data-icon="local" width="24" height="24"><use href="#astro:phone"/></svg>
+<svg data-icon="xlink" width="24" height="24"><use xlink:href="#astro:phone" xmlns:xlink="http://www.w3.org/1999/xlink"/></svg>
+<svg data-icon="nested" width="24" height="24"><use href="#nested"/></svg>
+<svg data-icon="rejected" width="24" height="24"><use href="/external.svg#icon"/><use href="https://wrong.invalid/external.svg#icon"/><use href="//wrong.invalid/external.svg#icon"/><use href="data:image/svg+xml,%3Csvg%3E#icon"/><use href="javascript:parent.previewScriptRan=true"/><use href="#missing"/><use href="#duplicate"/><use href="#cycle-a"/><use href="#external"/><use href="#bad%20id"/><use href="#not-symbol"/></svg>
+<svg><path id="not-symbol" d="M0 0h10v10z"/></svg>`;
+const shared = `<section><p data-rigel-doc="amenity:identity" data-rigel-text="en.text">Deployed identity description</p></section><section><h3 data-rigel-doc="amenity:gym" data-rigel-text="en.title">Deployed shared gym</h3><p data-rigel-doc="amenity:gym" data-rigel-text="en.text">Deployed shared description</p></section><section><h3 data-rigel-doc="amenity:complete" data-rigel-text="en.title">Old complete title</h3><p data-rigel-doc="amenity:complete" data-rigel-text="en.text">Stale optional description</p></section>`;
+const html = `<!doctype html><html><head><base href="https://wrong.invalid/"><meta http-equiv="refresh" content="0;url=https://wrong.invalid/"><link rel="stylesheet" href="/styles.css"><style>body { min-height: 2000px }</style><script>parent.previewScriptRan = true</script></head><body onload="parent.previewScriptRan=true"><h1 data-rigel-doc="page:about" data-rigel-text="title">Deployed title</h1><h2 data-rigel-text="intro.title">Deployed copy</h2><div data-rigel-richtext="$body"><p>Deployed body</p></div><img src="/pixel.svg" data-rigel-image="image" onerror="parent.previewScriptRan=true"><a href="/escape/">Leave preview</a>${shared}${icons}<form class="layout-form" action="/escape/" onsubmit="parent.previewScriptRan=true"><label>Guests<input name="guests" autofocus></label><button formaction="/escape/">Submit</button></form><iframe src="/escape/"></iframe><object data="/escape/"></object><template data-rigel-item-template=""><p data-rigel-text="items.__item__.title"></p></template></body></html>`;
 function fixture(req, res) {
   requests.push({ url: req.url, headers: req.headers });
-  if (req.url === '/styles.css') { res.setHeader('Content-Type', 'text/css'); res.end('h1 { color: rgb(12, 34, 56) }'); return; }
+  if (req.url === '/styles.css') { res.setHeader('Content-Type', 'text/css'); res.end('h1 { color: rgb(12, 34, 56) } form.layout-form { display: grid; gap: 13px; padding: 17px }'); return; }
   if (req.url === '/pixel.svg') { res.setHeader('Content-Type', 'image/svg+xml'); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>'); return; }
   if (failure !== 'cors') res.setHeader('Access-Control-Allow-Origin', '*');
   if (failure === 'redirect') { res.writeHead(302, { Location: '/redirected/' }); res.end(); return; }
@@ -42,7 +55,7 @@ function manifest() {
   return {
     pages: [{ slug: 'copy', label: 'Copy fixture', groups: [{ id: 'intro', label: 'Intro', fields: [{ key: 'title', label: 'Copy title', type: 'string' }] }], values: { intro: { title: 'Saved copy' } } }],
     schema: { objects: [], documents: [{ name: 'page', title: 'Pages', type: 'document', folder: 'content/pages', fields: [{ key: 'title', label: 'Title', type: 'string' }] }] },
-    documents: [{ id: 'page:about', type: 'page', slug: 'about', data: { title: 'Saved title', image: '/pixel.svg' } }],
+    documents: [{ id: 'page:about', type: 'page', slug: 'about', data: { title: 'Saved title', image: '/pixel.svg' } }, { id: 'amenity:gym', type: 'amenity', slug: 'gym', loaded: 'metadata', data: { title: 'Metadata-only scalar title' } }, { id: 'amenity:identity', type: 'amenity', slug: 'identity', loaded: 'identity', data: {} }, { id: 'amenity:complete', type: 'amenity', slug: 'complete', loaded: 'complete', data: { en: { title: 'Complete shared title' } } }],
     collections: [{ name: 'blog', label: 'Blog', fields: [{ key: 'title', label: 'Title', type: 'string', required: true }, { key: 'description', label: 'Description', type: 'text' }, { key: 'metaTitle', label: 'Meta title', type: 'string' }, { key: 'ogImage', label: 'Open Graph image', type: 'image' }], posts: [{ slug: 'first-post', ...article }] }],
     preview: { liveUrl: 'https://sunnypixels.io', ...(sameOrigin ? {} : { draftUrl: draftOrigin }), documents: { page: { url: '/page/{slug}/' } }, pages: { copy: '/copy/' }, collections: { blog: { url: '/blog/{slug}/', new: '/preview/blog/' } } },
   };
@@ -99,8 +112,10 @@ try {
   ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl);
   await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
   let id = 0; const pending = new Map();
+  const networkRequests = [];
   ws.addEventListener('message', event => {
     const message = JSON.parse(event.data);
+    if (message.method === 'Network.requestWillBeSent') networkRequests.push(message.params.request.url);
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails);
     const entry = pending.get(message.id); if (entry) { pending.delete(message.id); message.error ? entry.reject(message.error) : entry.resolve(message.result); }
   });
@@ -120,7 +135,7 @@ try {
   }
   async function page() { await click('#nav-pages'); await evaluate(`[...document.querySelectorAll('main tbody tr')].find(row => [...row.querySelectorAll('td')].some(td => td.textContent.trim() === 'about')).querySelector('button').click()`); }
   const frameDoc = `document.querySelector('iframe')?.contentDocument`;
-  await cdp('Runtime.enable'); await cdp('Page.enable');
+  await cdp('Runtime.enable'); await cdp('Page.enable'); await cdp('Network.enable');
   await cdp('Emulation.setFocusEmulationEnabled', { enabled: true });
   await open();
   await evaluate(`sessionStorage.setItem('preview-test-token','never-send-this'); document.cookie='preview-test-cookie=never-send-this; path=/'; localStorage.setItem('rigelcms.settings',JSON.stringify({userPref:{editorExperience:'inline'}}))`);
@@ -139,12 +154,28 @@ try {
   await wait(`${frameDoc}.defaultView.getComputedStyle(${frameDoc}.querySelector('h1')).color === 'rgb(12, 34, 56)'`, 'remote CSS');
   await wait(`${frameDoc}.querySelector('img').naturalWidth === 8`, 'remote image');
   assert.equal(await evaluate(`!!window.previewScriptRan`), false);
-  assert.equal(await evaluate(`${frameDoc}.querySelectorAll('script,iframe,object,form,[onload],[onerror]').length`), 0);
+  assert.equal(await evaluate(`${frameDoc}.querySelectorAll('script,iframe,object,[onload],[onerror],[onclick],[onsubmit],[action],[formaction],[autofocus]').length`), 0);
+  assert.deepEqual(await evaluate(`{const doc=${frameDoc}, form=doc.querySelector('form.layout-form'), style=doc.defaultView.getComputedStyle(form); [style.display,style.gap,style.padding,form.querySelectorAll('label > input, button').length]}`), ['grid', '13px', '17px', 2], 'inert form wrappers retain their selectors and layout');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('meta[http-equiv="Content-Security-Policy"]').content.includes("form-action 'none'")`), true);
+  assert.deepEqual(await evaluate(`[...${frameDoc}.querySelectorAll('h3[data-rigel-doc="amenity:gym"], p[data-rigel-doc="amenity:gym"]')].map(el=>el.textContent)`), ['Deployed shared gym', 'Deployed shared description'], 'metadata-only documents must not blank deployed localized text');
+  assert.deepEqual(await evaluate(`[...${frameDoc}.querySelectorAll('h3[data-rigel-doc="amenity:complete"], p[data-rigel-doc="amenity:complete"]')].map(el=>el.textContent)`), ['Complete shared title', ''], 'complete shared data intentionally clears missing optional text');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('[data-rigel-doc="amenity:identity"]').textContent`), 'Deployed identity description', 'identity-only documents preserve deployed text');
+  for (const icon of ['local', 'xlink', 'nested']) {
+    assert.deepEqual(await evaluate(`{const svg=${frameDoc}.querySelector('[data-icon="${icon}"]'), path=svg.querySelector('path'); [svg.querySelector('svg').getAttribute('viewBox'),path?.getAttribute('d'),path?.getBoundingClientRect().width,path?.getBoundingClientRect().height]}`), ['0 0 24 24', 'M2 2h20v20H2z', 20, 20], `${icon} symbol renders inline under the remote base URL`);
+  }
+  assert.equal(await evaluate(`${frameDoc}.querySelectorAll('use, [data-icon="rejected"] path, [data-icon="rejected"] circle').length`), 0, 'external, invalid, duplicate and cyclic references cannot survive');
+  assert(!requests.some(request => request.url.includes('external.svg') || request.url.includes('/escape/')), 'no external SVG or form requests');
   assert.equal(await evaluate(`${frameDoc}.querySelectorAll('base').length`), 1);
   assert.equal(await evaluate(`${frameDoc}.querySelectorAll('meta[http-equiv="refresh"]').length`), 0);
   assert.equal(await evaluate(`document.querySelector('iframe').getAttribute('sandbox')`), 'allow-same-origin');
   await evaluate(`window.originalPreviewDoc=${frameDoc}; ${frameDoc}.defaultView.scrollTo(0,150); window.previewLoadingRestarts=0; window.loadingObserver=new MutationObserver(records=>{for(const record of records) if(record.type==='attributes' && record.target.getAttribute('aria-busy')==='true') previewLoadingRestarts++}); loadingObserver.observe(document.querySelector('.preview-frame'), {attributes:true, attributeFilter:['aria-busy']})`);
   const count = requests.length;
+  await evaluate(`{const doc=${frameDoc}, form=doc.querySelector('form'); form.querySelector('button').click(); doc.defaultView.HTMLFormElement.prototype.submit.call(form); form.requestSubmit();}`);
+  await delay(250);
+  assert.equal(await evaluate(`${frameDoc} === window.originalPreviewDoc`), true, 'form submission cannot navigate the snapshot');
+  assert.equal(requests.length, count, 'form submission cannot issue a request');
+  assert.deepEqual(networkRequests.filter(url => url.includes('external.svg') || url.includes('/escape/')), [], 'the browser never requests external SVG references or form destinations');
+  assert.equal(await evaluate(`!!window.previewScriptRan`), false, 'SVG and form event handlers cannot run');
   await input('[data-schema-path="title"] input', 'Unsaved cross-origin title');
   await wait(`${frameDoc}.querySelector('h1').textContent === 'Unsaved cross-origin title'`, 'unsaved patch');
   assert.equal(await evaluate(`${frameDoc} === window.originalPreviewDoc`), true);
@@ -203,6 +234,9 @@ try {
   assert.equal(await evaluate(`${frameDoc}.querySelectorAll('.rigel [title]').length`), 0);
   assert.equal(await evaluate(`${frameDoc}.querySelector('.rigel-inline [aria-label="Bold"]').getAttribute('aria-describedby')`), 'rigel-tooltip');
   await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'inline-tooltip.png'), Buffer.from(r.data, 'base64')));
+  await evaluate(`new Promise(resolve => ${frameDoc}.defaultView.requestAnimationFrame(() => ${frameDoc}.defaultView.requestAnimationFrame(resolve)))`);
+  await evaluate(`{const button=${frameDoc}.querySelector('.rigel-inline [aria-label="Bold"]'); button.blur(); button.focus({preventScroll:true});}`);
+  await wait(`!!${frameDoc}.querySelector('[role="tooltip"]:popover-open') && ${frameDoc}.activeElement.getAttribute('aria-label') === 'Bold'`, 'toolbar focus before Escape');
   await evaluate(`${frameDoc}.querySelector('.rigel-inline [aria-label="Bold"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);
   assert.equal(await evaluate(`!!${frameDoc}.querySelector('[role="tooltip"]:popover-open')`), false);
   assert.equal(await evaluate(`${frameDoc}.activeElement.getAttribute('aria-label')`), 'Bold', 'tooltip Escape keeps toolbar focus');
@@ -286,7 +320,7 @@ try {
   assert.equal(await evaluate(`new URL(document.querySelector('iframe').src).pathname`), '/preview/blog/');
   assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
   await cdp('Page.captureScreenshot').then(r => writeFile(path.join(scratch, 'preview.png'), Buffer.from(r.data, 'base64')));
-  console.log('PASS: built editor with actual two-origin HTML, CSS and images; schema/legacy/article/new-entry previews; inline text/body; unsaved patch identity/scroll; new-post untouched SEO serialization; rejected-save draft retention and retry; Save/guards; credential-free HTML fetch; sandbox/sanitization; CORS/HTTP/type/redirect/anchors errors; same-origin defaults.');
+  console.log('PASS: built editor with actual two-origin HTML, CSS and images; schema/legacy/article/new-entry previews; inline text/body; unsaved patch identity/scroll; new-post untouched SEO serialization; rejected-save draft retention and retry; Save/guards; credential-free HTML fetch; inert form layout/submission blocking; inline local/xlink/nested SVG geometry with viewBox; malicious/external/duplicate/cyclic SVG rejection and no external requests; metadata/identity shared-text preservation and complete optional-field clearing; sandbox/sanitization; CORS/HTTP/type/redirect/anchors errors; same-origin defaults.');
 } finally {
   ws?.close(); chrome?.kill(); await vite?.close(); await new Promise(resolve => remote.close(resolve));
 }

@@ -1,0 +1,11 @@
+{
+  "recovery.title": "Ungespeicherter Entwurf gefunden",
+  "recovery.description": "Dieser Browser hat eine Sicherung deiner Änderungen. Beim Wiederherstellen wird nichts gespeichert oder veröffentlicht.",
+  "recovery.changed": "Der gespeicherte Inhalt hat sich seit dieser Sicherung geändert. Das Wiederherstellen ersetzt den Editorinhalt; prüfe ihn vor dem Speichern.",
+  "recovery.restore": "Entwurf wiederherstellen",
+  "recovery.discard": "Sicherung löschen",
+  "recovery.error": "Die Entwurfswiederherstellung ist nicht verfügbar. Deine Änderungen sind noch im Editor; speichere sie vor dem Verlassen.",
+  "recovery.listTitle": "Wiederherstellbare Entwürfe",
+  "recovery.review": "Entwurf prüfen",
+  "recovery.date": "Gesichert am {date}"
+}

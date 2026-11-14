@@ -163,6 +163,16 @@
             <p class="hint">{$t("shell.localModeHint")}</p>
           {/if}
         {:else if active === "media"}
+          <section class="media-settings-section">
+            <h3>{$t("media.imageProcessing")}</h3>
+            <p class="hint">{$t("media.imageProcessingHint")}</p>
+            <label class="inline"><input type="checkbox" role="switch" class="switch" bind:checked={s.imageProcessing.convertHeic} /><span>{$t("media.convertHeic")}</span></label>
+            <label class="inline"><input type="checkbox" role="switch" class="switch" bind:checked={s.imageProcessing.resize} /><span>{$t("media.resizeImages")}</span></label>
+            <div class="image-processing-fields">
+              <label><span>{$t("media.imageQuality")}</span><input type="number" min="1" max="100" step="1" value={s.imageProcessing.quality} oninput={e => { const value = e.currentTarget.valueAsNumber; if (Number.isInteger(value) && value >= 1 && value <= 100) s.imageProcessing.quality = value; }} onchange={e => e.currentTarget.value = String(s.imageProcessing.quality)} /></label>
+              <label><span>{$t("media.imageMaxEdge")}</span><input type="number" min="1" max="16384" step="1" value={s.imageProcessing.maxEdge} oninput={e => { const value = e.currentTarget.valueAsNumber; if (Number.isInteger(value) && value >= 1 && value <= 16384) s.imageProcessing.maxEdge = value; }} onchange={e => e.currentTarget.value = String(s.imageProcessing.maxEdge)} /></label>
+            </div>
+          </section>
 
           <section class="media-settings-section">
             <h3>{$t("shell.stockPhotoApiKeys")}</h3>

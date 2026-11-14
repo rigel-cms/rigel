@@ -4,7 +4,11 @@
   import Icon from "./Icon.svelte";
   import { patchPreview, previewUrl, type PreviewConfig, type PreviewTarget } from "../../preview";
   import PreviewFrame from "./PreviewFrame.svelte";
-  let { target, config, values, body, isNew = false, devMode = false }: { target: PreviewTarget; config: PreviewConfig; values: Record<string, unknown>; body: "" | import("../../article-body").ArticleBody; isNew?: boolean; devMode?: boolean } = $props();
+  import { isTypingTarget, matchShortcut, type ShortcutId } from "./shortcuts";
+  let { target, config, values, body, isNew = false, devMode = false, shortcutsEnabled = true, onshortcut = () => {} }: {
+    target: PreviewTarget; config: PreviewConfig; values: Record<string, unknown>; body: "" | import("../../article-body").ArticleBody;
+    isNew?: boolean; devMode?: boolean; shortcutsEnabled?: boolean; onshortcut?: (shortcut: ShortcutId) => void;
+  } = $props();
 
   const websitePath = $derived(previewUrl(config, target, "website"));
   const key = $derived(`${target.kind}:${target.collection ?? ""}:${target.slug}`);
@@ -34,6 +38,14 @@
       patch();
     } catch (cause) { error = cause instanceof Error ? cause.message : $t("richtext.previewUnavailable"); }
   }
+  function onkeydown(event: KeyboardEvent) {
+    if (!shortcutsEnabled) return;
+    const shortcut = matchShortcut(event);
+    if (!shortcut) return;
+    if (shortcut === "toggleSidebar" && isTypingTarget((event.currentTarget as Document).activeElement)) return;
+    event.preventDefault();
+    onshortcut(shortcut);
+  }
   $effect(() => { JSON.stringify(values); void body; patch(); });
 </script>
 
@@ -44,7 +56,7 @@
   </div>
   {#if error}<p role="status" class="preview-error">{error}</p>{/if}
   {#if path}
-    {#key key}<PreviewFrame bind:frame url={path} title={$t("richtext.liveDraftPreview")} {onload} onloading={() => { loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} />{/key}
+    {#key key}<PreviewFrame bind:frame url={path} title={$t("richtext.liveDraftPreview")} {onload} onloading={() => { loaded = false; error = ""; }} onerror={(message) => { loaded = false; error = message; }} onkeydown={onkeydown} />{/key}
     <small>{$t("richtext.preparedTemplateHint")}</small>
   {:else}
     <p role="status">{target.kind === "menu" ? $t("richtext.menuPreviewUnsupported") : $t("richtext.noContentPreview")}</p>

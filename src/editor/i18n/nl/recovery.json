@@ -1,0 +1,11 @@
+{
+  "recovery.title": "Niet-opgeslagen concept gevonden",
+  "recovery.description": "Deze browser heeft een reservekopie van je wijzigingen. Herstellen slaat niets op en publiceert niets.",
+  "recovery.changed": "De opgeslagen inhoud is sinds deze reservekopie gewijzigd. Herstellen vervangt de inhoud van de editor; controleer deze voordat je opslaat.",
+  "recovery.restore": "Concept herstellen",
+  "recovery.discard": "Reservekopie verwijderen",
+  "recovery.error": "Conceptherstel is niet beschikbaar. Je wijzigingen staan nog in de editor; sla ze op voordat je weggaat.",
+  "recovery.listTitle": "Herstelbare concepten",
+  "recovery.review": "Concept bekijken",
+  "recovery.date": "Reservekopie van {date}"
+}

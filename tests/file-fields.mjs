@@ -65,7 +65,7 @@ try {
   await wait(`!!document.querySelector('#file-field .image-field button')`, 'native file picker rendered');
   await check(`(() => { const b = document.querySelector('#file-field button[aria-label="Remove file"]'); const r = b.getBoundingClientRect(); return r.width === 36 && r.height === 36 && getComputedStyle(b).padding === '0px'; })()`, 'remove control is square without text-button padding');
   await cdp('Emulation.setTouchEmulationEnabled', { enabled: true });
-  await check(`(() => { const r = document.querySelector('#file-field button[aria-label="Remove file"]').getBoundingClientRect(); return r.width === 44 && r.height === 44; })()`, 'touch remove control is a 44px square');
+  await check(`(() => { const r = document.querySelector('#file-field button[aria-label="Remove file"]').getBoundingClientRect(); return r.width === 36 && r.height === 36; })()`, 'touch remove control uses the shared 36px square');
   await cdp('Emulation.setTouchEmulationEnabled', { enabled: false });
   await click('#file-field .image-field button');
   await wait(`!!document.querySelector('dialog[open] .thumb')`, 'library loaded');
@@ -79,7 +79,8 @@ try {
   await upload('wrong.txt', 'name,value\nalpha,one');
   await wait(`!!document.querySelector('dialog[open] [role=alert]')`, 'non CSV rejected');
   assert.equal(uploads, 0);
-  await upload('schedule.csv', 'name,value\nbeta,two\n');
+  const originalName = `Océan d'Atlantique (1) 🌊 100% ${crypto.randomUUID()}.csv`;
+  await upload(originalName, 'name,value\nbeta,two\n');
   await wait(`!!document.querySelector('dialog[open] .media-selection')`, 'CSV preview');
   await check(`!document.querySelector('dialog[open] img,dialog[open] textarea,dialog[open] input[type=text]')`, 'no fake image or alt fields');
   assert.equal(uploads, 0);
@@ -89,6 +90,8 @@ try {
   const url = await evaluate(`document.querySelector('#draft').textContent`);
   assert.match(url, /^\/rigel-media\/[a-f0-9-]+\.csv$/);
   assert.equal(await readFile(path.join(publicDir, url), 'utf8'), 'name,value\nbeta,two\n');
+  const ledger = JSON.parse(await readFile(path.join(publicDir, 'rigel-media/.rigel-media.json'), 'utf8'));
+  assert.equal(ledger[url].name, originalName);
   await check(`document.querySelector('#saved').textContent === '/rigel-media/original.csv'`, 'upload leaves content unsaved');
   await check(`document.querySelector('iframe').contentDocument.querySelector('a').getAttribute('href') === document.querySelector('#draft').textContent`, 'native preview href follows draft');
   await click('#save');
@@ -109,7 +112,7 @@ try {
   await wait(`!!document.querySelector('dialog[open] [data-source="youtube"]')`, 'video providers preserved');
   await click('dialog[open] button[aria-label="Close"]');
   const filename = url.split('/').at(-1);
-  const metadata = { url, name: `Display ${filename}`, title: `Annual ${filename}`, description: `Coastal roster ${filename}` };
+  const metadata = { url, name: ledger[url].name, title: `Annual ${filename}`, description: `Coastal roster ${filename}` };
   const response = await fetch(`${origin}/rigel/api/local/media`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(metadata) });
   assert.equal(response.status, 200);
   assert.equal(JSON.parse(await readFile(path.join(publicDir, 'rigel-media/.rigel-media.json'), 'utf8'))[url].description, metadata.description);

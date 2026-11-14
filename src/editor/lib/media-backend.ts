@@ -4,7 +4,7 @@ import { locale, translate } from "../i18n";
 import type { Manifest } from "../../manifest/types";
 import type { MediaMeta } from "../../media-metadata";
 import { safeFileUrl } from "../../media-types";
-import { listRemoteMedia, readRemoteMedia, readRemoteThumbnail, resetRemoteMediaCache, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, type GitContext } from "./github-backend";
+import { listRemoteMedia, readRemoteMedia, readRemoteThumbnail, readRemoteMediaContent, resetRemoteMediaCache, uploadRemoteMedia, updateRemoteMedia, deleteRemoteMedia, type GitContext } from "./github-backend";
 import { onFileCacheClear } from "./file-cache";
 import type { MediaAsset } from "./media-library";
 
@@ -32,6 +32,14 @@ function context() {
   if (!current) throw new Error(translate("connection.connectFirst"));
   return current();
 }
+export function mediaUploadGuard() {
+  const request = revision, selectedBackend = mediaBackend();
+  const active = selectedBackend === "github" ? context() : undefined;
+  return () => {
+    const next = selectedBackend === "github" ? context() : undefined;
+    if (request !== revision || mediaBackend() !== selectedBackend || (active && (next?.ctx !== active.ctx || next?.manifest !== active.manifest))) throw new Error(translate("connection.reloadDraft"));
+  };
+}
 async function remote<T>(operation: (ctx: GitContext, manifest: Manifest) => Promise<T>): Promise<T> {
   const active = context(), request = revision;
   const assertActive = () => { const next = context(); if (request !== revision || next.ctx !== active.ctx || next.manifest !== active.manifest) throw new Error(translate("connection.reloadDraft")); };
@@ -52,6 +60,14 @@ export async function listMedia(refresh = false): Promise<{ assets: MediaAsset[]
   if (!response.ok) throw new Error(translate("media.listingUnavailable"));
   const data = await response.json();
   return { ...data, assets: data.assets ?? data.images, writable: mediaBackend() !== "demo" && data.writable === true };
+}
+export function readMediaContent(manifest: Manifest, signal?: AbortSignal) {
+  return remote(async (ctx, current) => {
+    if (current !== manifest) throw new Error(translate("connection.reloadDraft"));
+    const result = await readRemoteMediaContent(ctx, manifest, signal);
+    if (result.error) onError(result.error);
+    return result;
+  });
 }
 async function local(method: string, body: unknown, failureKey?: string) {
   if (mediaBackend() === "demo") throw new Error(translate("shell.demoMediaReadOnly"));

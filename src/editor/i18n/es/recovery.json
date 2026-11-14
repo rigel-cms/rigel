@@ -1,0 +1,11 @@
+{
+  "recovery.title": "Borrador sin guardar encontrado",
+  "recovery.description": "Este navegador tiene una copia de tus cambios. Restaurarla no guarda ni publica nada.",
+  "recovery.changed": "El contenido guardado ha cambiado desde esta copia. Restaurarla reemplaza el contenido del editor; revísalo antes de guardar.",
+  "recovery.restore": "Restaurar borrador",
+  "recovery.discard": "Eliminar copia",
+  "recovery.error": "La recuperación de borradores no está disponible. Tus cambios siguen en el editor; guárdalos antes de salir.",
+  "recovery.listTitle": "Borradores recuperables",
+  "recovery.review": "Revisar borrador",
+  "recovery.date": "Copia del {date}"
+}

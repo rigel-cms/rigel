@@ -1,6 +1,29 @@
-import type { CollectionField } from "./types";
+import type { CollectionField, Manifest } from "./types";
+import type { Selection } from "./navigation";
+import { referrers } from "../schema/validate";
 import type { ContentDocument } from "../schema/types";
 import { systemMessage, type Translator } from "../editor/i18n/format";
+
+export function entryUsage(manifest: Manifest, target: string | Selection) {
+  const entries: { label: string; group: string; locale?: string; target: Selection }[] = [];
+  if (typeof target !== "string" && target.kind !== "document") return { entries, complete: true };
+  const id = typeof target === "string" ? target : target.id;
+  let complete = !(manifest.documents ?? []).some(doc => doc.loaded === "identity");
+  for (const doc of referrers(manifest.documents ?? [], id)) {
+    const type = manifest.schema?.documents.find(type => type.name === doc.type);
+    if (doc.id !== id && type) entries.push({ label: String(doc.data.title || doc.data.name || doc.slug), group: type.title, locale: type.locale, target: { kind: "document", type: doc.type, id: doc.id } });
+  }
+  for (const collection of manifest.collections ?? []) {
+    const fields = collection.fields.filter(field => field.type === "reference" && field.to);
+    if (!fields.length) continue;
+    if (collection.index && collection.index.state !== "complete") complete = false;
+    for (const post of collection.posts) if (fields.some(field => {
+      const value = post.frontmatter[field.key];
+      return field.multiple ? Array.isArray(value) && value.includes(id) : value === id;
+    })) entries.push({ label: String(post.frontmatter.title || post.slug), group: collection.label, locale: collection.locale, target: { kind: "post", collection: collection.name, slug: post.slug } });
+  }
+  return { entries, complete };
+}
 
 export interface ReferenceOption {
   value: string;

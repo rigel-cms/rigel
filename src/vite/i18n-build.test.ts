@@ -33,7 +33,7 @@ function expectLanguages(result: Awaited<ReturnType<typeof bundle>>, languages: 
   for (const language of languages) {
     const directory = new URL(`../editor/i18n/${language}/`, import.meta.url);
     const catalogs = readdirSync(directory).filter(file => file.endsWith(".json")).sort();
-    expect(catalogs).toHaveLength(9);
+    expect(catalogs).toHaveLength(10);
     const merged: Record<string, string> = {};
     for (const catalog of catalogs) {
       const file = new URL(catalog, directory);
@@ -46,7 +46,7 @@ function expectLanguages(result: Awaited<ReturnType<typeof bundle>>, languages: 
   expect(catalogModules.sort()).toEqual(expectedModules.sort());
 }
 
-test("default builds contain only the nine English and French catalogs", async () => {
+test("default builds contain only the English and French catalogs", async () => {
   expectLanguages(await bundle(), ["en", "fr"]);
 });
 

@@ -8,6 +8,7 @@ import { validateSchema } from "../schema/validate";
 import type { DocumentDef } from "../schema/types";
 import { effectiveSlug } from "../slugs";
 import { previewPath } from "../preview";
+import { resolveHash } from "./lib/hash-navigation";
 import { pageCategories, pageTemplates, inPageCategory } from "../manifest/pages";
 
 const fields = [{ key: "title", label: "Title", type: "string" as const }];
@@ -72,7 +73,42 @@ test("Core filters uncategorized native and legacy pages without changing their 
   expect(manifest.schema!.documents.find(type => type.name === "page")!.category).toBeUndefined();
   expect(pageCategories(contentForLocale(manifest, "en"))).toEqual(["Articles"]);
   expect(pageCategories(contentForLocale(manifest, "fr"))).toEqual(["Announcements", "Articles"]);
-  expect(source).toContain('let pagesFilter = $state<string | null>("")');
+  expect(source).toContain('let pagesFilter = $state<string | null>(null)');
+});
+
+test("collection maintenance stays in Settings, not the list toolbar", () => {
+  expect(source.includes("refreshCollections")).toBe(false);
+  expect(source.includes("onreindex={reindexCollections}")).toBe(true);
+});
+
+test("Pages navigation defaults to all categories and restores explicit filters", () => {
+  const functions = ["select", "restoreHash"].map(name => {
+    const start = source.indexOf(`  function ${name}(`);
+    return source.slice(start, source.indexOf("\n  }", start) + 4);
+  }).join("\n");
+  const code = transpileModule(functions, { compilerOptions: { target: 99 } }).outputText;
+  const app = new Function("manifest", "resolveHash", `
+    let sel = null, pagesFilter = 'Articles', pagesQuery = 'old search', selectedContentLocale, entryList;
+    const hashNavigation = null;
+    const currentHash = () => '';
+    const visibleContent = manifest;
+    const selectionInContent = () => true;
+    const sameSel = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const requestNavigation = action => action();
+    const openSelection = next => { sel = next; };
+    ${code}
+    return { select, restoreHash, state: () => ({ sel, pagesFilter, pagesQuery }) };
+  `)(manifest, resolveHash);
+  for (const hash of ["#/pages", "#/pages?all=1", "#/pages?category=", "#/pages?category=Articles"]) {
+    app.restoreHash(hash);
+    expect(app.state().pagesFilter).toBe(hash.includes("category=") ? hash.endsWith("Articles") ? "Articles" : "" : null);
+    expect(app.state().pagesQuery).toBe("");
+  }
+  for (const category of ["Articles", "", undefined]) {
+    app.select({ kind: "pages", category }, true);
+    expect(app.state().pagesFilter).toBe(category ?? null);
+    expect(list("en", app.state().pagesFilter)).toHaveLength(category === "Articles" || category === "" ? 2 : 4);
+  }
 });
 
 test("Pages search matches rendered titles, name fallbacks, effective slugs and schema categories without changing ordering or data", () => {

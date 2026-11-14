@@ -24,6 +24,7 @@ function editor(manifest: Manifest, selection: unknown, dirty = true) {
     let newEntry = null, newDocument = null, succeeds = true, saves = 0;
     let draft = { title: 'Unsaved edits' }, docBase = null, actionDialog = null;
     const schema = manifest.schema, pageDocType = schema?.documents[0];
+    const discardRecoveryDraft = () => {};
     const focused = [];
     const tick = async () => {};
     const document = { querySelector: selector => ({ focus: options => focused.push({ selector, options }) }) };

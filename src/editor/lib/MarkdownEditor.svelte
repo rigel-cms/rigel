@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from "../i18n";
   import { onDestroy, tick } from "svelte";
-  import { EditorState, TextSelection } from "prosemirror-state";
+  import { EditorState } from "prosemirror-state";
   import { EditorView } from "prosemirror-view";
   import { exampleSetup } from "prosemirror-example-setup";
   import { lift, setBlockType, toggleMark, wrapIn } from "prosemirror-commands";
@@ -24,6 +24,7 @@
   let linkOpen = $state(false);
   let linkInput: HTMLInputElement;
   let linkButton: HTMLButtonElement;
+  let linkRange: { from: number; to: number } | undefined;
   let state = $state.raw<EditorState>();
   let view: EditorView | undefined;
   let lastValue: string | undefined;
@@ -161,17 +162,14 @@
 
   async function openLink() {
     const mark = state && schema.marks.link.isInSet(state.selection.$from.marks());
+    linkRange = undefined;
     if (view && mark && view.state.selection.empty) {
       const anchor = view.state.selection.$from;
-      let from = anchor.pos;
-      let to = anchor.pos;
-      view.state.doc.nodesBetween(anchor.start(), anchor.end(), (node, pos) => {
-        if (node.isText && mark.isInSet(node.marks) && pos <= to && pos + node.nodeSize >= from) {
-          from = Math.min(from, pos);
-          to = Math.max(to, pos + node.nodeSize);
-        }
-      });
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+      let start = anchor.index(), end = start;
+      let from = anchor.pos - anchor.textOffset, to = from;
+      while (start > 0 && mark.isInSet(anchor.parent.child(start - 1).marks)) from -= anchor.parent.child(--start).nodeSize;
+      while (end < anchor.parent.childCount && mark.isInSet(anchor.parent.child(end).marks)) to += anchor.parent.child(end++).nodeSize;
+      linkRange = { from, to };
     }
     linkUrl = mark?.attrs.href ?? "";
     linkError = "";
@@ -182,9 +180,9 @@
   function link(remove = false) {
     if (!view) return;
     if (!remove && (!safeMarkdownUrl(linkUrl) || !linkUrl)) { linkError = $t("richtext.safeUrlError"); return; }
-    const { from, to, empty } = view.state.selection;
+    const { from, to } = linkRange ?? view.state.selection;
     let tr = view.state.tr;
-    if (empty) tr = remove ? tr.removeStoredMark(schema.marks.link) : tr.addStoredMark(schema.marks.link.create({ href: linkUrl }));
+    if (from === to) tr = remove ? tr.removeStoredMark(schema.marks.link) : tr.addStoredMark(schema.marks.link.create({ href: linkUrl }));
     else tr = remove ? tr.removeMark(from, to, schema.marks.link) : tr.addMark(from, to, schema.marks.link.create({ href: linkUrl }));
     view.dispatch(tr);
     linkOpen = false;
@@ -223,13 +221,13 @@
       {#if inline}<button type="button" class="markdown-toggle" aria-label={$t("richtext.markdown")} data-tooltip={$t("richtext.markdown")} onmousedown={event => event.preventDefault()} onclick={() => { mode = "source"; linkOpen = false; }}>{$t("richtext.markdown")}</button>{/if}
     </div>
     {#if linkOpen}
-      <div class="markdown-link" id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} style={inline ? linkPosition : undefined} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; linkButton.focus(); } if (event.key === "Enter") { event.preventDefault(); link(); } }}>
+      <div class="markdown-link" id={`${id}-link`} role="group" aria-label={$t("richtext.editLink")} style={inline ? linkPosition : undefined} onkeydown={event => { if (event.key === "Escape") { event.stopPropagation(); linkOpen = false; view?.focus(); } if (event.key === "Enter") { event.preventDefault(); link(); } }}>
         <label for={`${id}-url`}>{$t("richtext.linkUrl")}</label>
         <div class="markdown-link-controls">
           <input id={`${id}-url`} type="text" placeholder="https://…" bind:this={linkInput} bind:value={linkUrl} aria-invalid={!!linkError} aria-describedby={linkError ? `${id}-error` : undefined} />
           <button type="button" aria-label={$t("richtext.applyLink")} data-tooltip={$t("richtext.applyLink")} onclick={() => link()}><Icon name="check" size={16} /></button>
           <button type="button" aria-label={$t("richtext.removeLink")} data-tooltip={$t("richtext.removeLink")} disabled={!activeMark("link")} onclick={() => link(true)}><Icon name="linkBreak" size={16} /></button>
-          <button type="button" aria-label={$t("richtext.closeLink")} data-tooltip={$t("richtext.closeLink")} onclick={() => { linkOpen = false; linkButton.focus(); }}><Icon name="x" size={16} /></button>
+          <button type="button" aria-label={$t("richtext.closeLink")} data-tooltip={$t("richtext.closeLink")} onclick={() => { linkOpen = false; view?.focus(); }}><Icon name="x" size={16} /></button>
         </div>
         {#if linkError}<p id={`${id}-error`} role="alert">{linkError}</p>{/if}
       </div>

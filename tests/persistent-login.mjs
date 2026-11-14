@@ -76,7 +76,7 @@ async function respond(p) {
   if (mode === 'invalid' || (mode === 'backend-invalid' && url.pathname.includes('/repos/'))) return fulfill({}, 401);
   if (mode === 'rate') return fulfill({}, 403, { 'x-ratelimit-remaining': '0' });
   if (mode === 'repo-error' && url.pathname.includes('/repos/')) return fulfill({}, 404);
-  if (url.pathname === '/user') return fulfill({ login: 'verified-fixture', name: 'Verified User', avatar_url: 'https://avatars.githubusercontent.com/u/123', html_url: 'https://github.com/fixture' });
+  if (url.pathname === '/user') return fulfill({ login: mode === 'another-account' ? 'other-fixture' : 'verified-fixture', name: 'Verified User', avatar_url: 'https://avatars.githubusercontent.com/u/123', html_url: 'https://github.com/fixture' });
   if (url.pathname === '/user/installations') return fulfill({ installations: [{ id: 1, app_slug: 'fixture', account: { login: 'fixture' }, permissions: { contents: 'write' } }] });
   if (url.pathname === '/user/installations/1/repositories') return fulfill({ repositories: [{ id: 1, full_name: config.repo, default_branch: 'main', permissions: { push: mode !== 'readonly' } }] });
   if (url.pathname.endsWith('/git/ref/heads/drafts')) return fulfill({ object: { sha: head } });
@@ -94,15 +94,31 @@ try {
   const virtual = { name: 'persistent-login-config', resolveId(id) { if (id.startsWith('virtual:rigel-')) return '\0' + id; }, load(id) { if (id.startsWith('\0virtual:rigel-')) return 'export default ' + JSON.stringify(id.endsWith('config') ? { backend: 'github', languages: ['en'], defaultLanguage: 'en' } : id.endsWith('i18n') ? dictionaries : []); } };
   const options = { configFile: false, root: scratch, logLevel: 'warn', plugins: [virtual, svelte()], resolve: { alias: { '/src': path.join(root, 'src') }, dedupe: ['svelte'] }, build: { outDir: path.join(scratch, 'dist'), emptyOutDir: true }, server: { host: '127.0.0.1', port: 0, fs: { allow: [root] } } };
   await build(options);
-  vite = await createServer({ ...options, build: undefined, root: path.join(scratch, 'dist'), plugins: [{ name: 'manifest', configureServer(server) { server.middlewares.use((req, res, next) => { if (!['GET', 'HEAD'].includes(req.method)) { writes.push(req.url); res.statusCode = 405; res.end(); } else if (req.url === '/storage-tab') { res.setHeader('Content-Type', 'text/html'); res.end(`<script>localStorage.removeItem('${sessionKey}')</script>`); } else if (req.url === '/rigel/manifest.json') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(blueprint())); } else next(); }); } }] });
+  vite = await createServer({ ...options, build: undefined, root: path.join(scratch, 'dist'), plugins: [{ name: 'manifest', configureServer(server) { server.middlewares.use((req, res, next) => { if (!['GET', 'HEAD'].includes(req.method)) { writes.push(req.url); res.statusCode = 405; res.end(); } else if (req.url === '/storage-tab') { res.setHeader('Content-Type', 'text/html'); res.end(`<script>const entry=Object.keys(localStorage).filter(key=>key.startsWith('rigelcms.drafts.')).map(key=>JSON.parse(localStorage.getItem(key)))[0];if(entry)localStorage.setItem('rigelcms.recoveryLogout',JSON.stringify([entry.scope,crypto.randomUUID()]));localStorage.removeItem('${sessionKey}')</script>`); } else if (req.url === '/rigel/manifest.json') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(blueprint())); } else next(); }); } }] });
   await vite.listen(); origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
   profile = path.join(scratch, 'chrome-' + Date.now()); await launch();
   await cdp('Page.navigate', { url: origin }); await signedOut(); await login();
   const original = JSON.parse(await stored()); assert.equal(original.accessToken, token); assert.equal(original.version, 1); assert.deepEqual(Object.keys(original).sort(), ['accessToken', 'expiresAt', 'scope', 'version']); results.push('popup login persists only scoped access token and absolute expiry');
   const before = requests.length; await reload(); await editor(); assert.equal(await evaluate('window.logins'), 0); assert.equal(JSON.parse(await stored()).expiresAt, original.expiresAt); assert(requests.slice(before).includes('/user')); assert(!requests.slice(before).some(p => p.includes('/git/blobs/'))); results.push('refresh restores without popup and reverifies identity/permissions without eager body reads');
   await stopChrome(); await launch(); await cdp('Page.navigate', { url: origin }); await editor(); assert.equal(await evaluate('window.logins'), 0); assert.equal(JSON.parse(await stored()).expiresAt, original.expiresAt); results.push('browser close/reopen preserves original expiry');
-  await edit(); await click('.user-btn'); await click('#github-sign-out'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Keep editing'); assert(await stored()); assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Unsaved draft'); results.push('cancelled dirty signout retains session and draft');
-  await click('.user-btn'); await click('#github-sign-out'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Discard changes'); await signedOut(); assert.equal(await stored(), null); await reload(); await signedOut(); results.push('confirmed signout removes persistent login, reload stays signed out');
+  await edit(); await reload(); await editor(); await wait(`!!document.querySelector('.recovery-notice')`);
+  assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Fresh from GitHub');
+  await click('.recovery-notice .primary');
+  assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Unsaved draft');
+  const recoveryCopies = () => evaluate(`Object.keys(localStorage).filter(key=>key.startsWith('rigelcms.drafts.')).map(key=>JSON.parse(localStorage.getItem(key)))`);
+  await delay(500); const privateBackup = (await recoveryCopies())[0]; assert.ok(privateBackup); assert.ok(!JSON.stringify(privateBackup).includes(token));
+  results.push('verified GitHub reload offers browser-only recovery without replacing saved content or storing credentials');
+  await click('.user-btn'); await click('#github-sign-out'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Keep editing'); assert(await stored()); assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Unsaved draft'); results.push('cancelled dirty signout retains session and draft');
+  await click('.user-btn'); await click('#github-sign-out'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`); await textClick('.unsaved-actions button', 'Discard changes'); await signedOut(); assert.equal(await stored(), null); await reload(); await signedOut(); assert.deepEqual(await recoveryCopies(), []); results.push('confirmed signout removes persistent login and private recovery copies, reload stays signed out');
+  await evaluate(`localStorage.setItem(${JSON.stringify('rigelcms.drafts.' + privateBackup.id)},${JSON.stringify(JSON.stringify(privateBackup))})`);
+  await seed(record()); await cdp('Page.navigate', { url: origin }); await editor(); await wait(`!!document.querySelector('.recovery-entry')`);
+  await click('.user-btn'); await click('#github-sign-out'); await signedOut(); assert.deepEqual(await recoveryCopies(), []);
+  results.push('signing out from Welcome purges existing recovery copies without opening an editor');
+  await evaluate(`localStorage.setItem(${JSON.stringify('rigelcms.drafts.' + privateBackup.id)},${JSON.stringify(JSON.stringify(privateBackup))})`);
+  mode = 'another-account'; await seed(record()); await reload(); await editor();
+  assert.ok(await evaluate(`!document.querySelector('.recovery-notice') && !document.querySelector('.recovery-entry')`));
+  results.push('a different verified account cannot see or restore another account’s backup');
+  await evaluate(`localStorage.removeItem(${JSON.stringify('rigelcms.drafts.' + privateBackup.id)})`); mode = 'ready';
   for (const [label, value] of [['expired', record({ expiresAt: Date.now() - 1 })], ['malformed JSON', '{'], ['invalid token', record({ accessToken: 'not-a-token' })], ['overlong lifetime', record({ expiresAt: Date.now() + 90000000 })], ['config mismatch', record({ scope: 'another-repository' })]]) {
     await seed(value); const count = requests.length; await reload(); await signedOut(); assert.equal(await stored(), null); assert.equal(requests.length, count); assert.equal(await evaluate('window.logins'), 0); results.push(label + ' is cleared without auth/network');
   }
@@ -123,11 +139,18 @@ try {
   }
   mode = 'ready'; await seed(record({ expiresAt: Date.now() + 32000 })); await reload(); await editor(); await edit();
   await wait(`document.querySelector('.github-session')?.textContent.includes('expired')`); assert.equal(await stored(), null); assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Unsaved draft'); results.push('active expiry clears credentials without dropping draft');
+  assert.ok((await recoveryCopies()).length > 0, 'expiry retains a flushed recovery backup');
   await click('.github-session button'); await wait(`!document.querySelector('.github-session')`);
+  await reload(); await editor(); await wait(`!!document.querySelector('.recovery-notice')`); await click('.recovery-notice .primary');
+  assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Unsaved draft');
+  results.push('session expiry and same-account reconnect/reload preserve recoverable unsaved edits');
   await evaluate(`window.rejectFileClear=true;window.failedClears=0;window.dispatchEvent(new StorageEvent('storage',{key:'rigelcms.cache.files',newValue:null}))`);
   await wait('window.failedClears>0'); await delay(100); assert.deepEqual(await evaluate('window.unhandledClears'), []);
+  await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').dispatchEvent(new Event('input',{bubbles:true}))`);
   const otherTab = await cdp('Target.createTarget', { url: origin + '/storage-tab' });
   await wait(`!!document.querySelector('.github-session')`); assert.equal(await evaluate(`document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])').value`), 'Unsaved draft');
+  await delay(600); assert.deepEqual(await recoveryCopies(), [], 'cross-tab explicit logout cancels queued backups instead of recreating purged private data');
+  results.push('cross-tab explicit logout cancels queued recovery writes while preserving in-memory edits');
   await cdp('Target.closeTarget', { targetId: otherTab.targetId });
   await click('.save-button'); await wait(`document.body.textContent.includes('Connect GitHub and verify')`); assert.equal(writes.length, 0);
   await delay(100); assert.deepEqual(await evaluate('window.unhandledClears'), []); assert.equal(await stored(), null); assert.equal(await evaluate("localStorage.getItem('rigelcms.cache.files.clear')"), '1');
@@ -142,6 +165,12 @@ try {
   await wait('window.failedClears>0'); await wait(`document.querySelector('.settings-pane').textContent.includes('Memory cache cleared, but browser storage could not be cleared.')`);
   assert.equal(await stored(), sessionBeforeClear); assert.deepEqual(await evaluate('window.unhandledClears'), []); await evaluate('window.rejectFileClear=false'); await click('.settings-modal .close'); results.push('explicit Clear File Cache still reports persistent failure without changing sign-in');
   await click('.user-btn'); await textClick('.user-menu button', 'Settings'); await wait(`!!document.querySelector('.settings-modal')`); await textClick('.settings-nav button', 'Advanced'); await textClick('.settings-pane button', 'Erase All Data'); await wait(`!!document.querySelector('.action-dialog[open]')`); await textClick('.action-dialog button', 'Erase data'); await signedOut(); assert.equal(await stored(), null); results.push('erase browser data clears persistent login');
+  await login(); await edit(); await delay(500); assert.ok((await recoveryCopies()).length > 0);
+  mode = 'another-account'; await click('.user-btn'); await click('.github-reconnect');
+  await wait(`document.querySelector('.user-details')?.textContent.includes('other-fixture') && document.querySelector('#rigel-editor-pane input[type=text]:not([readonly])')?.value === 'Fresh from GitHub' && document.querySelector('.save-button')?.disabled`);
+  assert.deepEqual(await recoveryCopies(), []); assert.ok(await evaluate(`!document.querySelector('.recovery-entry')`));
+  results.push('switching verified accounts with live unsaved edits purges the departing account’s backups and does not carry edits across');
+  await click('.user-btn'); await click('#github-sign-out'); await signedOut(); mode = 'ready';
   const blocked = await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `for(const method of ['getItem','setItem','removeItem'])Storage.prototype[method]=()=>{throw new DOMException('Blocked','SecurityError')}` });
   await reload(); await signedOut(); await login(); await edit(); assert.equal(writes.length, 0); await cdp('Page.removeScriptToEvaluateOnNewDocument', { identifier: blocked.identifier }); results.push('storage denied gracefully degrades to memory-only login');
   assert.deepEqual(exceptions, []); assert.deepEqual(writes, []);

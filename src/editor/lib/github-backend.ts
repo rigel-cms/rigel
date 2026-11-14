@@ -1,5 +1,5 @@
 import { translate } from "../i18n";
-import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, safeFileUrl } from "../../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, validUploadName, safeMediaName, safeFileUrl } from "../../media-types";
 import { validateMetaUpdate, META_KEYS, type MediaMeta } from "../../media-metadata";
 import { validMediaBytes } from "../../routes/media-validation";
 import type { MediaAsset } from "./media-library";
@@ -288,6 +288,88 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, c
   return manifest;
 }
 
+export interface ContentRevision { sha: string; message: string; author: string; date: string }
+export interface RevisionDraft { values: Record<string, unknown>; body: ArticleBody | "" }
+
+function historyPath(ctx: GitContext, manifest: Manifest, selection: Selection) {
+  const snapshot = loaded(ctx, manifest), cfg = config(ctx, manifest);
+  let path = "";
+  if (selection.kind === "page" && manifest.pages.some(page => page.slug === selection.slug)) path = filePath(ctx, manifest, cfg.copyDir, selection.slug, "ts");
+  if (selection.kind === "post") {
+    const folder = cfg.collections.find(collection => collection.name === selection.collection)?.folder;
+    if (folder && snapshot.collections.get(selection.collection)?.files.has(selection.slug)) path = filePath(ctx, manifest, folder, selection.slug, "json", POST_SLUG);
+  }
+  if (selection.kind === "document") {
+    const doc = manifest.documents?.find(doc => doc.id === selection.id && doc.type === selection.type), type = manifest.schema?.documents.find(type => type.name === doc?.type);
+    if (doc && type) path = filePath(ctx, manifest, type.folder, doc.slug);
+  }
+  if (selection.kind === "menu" && cfg.menus && manifest.menus?.entries.some(menu => menu.slug === selection.slug)) path = filePath(ctx, manifest, cfg.menus.folder, selection.slug);
+  if (!path || !snapshot.paths.has(path)) throw new Error(translate("connection.invalidFile"));
+  return { path, head: snapshot.head };
+}
+
+export async function listRemoteHistory(ctx: GitContext, manifest: Manifest, selection: Selection, page = 1) {
+  const { path, head } = historyPath(ctx, manifest, selection);
+  if (!Number.isInteger(page) || page < 1 || page > 10) throw new Error(translate("shell.historyLimit"));
+  const query = new URLSearchParams({ path, sha: head, per_page: "20", page: String(page) });
+  const data = await gh(ctx, `/commits?${query}`);
+  if (!Array.isArray(data) || data.length > 20) throw new Error(translate("connection.malformedResponse"));
+  const entries: ContentRevision[] = data.map(entry => {
+    const author = entry?.commit?.author;
+    if (typeof entry?.commit?.message !== "string" || entry.commit.message.length > 65536 || typeof author?.name !== "string" || typeof author.date !== "string" || !Number.isFinite(Date.parse(author.date))) throw new Error(translate("connection.malformedResponse"));
+    return { sha: sha(entry.sha), message: entry.commit.message.split("\n")[0], author: author.name, date: author.date };
+  });
+  historyPath(ctx, manifest, selection);
+  return { path, entries, more: entries.length === 20 && page < 10, limited: entries.length === 20 && page === 10 };
+}
+
+export async function readRemoteRevision(ctx: GitContext, manifest: Manifest, selection: Selection, revision: string): Promise<RevisionDraft> {
+  const { path } = historyPath(ctx, manifest, selection);
+  sha(revision);
+  const file = await gh(ctx, `/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${revision}`);
+  if (file?.type !== "file" || file.path !== path) throw new Error(translate("connection.invalidFile"));
+  const text = decode(file);
+  if (await fileBlobSha(text) !== sha(file.sha)) throw new Error(translate("connection.blobShaMismatch"));
+  historyPath(ctx, manifest, selection);
+  return parseRemoteRevision(manifest, selection, text);
+}
+
+export function parseRemoteRevision(manifest: Manifest, selection: Selection, text: string): RevisionDraft {
+  if (selection.kind === "page") {
+    const page = manifest.pages.find(page => page.slug === selection.slug);
+    const values = readValues(text);
+    if (!page || !Object.values(values).every(isPlainObject)) throw new Error(translate("connection.invalidCopyGroups"));
+    const check = (fields: import("../../manifest/types").CopyField[], values: Record<string, unknown>): boolean =>
+      Object.keys(values).every(key => fields.some(field => field.key === key)) && fields.every(field => field.type === "list"
+        ? Array.isArray(values[field.key]) && (values[field.key] as unknown[]).every(item => isPlainObject(item) && check(field.item.fields, item))
+        : typeof values[field.key] === "string");
+    if (Object.keys(values).some(key => !page.groups.some(group => group.id === key)) || !page.groups.every(group => isPlainObject(values[group.id]) && check(group.fields, values[group.id] as Record<string, unknown>))) throw new Error(translate("shell.historyIncompatible"));
+    return { values, body: "" };
+  }
+  const data = parseJson(text);
+  if (!isPlainObject(data)) throw new Error(translate("connection.invalidValues"));
+  if (selection.kind === "post") {
+    const collection = manifest.collections?.find(collection => collection.name === selection.collection);
+    if (!collection || !isPlainObject(data.frontmatter)) throw new Error(translate("connection.invalidArticle"));
+    validateBody(data.body, translate);
+    validateExtensionBlocks(data.body, resolveExtensions(extensions).blocks);
+    validateCollectionValues(collection.fields, data.frontmatter, manifest.documents, translate);
+    return { values: data.frontmatter, body: data.body as ArticleBody };
+  }
+  if (selection.kind === "document") {
+    const doc = manifest.documents?.find(doc => doc.id === selection.id && doc.type === selection.type);
+    if (!doc || !manifest.schema) throw new Error(translate("connection.unknownDocument"));
+    validateDocument(manifest.schema, doc.type, doc.slug, data, manifest.documents ?? [], translate);
+    return { values: data, body: "" };
+  }
+  if (selection.kind === "menu" && manifest.menus) {
+    const menu = validateMenu(data, manifest.menus.maxDepth, translate);
+    if (menu.slug !== selection.slug) throw new Error(translate("connection.menuSlugMismatch"));
+    return { values: { title: menu.title, items: menu.items }, body: "" };
+  }
+  throw new Error(translate("connection.selectContent"));
+}
+
 export function remoteSelectionReady(ctx: GitContext, manifest: Manifest, selection: Selection) {
   const snapshot = loaded(ctx, manifest);
   if (selection.kind === "document") {
@@ -417,6 +499,36 @@ export async function readRemotePost(ctx: GitContext, manifest: Manifest, name: 
   return { slug, frontmatter: post.frontmatter, body: post.body as ArticleBody };
 }
 
+export async function readRemoteMediaContent(ctx: GitContext, manifest: Manifest, signal?: AbortSignal) {
+  const snapshot = loaded(ctx, manifest);
+  const guard = () => { ctx.assertActive?.(); signal?.throwIfAborted(); };
+  const guarded = { ...ctx, assertActive: guard };
+  const copy: Manifest = {
+    ...manifest,
+    pages: manifest.pages.map(page => ({ ...page, values: {} })),
+    documents: (manifest.schema?.documents ?? []).flatMap(type => [...snapshot.documents.get(type.name)!.files.keys()].map(slug => ({ id: `${type.name}:${slug}`, type: type.name, slug, data: {}, loaded: "identity" as const }))),
+    collections: manifest.collections?.map(collection => ({ ...collection, posts: [], index: { state: "complete", loaded: 0, total: snapshot.collections.get(collection.name)!.files.size } })),
+    menus: manifest.menus ? { ...manifest.menus, entries: manifest.menus.entries.map(menu => ({ ...menu, items: [] })) } : undefined,
+  };
+  Object.defineProperty(copy, REMOTE_SNAPSHOT, { value: { ...snapshot, copies: new Set(), menus: new Set() } });
+  const tasks = [
+    ...copy.pages.map(page => () => readRemoteSelection(guarded, copy, { kind: "page", slug: page.slug })),
+    ...copy.documents!.map(doc => () => readRemoteSelection(guarded, copy, { kind: "document", type: doc.type, id: doc.id })),
+    ...(copy.collections ?? []).flatMap(collection => [...snapshot.collections.get(collection.name)!.files.keys()].map(slug => async () => { collection.posts.push(await readRemotePost(guarded, copy, collection.name, slug, false)); })),
+    ...(copy.menus?.entries ?? []).map(menu => () => readRemoteSelection(guarded, copy, { kind: "menu", slug: menu.slug })),
+  ];
+  let next = 0, error: unknown;
+  await Promise.all(Array.from({ length: Math.min(4, tasks.length) }, async () => {
+    while (next < tasks.length) {
+      guard();
+      try { await tasks[next++](); } catch (failure) { guard(); error ??= failure; }
+      guard();
+    }
+  }));
+  guard();
+  return { copy, error };
+}
+
 export async function indexRemoteCollections(ctx: GitContext, manifest: Manifest, name?: string, changed: () => void = () => {}, signal?: AbortSignal): Promise<void> {
   const snapshot = loaded(ctx, manifest);
   for (const collection of manifest.collections ?? []) {
@@ -494,6 +606,7 @@ export function reindexRemoteCollections(ctx: GitContext, manifest: Manifest, ch
 }
 
 export function resetRemoteCollectionCache(manifest: Manifest) {
+  for (const collection of manifest.collections ?? []) for (const post of collection.posts) delete post.body;
   if (manifest.documents) for (const doc of manifest.documents) {
     const entry = (manifest as Manifest & { [REMOTE_SNAPSHOT]?: Snapshot })[REMOTE_SNAPSHOT]?.documents.get(doc.type)?.metadata.get(doc.slug);
     if (doc.loaded !== "complete") doc.data = entry?.frontmatter ?? {};
@@ -897,7 +1010,8 @@ function queueRemoteWrite<T>(ctx: GitContext, manifest: Manifest, operation: () 
 const mediaUploads = new WeakMap<Blob, string>();
 export async function uploadRemoteMedia(ctx: GitContext, manifest: Manifest, file: File, metadata: MediaMeta = {}): Promise<string> {
   const info = mediaMetadata(file.name), limit = manifest.github?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (!safeMediaName(file.name) || !info || (file.type && file.type !== info.type) || !file.size || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  if (file.size > limit) throw new Error(translate("local.mediaTooLarge", { limit: limit / 1024 / 1024 }));
+  if (!validUploadName(file.name) || !info || (file.type && file.type !== info.type) || !file.size) throw new Error(translate("local.unsupportedMedia"));
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!validMediaBytes(bytes, info.extension)) throw new Error(translate("local.mediaBytesMismatch"));
   const filename = mediaUploads.get(file) ?? `${crypto.randomUUID()}.${info.extension === "jpeg" ? "jpg" : info.extension}`;

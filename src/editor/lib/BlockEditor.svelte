@@ -494,7 +494,7 @@
     altKey = activeKey; altText = imageData?.alt ?? ""; await positionLink(); altOpen = true; linkOpen = false;
     await tick(); altInput.focus();
   }
-  function refocus() { void tick().then(() => { root.focus({ preventScroll: true }); editor.focus(); }); }
+  function refocus() { void tick().then(() => { editor.update(() => { if (savedSelection) L.$setSelection(savedSelection.clone()); }, { discrete: true }); root.focus({ preventScroll: true }); editor.focus(); }); }
   function applyAlt() {
     editor.update(() => { const node = L.$getNodeByKey(altKey); if (node instanceof ImageNode) node.setImage({ alt: altText }); });
     altOpen = false; refocus();

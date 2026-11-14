@@ -9,6 +9,7 @@ These guides follow the SDK source in this repository. Check your installed vers
 - [Getting started](getting-started.md): use the starter or add an editable page to an existing Astro site.
 - [Content model](content-model.md): native documents, fields, sections and shared references.
 - [Preview bindings](preview.md): prepare real page templates for unsaved visual editing.
+- [Keyboard shortcuts](keyboard.md): search, save and editor panel shortcuts.
 
 ## Configure your site
 

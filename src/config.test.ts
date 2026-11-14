@@ -19,6 +19,7 @@ test("defaults to local backend + src/content/copy", () => {
     languages: ["en", "fr"],
     extensions: [],
     maxFileSize: 2 * 1024 * 1024,
+    imageProcessing: { convertHeic: true, resize: true, quality: 90, maxEdge: 2048 },
   });
 });
 

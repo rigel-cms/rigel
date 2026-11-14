@@ -1,4 +1,5 @@
 export type { MenuItem, MenuDocument } from "./manifest/menu";
+export type { SiteLink } from "./config";
 export { defineCopy } from "./manifest/types";
 export type { CopyField, CopyGroup, CopyPage, Manifest, ManifestCollection } from "./manifest/types";
 export { defineSchema, defineDocument, defineObject, defineField } from "./schema/types";

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } fro
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import config from "virtual:rigel-config";
-import { GET, POST, DELETE } from "./local-media";
+import { GET, POST, PUT, DELETE } from "./local-media";
 
 vi.mock("virtual:rigel-config", () => ({ default: { backend: "local", publicDir: "" } }));
 vi.mock("node:fs/promises", async importOriginal => {
@@ -135,6 +135,31 @@ test.each([
   ['file.zip', 'application/zip', 'not archive'],
 ])('rejects mismatched content %s', async (filename, type, bytes) => {
   expect((await upload(bytes, { 'Content-Type': type as string, 'X-Rigel-Filename': filename as string })).status).toBe(415);
+});
+
+test.each(["Chambre (1).png", "Océan d'Atlantique (été).png", "海辺 🌊 100%.png"])("upload preserves original label %s and stores a UUID filename", async name => {
+  const response = await upload(png, { "X-Rigel-Filename": encodeURIComponent(name) });
+  expect(response.status).toBe(200);
+  const { url } = await response.json();
+  expect(url).toMatch(/^\/rigel-media\/[a-f0-9-]+\.png$/);
+  expect(await readFile(path.join(publicDir, url))).toEqual(png);
+  const ledger = JSON.parse(await readFile(path.join(publicDir, "rigel-media/.rigel-media.json"), "utf8"));
+  expect(ledger[url].name).toBe(name);
+  const updated = await PUT({ request: new Request(`${origin}/rigel/api/local/media`, {
+    method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" },
+    body: JSON.stringify({ url, name, title: "Updated title" }),
+  }) } as APIContext);
+  expect(updated.status).toBe(200);
+  const saved = JSON.parse(await readFile(path.join(publicDir, "rigel-media/.rigel-media.json"), "utf8"));
+  expect(saved[url]).toMatchObject({ name, title: "Updated title" });
+});
+
+test('rejects encoded paths, control characters and malformed filename headers without writing', async () => {
+  for (const name of ["../escape.png", "folder/image.png", "folder\\image.png", ".hidden.png", "bad\u0000.png", "bad\n.png", "bad\u007f.png", "file.svg"]) {
+    expect((await upload(png, { "X-Rigel-Filename": encodeURIComponent(name) })).status).toBe(415);
+  }
+  expect((await upload(png, { "X-Rigel-Filename": "%broken.png" })).status).toBe(415);
+  expect(await readdir(directory)).toEqual([]);
 });
 
 test('PDF upload lists, reads with safe headers and preserves bytes', async () => {

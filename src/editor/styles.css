@@ -1,8 +1,10 @@
 .rigel, .rigel *, .rigel *::before, .rigel *::after { box-sizing: border-box; }
+.rigel :where(a:any-link) { color: var(--link); }
 .rigel .rigel-tooltip { position: fixed; pointer-events: auto; inset: auto; margin: 0; padding: 4px 10px; max-width: min(17.5rem, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; border: 0; border-radius: 0; background: var(--text); color: var(--panel); box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); font: 500 11px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; overflow-wrap: anywhere; text-align: start; white-space: normal; }
 .rigel .rigel-tooltip::backdrop { background: transparent; pointer-events: none; }
 @media (forced-colors: active) { .rigel .rigel-tooltip { background: Canvas; color: CanvasText; border: 1px solid CanvasText; } }
 .rigel {
+  --button-size: 36px;
   --rigel-50: #EFFBFF;
   --rigel-100: #D9F4FF;
   --rigel-200: #ADE8FF;
@@ -34,7 +36,7 @@
 .rigel .connection-brand img { flex-shrink: 0; }
 .rigel .connection-card h1 { margin: 1rem 0; font-size: 1.75rem; line-height: 1.2; }
 .rigel .connection-card p { margin: 1rem 0; }
-.rigel .connection-card :is(button, a.primary) { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.625rem 1rem; font: inherit; text-decoration: none; text-align: center; }
+.rigel .connection-card :is(button, a.primary) { display: inline-flex; align-items: center; justify-content: center; min-height: var(--button-size); padding: 0.375rem 1rem; font: inherit; text-decoration: none; text-align: center; }
 .rigel .connection-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .rigel .connection-note { color: var(--text-muted); font-size: 0.8125rem; }
 .rigel .connection-error { color: var(--danger); }
@@ -44,7 +46,12 @@
 @media (prefers-reduced-motion: reduce) { .rigel .connection-loader::before { animation: none; left: 30%; } }
 .rigel .github-session { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-control); background: var(--surface-raised); }
 .rigel .github-session p { margin: 0 0 0.75rem; }
-.rigel .github-reconnect { min-height: 44px; }
+.rigel .recovery-notice strong { display: block; margin-bottom: 0.5rem; }
+.rigel .recovery-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.rigel .recovery-actions button { min-height: var(--button-size); }
+.rigel .recovery-list { width: min(100%, 36rem); margin: 1.5rem auto 0; text-align: left; }
+.rigel .recovery-entry { display: grid; gap: 0.5rem; padding: 1rem 0; border-top: 1px solid var(--border-control); overflow-wrap: anywhere; }
+.rigel .github-reconnect { min-height: var(--button-size); }
 @media (max-width: 480px) { .rigel.connection-shell { padding: 1rem; } .rigel .connection-card { padding: 1.25rem; } }
 
 /* Shell layout — applied only to the editor shell, not modal backdrops */
@@ -120,7 +127,14 @@
   border-top: 1px solid var(--border);
   padding-block: 0.75rem;
 }
+.rigel .brand-row { display: flex; align-items: center; }
+.rigel .site-links-trigger { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin-right: 0.5rem; padding: 0; border: 0; background: transparent; color: var(--text); cursor: pointer; }
 .rigel .brand {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -179,12 +193,13 @@
 .rigel .rail-scroll > button:hover { background: var(--surface-raised); color: var(--text); }
 .rigel .sidebar-asset-icon { display: inline-block; width: 18px; height: 18px; flex-shrink: 0; background-color: currentColor; mask-image: var(--sidebar-icon); mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
 .rigel .rail-scroll > button { gap: 0.625rem; }
-.rigel aside > button.sidebar-publish { gap: 0.625rem; width: calc(100% - 1.5rem); min-height: 44px; margin: 0 0.75rem 0.5rem; padding: 0.625rem; border: 1px solid var(--border-control); color: var(--text); }
+.rigel aside > button.sidebar-publish { gap: 0.625rem; width: calc(100% - 1.5rem); min-height: var(--button-size); margin: 0 0.75rem 0.5rem; padding: 0.375rem 0.625rem; border: 1px solid var(--border-control); color: var(--text); }
 .rigel aside > button.sidebar-publish:disabled { opacity: 0.5; cursor: not-allowed; }
 .rigel aside > button.sidebar-toggle { gap: 0.625rem; width: calc(100% - 1.5rem); margin: 0 0.75rem 0.5rem; padding: 0.625rem; font-size: 0.75rem; }
 @media (min-width: 768px) {
   .rigel.sidebar-collapsed { --sidebar-w: 64px; }
   .rigel.sidebar-collapsed .brand { justify-content: center; padding-inline: 0.5rem; }
+  .rigel.sidebar-collapsed .site-links-trigger { display: none; }
   .rigel.sidebar-collapsed .brand > span,
   .rigel.sidebar-collapsed .sidebar-label,
   .rigel.sidebar-collapsed .search-trigger kbd,
@@ -230,7 +245,7 @@
 .rigel .search-trigger:hover { border-color: var(--text-3); }
 .rigel .search-trigger kbd {
   margin-left: auto;
-  font: 600 0.6875rem ui-monospace, monospace;
+  font: 400 0.6875rem ui-monospace, monospace;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 0;
@@ -353,7 +368,7 @@
 .rigel .rigel-modal table.keys td { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
 .rigel .rigel-modal table.keys tr:last-child td { border-bottom: none; }
 .rigel .rigel-modal table.keys kbd {
-  font: 600 0.75rem ui-monospace, monospace;
+  font: 400 0.75rem ui-monospace, monospace;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0;
@@ -422,27 +437,19 @@
 .rigel .pages-search input::-webkit-search-cancel-button { appearance: none; }
 .rigel .pages-search .icon-btn { position: absolute; right: 0; top: 0; height: 100%; width: 2.5rem; }
 
-.rigel .editor-actions { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.rigel .editor-actions { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.75rem; }
 .rigel .editor-actions .back { display: flex; min-width: 0; margin: 0; }
 .rigel .editor-actions .back button, .rigel .editor-actions .save-button { height: 2.25rem; padding: 0.5rem 0.75rem; border-width: 1px; border-style: solid; font-family: inherit; font-size: 0.8125rem; font-weight: 500; line-height: 1.25; }
 .rigel .editor-actions .back button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rigel .editor-actions .save-button { border-color: transparent; }
 .rigel .editor-actions .save-actions { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; flex-shrink: 0; }
-.rigel .save-status {
-  font-size: 0.75rem;
-  color: var(--text-3);
-  min-width: 62px;
-  text-align: right;
-}
+.rigel .save-control { position: relative; }
+.rigel .save-status { position: absolute; top: calc(100% + .25rem); right: 0; font-size: .6875rem; line-height: 1rem; color: var(--text-3); white-space: nowrap; text-align: right; }
+.rigel .editor-actions .history-button { height: 2.25rem; }
 .rigel .save-status.saving { color: var(--accent); }
 .rigel .save-status.saved { color: var(--success); }
 .rigel .save-status.dirty { color: var(--warning); }
 .rigel .save-status.error { color: var(--danger); }
-.rigel .save-toast { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 150; display: flex; align-items: flex-start; gap: 0.75rem; width: min(42rem, calc(100% - 2rem)); padding: 1rem; border: 1px solid var(--danger); background: var(--panel); color: var(--text); box-shadow: var(--shadow-lg); }
-.rigel .save-toast-content { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.rigel .save-toast strong { color: var(--danger); font-size: 0.875rem; }
-.rigel .save-toast p { margin: 0.375rem 0 0.75rem; font-size: 0.8125rem; }
-.rigel .save-toast > .icon-btn { flex-shrink: 0; }
 .rigel .icon-btn {
   display: flex;
   align-items: center;
@@ -468,10 +475,13 @@
   min-width: 0;
 }
 .rigel main.wide { max-width: 100%; }
+.rigel main:has(> .media-library) { display: flex; flex-direction: column; min-height: 100dvh; padding: 0; }
+
 .rigel .menu-details { max-width: 720px; }
 .rigel main:not(.wide) { max-width: 720px; }
 
 /* ── Buttons ───────────────────────────── */
+.rigel :is(.primary, .outlined, .danger-btn) { min-height: var(--button-size); }
 .rigel .primary {
   padding: 0.4375rem 1rem;
   border: none;
@@ -608,7 +618,6 @@
   border-radius: 0;
   padding: 1rem 1.25rem 1.25rem;
   margin-top: 1rem;
-  box-shadow: var(--shadow-sm);
 }
 .rigel h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
 .rigel h3 {
@@ -844,7 +853,7 @@
 }
 
 .rigel .rigel-modal, .rigel-modal {
-  background: var(--panel); border-radius: 0; padding: 1.25rem;
+  background: var(--panel); border: 0; border-radius: 0; padding: 1.25rem;
   width: min(520px, 92vw); max-height: 92vh; overflow-y: auto; box-shadow: var(--shadow-lg);
 }
 .rigel .rigel-modal h2 { margin: 0 0 0.375rem; font-size: 1.0625rem; }
@@ -865,8 +874,7 @@
 .rigel .media-head h2 { margin: 0; font-size: 1rem; }
 .rigel .media-tools { align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--border-control); background: var(--panel); }
 .rigel .media-views { display: flex; flex-shrink: 0; margin-inline-end: 1rem; }
-.rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; padding: 0; flex-shrink: 0; }
-@media (pointer: coarse) { .rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { width: 44px; height: 44px; } }
+.rigel button.outlined.icon-only, .rigel :is(.structure-actions, .schema-item-actions) button { display: inline-flex; align-items: center; justify-content: center; width: var(--button-size); height: var(--button-size); padding: 0; flex-shrink: 0; }
 .rigel .media-views button + button { border-left: 0; }
 .rigel .media-views button[aria-pressed=true] { background: var(--accent-soft); color: var(--on-accent-soft); }
 .rigel .media-tools .media-select { position: relative; max-width: 100%; min-width: 0; }
@@ -890,7 +898,6 @@
   .rigel .media-table th:first-child { width: 40%; }
   .rigel .media-file { flex-direction: column; align-items: flex-start; }
 }
-.rigel .media-feedback { position: absolute; right: 0; bottom: calc(100% + 0.25rem); max-width: 100%; margin: 0; color: var(--success); font-size: 0.8125rem; text-align: right; }
 .rigel .media-actions {
   position: relative;
   justify-content: flex-end; gap: 0.75rem;
@@ -909,6 +916,8 @@
 .rigel .media-meta { border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; }
 .rigel .media-meta label { margin-top: 0.75rem; }
 .rigel .media-details { min-width: 0; }
+.rigel .media-attribution { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.rigel .media-attribution .hint { margin: 0; }
 .rigel .media-details .hint { overflow-wrap: anywhere; }
 .rigel .image-picker:has(.media-editing) { width: min(1040px, 100%); }
 .rigel .media-selection.media-editing { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.5rem; }
@@ -919,8 +928,8 @@
 .rigel .media-editing > .media-actions { grid-column: 1 / -1; margin-top: 0; }
 @media (max-width: 700px) {
   .rigel .media-selection.media-editing { grid-template-columns: minmax(0, 1fr); }
-  .rigel .media-editing .media-preview > :is(img, video) { max-height: 35dvh; }
-  .rigel .media-editing .media-preview > iframe { height: 35dvh; }
+  .rigel .media-editing .media-preview > :is(img, video) { max-height: 25dvh; }
+  .rigel .media-editing .media-preview > iframe { height: 25dvh; }
   .rigel .with-media-path .media-path { flex-basis: 100%; }
   .rigel .with-media-path .media-button-actions { flex-basis: 100%; justify-content: flex-end; }
 }
@@ -1087,6 +1096,8 @@
   margin: 0; padding: 0; background: none; border: none; border-radius: 0; box-shadow: none;
 }
 
+.rigel .settings-pane .media-settings-section + .media-settings-section { margin-top: 1.5rem; }
+.rigel .image-processing-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .rigel .stock-key { margin-top: 1rem; }
 .rigel .stock-key-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.375rem; }
 .rigel .stock-key-head h4 { margin: 0; font-size: 0.8125rem; }
@@ -1156,6 +1167,8 @@
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
+
+[data-contrast="high"] .rigel .rigel-modal { border: 1px solid var(--border-control); }
 
 [data-contrast="high"] .rigel {
   --background: #FFFFFF;
@@ -1284,6 +1297,8 @@
 .rigel .block-drop-indicator { position: absolute; left: 2.5rem; right: 0.5rem; height: 3px; background: var(--accent); pointer-events: none; }
 .rigel :is(.block-menu, .block-slash) { width: 224px; max-width: calc(100vw - 16px); max-height: 280px; overflow-y: auto; padding: 0.5rem; border: 1px solid var(--border-control); background: var(--panel); color: var(--text); box-shadow: var(--shadow-lg); }
 .rigel .block-menu { position: fixed; inset: auto; margin: 0; }
+.rigel .site-links > a { display: block; padding: 0.5rem; color: var(--text); font-size: 0.8125rem; text-decoration: none; }
+.rigel .site-links > a:hover { background: var(--accent-soft); color: var(--on-accent-soft); }
 .rigel .block-slash { position: fixed; inset: auto; margin: 0; }
 .rigel .block-markdown { margin: 0; padding: 1rem; overflow: auto; white-space: pre-wrap; font: 0.8125rem/1.7 ui-monospace, monospace; }
 .rigel :is(.block-menu, .block-slash) > button, .rigel .extension-group-menu [data-rigel-command] button { display: block; width: 100%; text-align: left; padding: 0.5rem; background: var(--panel); border: 0; color: var(--text); font: inherit; font-size: 0.8125rem; cursor: pointer; }
@@ -1333,7 +1348,7 @@
 .rigel .select-check { width: 1rem; flex-shrink: 0; color: var(--accent); }
 .rigel .select-empty { margin: 0; padding: 0.5rem; color: var(--text-2); }
 .rigel .add-section .custom-select { flex: 1; }
-@media (max-width: 767px) { .rigel .select-option { min-height: 2.75rem; } }
+@media (max-width: 767px) { .rigel .select-option { min-height: var(--button-size); } }
 .rigel .schema-panel:has(> .panel-tabs) { scroll-padding-top: 4rem; }
 .rigel .schema-panel .block-editor > .body-toolbar:not(.image-toolbar), .rigel .schema-panel .markdown-editor:not(.markdown-inline) .formatting-toolbar { position: sticky; top: var(--properties-tabs-height, 0px); z-index: 3; }
 .rigel .schema-panel > .panel-tabs { position: sticky; top: 0; z-index: 10; padding-top: 0.5rem; margin-top: -0.5rem; background: var(--panel); }

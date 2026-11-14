@@ -1,4 +1,4 @@
-import { mediaMetadata } from "./media-types";
+import { mediaMetadata, safeMediaLabel } from "./media-types";
 import { systemMessage, type Translator } from "./editor/i18n/format";
 export const META_KEYS: Record<string, number> = { name: 120, title: 200, description: 1000, alt: 1000, author: 80 };
 export interface MediaMeta { name?: string; title?: string; description?: string; alt?: string; author?: string; }
@@ -10,7 +10,7 @@ function sanitize(value: unknown, max: number): string | undefined {
 
 export function safeDisplayName(value: unknown): boolean {
   return typeof value === "string" && value.length > 0 && value.length <= 120
-    && !value.startsWith(".") && /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/.test(value);
+    && safeMediaLabel(value);
 }
 
 export function validateMetaUpdate(

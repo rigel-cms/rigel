@@ -32,7 +32,10 @@ test("generated local and GitHub manifests transport identical content metadata 
     expect(local.pages[0].locale).toBe("fr");
     expect(local.collections![0].locale).toBe("fr");
     expect(local.schema!.documents[0].locale).toBe("en");
-    expect(github).toMatchObject(local);
+    const { recoveryScope, ...content } = local;
+    expect(recoveryScope).toMatch(/^[a-f0-9]{64}$/);
+    expect(github.recoveryScope).toBeUndefined();
+    expect(github).toMatchObject(content);
     expect(contentForLocale(local, "fr").documents).toEqual([]);
     expect(contentForLocale(local, "en").pages).toEqual([]);
     const disabled = await bundle({ ...cfg, contentLocales: undefined });

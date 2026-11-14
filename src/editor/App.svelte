@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Toaster from "./lib/Toaster.svelte";
+  import { createToast, updateToast, dismissToast, resetToasts } from "./lib/toasts";
+  onDestroy(resetToasts);
   import { t, locale } from "./i18n";
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { selectionHash, resolveHash, createHashNavigation } from "./lib/hash-navigation";
@@ -31,7 +34,7 @@
   function dismissVersion() {
     if (updateVersion) dismissUpdate(updateVersion);
     updateVersion = null;
-    document.querySelector<HTMLAnchorElement>(".brand")?.focus({ preventScroll: true });
+    document.querySelector<HTMLButtonElement>(".brand")?.focus({ preventScroll: true });
   }
   import { effectiveSearchScope } from "../manifest/search";
   import TopBar from "./lib/TopBar.svelte";
@@ -40,9 +43,11 @@
   import { pageCategories, pageTemplates, inPageCategory } from "../manifest/pages";
   import { validateDocumentSlugs } from "../slugs";
   import Shortcuts from "./lib/Shortcuts.svelte";
+  import { isTypingTarget, matchShortcut, shortcutAria, shortcutOverlayOpen, type ShortcutId } from "./lib/shortcuts";
   import CollectionPanel from "./lib/CollectionPanel.svelte";
   import { emptyBody, type ArticleBody } from "../article-body";
   import SchemaPanel from "./lib/SchemaPanel.svelte";
+  import EntryUsage from "./lib/EntryUsage.svelte";
   import { collectionPreviewValues, referenceLabel, referenceOptions } from "../manifest/references";
   import { isSeoField } from "../manifest/seo";
   import { initialCollectionValues, validateCollectionValues } from "../manifest/collections";
@@ -58,6 +63,23 @@
   import UnsavedChanges from "./lib/UnsavedChanges.svelte";
   import ActionDialog from "./lib/ActionDialog.svelte";
   import PublishDialog from "./lib/PublishDialog.svelte";
+  import HistoryDialog from "./lib/HistoryDialog.svelte";
+  import type { RevisionDraft } from "./lib/github-backend";
+  let history = $state.raw<{ selection: Selection; context: GitContext; current: Manifest; version: number } | null>(null);
+
+  function openHistory() {
+    if (!sel || !gitContext || !githubMode || articleLoading || articleError || saveTask || newEntry || newDocument) return;
+    history = { selection: sel, context: gitContext, current: manifest, version: draftRevision };
+  }
+
+  function restoreHistory(revision: RevisionDraft) {
+    if (!history || history.context !== gitContext || history.current !== manifest || history.selection !== sel || history.version !== draftRevision || saveTask) { history = null; return; }
+    history.context.assertActive?.();
+    draft = JSON.parse(JSON.stringify(revision.values));
+    bodyDraft = JSON.parse(JSON.stringify(revision.body));
+    touch();
+    history = null;
+  }
   import { validateDemoSelection } from "./lib/demo-backend";
   import VisualEditor from "./lib/VisualEditor.svelte";
   import { newDocumentFromTemplate } from "../schema/paths";
@@ -70,6 +92,147 @@
   import { readRemotePost, reauthorizeRemoteContent, remoteSelectionReady, readRemoteSelection, indexRemoteDocuments, hasRemoteFileCache, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./lib/github-backend";
   import { readLocalArticle, cacheLocalArticle, resetLocalArticles, hasLocalArticles } from "./lib/local-articles";
   import { clearFileCache, hasFileCache, fileCacheChanges } from "./lib/file-cache";
+  import { recoveryScope, readRecovery, writeRecovery, removeRecovery, consumeRecovery, holdRecovery, clearRecovery, type RecoveryDraft } from "./lib/draft-recovery";
+
+  let recoveries = $state<RecoveryDraft[]>([]);
+  let recoveryOffer = $state<RecoveryDraft | null>(null);
+  let recoveryError = $state(false);
+  let recoveryId: string | null = null;
+  let recoverySource: RecoveryDraft | null = null;
+  let recoveryScopeKey: string | null = null;
+  let recoveryBase = $state.raw<RecoveryDraft["base"]>({ values: null, body: "" });
+  let recoveryPending: RecoveryDraft | null = null;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let releaseRecovery = () => {};
+
+  function loadRecoveries() {
+    const scope = recoveryScope(manifest, githubAccess?.status === "ready" ? githubAccess.user.login.toLowerCase() : undefined);
+    try {
+      recoveries = scope ? readRecovery(scope) : [];
+      if (scope && !recoveryId) recoveryScopeKey = scope;
+    }
+    catch { recoveryError = true; }
+  }
+
+  function flushRecovery() {
+    clearTimeout(recoveryTimer);
+    if (!recoveryPending) return;
+    try {
+      writeRecovery(recoveryPending);
+      if (recoverySource) void consumeRecovery(recoverySource).then(loadRecoveries).catch(() => { recoveryError = true; });
+      recoverySource = null; recoveryPending = null; recoveryError = false; loadRecoveries();
+    }
+    catch { recoveryError = true; }
+  }
+
+  function discardRecoveryDraft() {
+    clearTimeout(recoveryTimer); recoveryPending = null;
+    try {
+      if (recoveryId) removeRecovery(recoveryId);
+      if (recoverySource) void consumeRecovery(recoverySource).then(loadRecoveries).catch(() => { recoveryError = true; });
+      recoverySource = null; loadRecoveries();
+    } catch { recoveryError = true; }
+  }
+
+  function forgetRecovery(broadcast = false) {
+    const scope = recoveryScopeKey ?? recoveryScope(manifest, githubAccess?.user.login.toLowerCase());
+    clearTimeout(recoveryTimer); recoveryPending = null; releaseRecovery();
+    try {
+      if (scope) {
+        if (broadcast) localStorage.setItem("rigelcms.recoveryLogout", JSON.stringify([scope, crypto.randomUUID()]));
+        clearRecovery(scope);
+      }
+    }
+    catch { recoveryError = true; }
+    recoveryId = null; recoverySource = null; recoveryScopeKey = null; recoveryOffer = null; recoveries = [];
+  }
+
+  function backupDraft() {
+    if (!recoveryId || !recoveryScopeKey || !sel || !["page", "document", "post", "menu"].includes(sel.kind) || articleLoading) return;
+    if (!dirty) { discardRecoveryDraft(); return; }
+    recoveryPending = JSON.parse(JSON.stringify({ version: 1, id: recoveryId, scope: recoveryScopeKey, selection: sel, locale: contentLocale, values: draft, body: bodyDraft, base: recoveryBase, creating: !!newEntry || !!newDocument, savedAt: Date.now() }));
+    clearTimeout(recoveryTimer);
+    recoveryTimer = setTimeout(flushRecovery, 400);
+  }
+
+  function offerRecovery() {
+    recoveryScopeKey = recoveryScope(manifest, githubAccess?.status === "ready" ? githubAccess.user.login.toLowerCase() : undefined);
+    recoveryId = recoveryScopeKey ? crypto.randomUUID() : null;
+    releaseRecovery();
+    releaseRecovery = recoveryId ? holdRecovery(recoveryId) : () => {};
+    recoverySource = null;
+    recoveryBase = JSON.parse(JSON.stringify({ values: newEntry || newDocument ? null : draft, body: bodyBase }));
+    loadRecoveries();
+    recoveryOffer = recoveries.find(record => sameSel(record.selection, sel!) && record.locale === contentLocale && (record.creating || JSON.stringify({ values: record.values, body: record.body }) !== JSON.stringify({ values: draft, body: bodyDraft }))) ?? null;
+    if (dirty) backupDraft();
+  }
+
+  function restoreRecovery(record: RecoveryDraft) {
+    if (dirty || saveTask || articleLoading) return;
+    if (record.creating) { requestNavigation(() => openRecovery(record, true)); return; }
+    requestNavigation(() => {
+      if (!sel || !sameSel(record.selection, sel) || record.scope !== recoveryScopeKey) return;
+      draft = JSON.parse(JSON.stringify(record.values));
+      bodyDraft = JSON.parse(JSON.stringify(record.body));
+      recoverySource = record;
+      recoveryOffer = null;
+      touch();
+    });
+  }
+
+  function dismissRecovery(record: RecoveryDraft) {
+    try {
+      void consumeRecovery(record).then(loadRecoveries).catch(() => { recoveryError = true; });
+      recoveryOffer = null;
+    }
+    catch { recoveryError = true; }
+  }
+
+  function openRecovery(record: RecoveryDraft, restoreNew = false) {
+    if (record.scope !== recoveryScope(manifest, githubAccess?.status === "ready" ? githubAccess.user.login.toLowerCase() : undefined)) return;
+    if (record.creating && !restoreNew) { recoveryOffer = record; return; }
+    const destination = contentForLocale(manifest, record.locale);
+    if (record.creating) {
+      const target = record.selection;
+      if (target.kind === "document" && destination.schema?.documents.some(type => type.name === target.type && type.creatable !== false && !type.singleton) && !manifest.documents?.some(doc => doc.id === target.id)) {
+        newDocument = { type: target.type, id: target.id, slug: target.id.slice(target.type.length + 1) };
+        draft = newDocumentFromTemplate(manifest.schema!, target.type, "", target.id.slice(target.type.length + 1));
+      } else if (target.kind === "post" && destination.collections?.some(collection => collection.name === target.collection && !collection.posts.some(post => post.slug === target.slug) && !collection.storageSlugs?.includes(target.slug))) {
+        newEntry = { collection: target.collection, post: { slug: target.slug, frontmatter: {}, body: emptyBody() } };
+      } else return;
+    } else if (!selectionInContent(destination, record.selection)) return;
+    selectedContentLocale = record.locale;
+    openSelection(record.selection);
+    if (record.creating) {
+      draft = JSON.parse(JSON.stringify(record.values));
+      bodyDraft = JSON.parse(JSON.stringify(record.body));
+      recoverySource = record; recoveryOffer = null; touch();
+    }
+  }
+
+  $effect(() => {
+    if (!ready || githubMode && (!connected || githubAccess?.status !== "ready")) { recoveries = []; return; }
+    manifest; githubAccess;
+    untrack(loadRecoveries);
+  });
+
+  onMount(() => {
+    const hidden = () => { if (document.visibilityState === "hidden") flushRecovery(); };
+    const changed = (event: StorageEvent) => {
+      if (event.key === "rigelcms.recoveryLogout" && event.newValue) {
+        try { if (JSON.parse(event.newValue)[0] === recoveryScopeKey) forgetRecovery(); } catch {}
+      } else if (event.key?.startsWith("rigelcms.drafts.")) loadRecoveries();
+    };
+    window.addEventListener("pagehide", flushRecovery);
+    window.addEventListener("storage", changed);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      flushRecovery(); releaseRecovery();
+      window.removeEventListener("pagehide", flushRecovery);
+      window.removeEventListener("storage", changed);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  });
 
   type Sel = Selection;
 
@@ -91,6 +254,11 @@
   let tokenExpired = $state(false);
   const githubMode = $derived(manifest.backend === "github");
   const demoMode = $derived(manifest.backend === "demo");
+  const mediaManifest = $derived(githubMode ? {
+    ...manifest,
+    pages: manifest.pages.filter(page => remoteSelectionReady(gitContext!, manifest, { kind: "page", slug: page.slug })),
+    menus: manifest.menus ? { ...manifest.menus, entries: manifest.menus.entries.filter(menu => remoteSelectionReady(gitContext!, manifest, { kind: "menu", slug: menu.slug })) } : undefined,
+  } : manifest);
   let sel = $state<Sel | null>(null);
   const previewTarget = $derived(sel?.kind === "page" ? sel : null);
   let draft = $state<Record<string, unknown>>({});
@@ -100,6 +268,14 @@
   let saveState = $state<"idle" | "saving" | "saved" | "error">("idle");
   let saveTask: Promise<boolean> | null = null;
   let saveError = $state("");
+  let saveToast = 0;
+  $effect(() => {
+    if (!saveError) return;
+    updateToast(saveToast, { actions: [
+      { label: $t("shell.retrySave"), run: () => { void save(); }, disabled: saveState === "saving" },
+      ...(githubMode ? [{ label: $t("shell.reconnectGithub"), run: () => { void connectGitHub(); }, disabled: connectionBusy || saveState === "saving" }] : [])
+    ] });
+  });
   let articleLoading = $state(false);
   let articleError = $state("");
   let articleRevision = 0;
@@ -138,6 +314,15 @@
     void indexRemoteCollections(context, current, name, () => {}, indexController.signal).catch(handleAuthError);
   }
 
+  async function loadEntryUsage() {
+    if (!githubMode) return;
+    const context = requireGitContext(), current = manifest, signal = indexController.signal;
+    try {
+      await indexRemoteDocuments(context, current, current.schema?.documents.map(type => type.name) ?? [], () => {}, signal);
+      for (const collection of current.collections ?? []) if (collection.fields.some(field => field.type === "reference" && field.to)) await indexRemoteCollections(context, current, collection.name, () => {}, signal);
+    } catch (error) { handleAuthError(error); throw error; }
+  }
+
   function reindexCollections() {
     if (demoMode || reindexBusy || dirty || saveTask || publishOpen || publishBusy) return;
     actionDialog = {
@@ -167,19 +352,6 @@
 
   function cancelIndexing() { indexController.abort(); indexController = new AbortController(); }
 
-  function refreshCollections() {
-    if (connectionBusy || reindexBusy || saveTask || publishBusy) return;
-    requestNavigation(() => { void (async () => {
-      try {
-        const context = requireGitContext(), hash = currentHash();
-        resetRemoteCollectionCache(manifest); cancelIndexing(); connectionBusy = true;
-        const remote = await loadManifestRemote(context, blueprint!, false, { deferCollections: true, deferContent: true });
-        if (gitContext !== context) return;
-        manifest = remote; restoreHash(hash);
-      } catch (error) { handleAuthError(error); connectionError = error instanceof Error ? error.message : $t("shell.githubAccessError"); }
-      finally { connectionBusy = false; }
-    })(); });
-  }
   let publishOpen = $state(false);
   let publishLoading = $state(false);
   let publishBusy = $state(false);
@@ -319,9 +491,11 @@
       githubAccess = null;
       const access = await checkGitHubAccess(context.token, config.repo, config.appSlug);
       if (gitContext !== context) return;
+      if (recoveryScopeKey && recoveryScope(manifest, access.user.login.toLowerCase()) !== recoveryScopeKey) forgetRecovery();
       githubAccess = access;
       if (access.status !== "ready") { resetRemoteCollectionCache(manifest); resetMediaPreviews(); try { clearFileCache(); } catch {} return; }
       if (context.cacheAccount && context.cacheAccount !== access.user.login.toLowerCase()) {
+        forgetRecovery();
         resetRemoteCollectionCache(manifest); resetMediaPreviews(); cancelIndexing(); articleRevision++;
         sel = null; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false; newEntry = null; newDocument = null; connected = false;
       }
@@ -335,6 +509,12 @@
         manifest = remote;
         connected = true;
       }
+      if (dirty && !recoveryId) {
+        recoveryScopeKey = recoveryScope(manifest, access.user.login.toLowerCase());
+        recoveryId = recoveryScopeKey ? crypto.randomUUID() : null;
+        releaseRecovery = recoveryId ? holdRecovery(recoveryId) : () => {};
+        backupDraft();
+      }
     } catch (error) {
       if (gitContext === context) handleAuthError(error);
       throw error;
@@ -342,6 +522,7 @@
   }
 
   function invalidateSession() {
+    flushRecovery();
     resetRemoteCollectionCache(manifest);
     resetLocalArticles();
     cancelIndexing(); articleRevision++; articleLoading = false; articleError = "";
@@ -353,6 +534,7 @@
     sessionExpiresAt = 0;
     githubAccess = null;
     tokenExpired = true;
+    searchOpen = false;
   }
 
   function handleAuthError(error: unknown) {
@@ -400,14 +582,17 @@
   function signOut() {
     if (saveState === "saving" || connectionBusy) return;
     userOpen = false;
-    if (publishBusy) { invalidateSession(); connected = false; return; }
+    if (publishBusy) { forgetRecovery(true); resetToasts(); invalidateSession(); connected = false; return; }
     closePublish();
     requestNavigation(() => {
+      forgetRecovery(true);
+      resetToasts();
       invalidateSession();
       connected = false;
       connectionError = "";
       settingsOpen = false;
       shortcutsOpen = false;
+      searchOpen = false;
       newEntry = null;
       newDocument = null;
       draft = {};
@@ -433,9 +618,12 @@
   function save(): Promise<boolean> {
     if (publishOpen || publishBusy || articleLoading || articleError || reindexBusy) return Promise.resolve(false);
     if (saveTask) return saveTask;
+    flushRecovery();
     saveTask = (async () => {
       if (dirty) {
         saveState = "saving";
+        dismissToast(saveToast);
+        saveToast = createToast({ kind: "progress", message: $t("shell.saving") });
 
         const values = JSON.parse(JSON.stringify(draft));
         const body = JSON.parse(JSON.stringify(bodyDraft));
@@ -472,19 +660,23 @@
             docBase = JSON.parse(JSON.stringify(values));
           } else if (m) { m.title = values.title; m.items = values.items; }
           else if (po) {
-            po.frontmatter = values; if (demoMode) po.body = body; bodyBase = body;
+            po.frontmatter = values; po.body = body; bodyBase = body;
             if (!githubMode && !demoMode && c) cacheLocalArticle(c.name, po.slug, { frontmatter: values, body });
           }
           else if (p) p.values = values;
-          if (creating && po && c) { if (!demoMode) delete po.body; c.posts.push(po); }
+          if (creating && po && c) c.posts.push(po);
           newEntry = null;
           dirty = JSON.stringify({ fm: draft, body: bodyDraft }) !== JSON.stringify({ fm: docSel ? docBase : values, body });
+          recoveryBase = JSON.parse(JSON.stringify({ values, body }));
+          if (dirty) backupDraft(); else discardRecoveryDraft();
           saveState = dirty ? "idle" : "saved";
           saveError = "";
+          updateToast(saveToast, { kind: "success", message: $t(demoMode ? "shell.demoBanner" : "shell.saved"), actions: [] });
         } catch (error) {
           handleAuthError(error);
           saveState = "error";
           saveError = error instanceof Error ? error.message : $t("shell.saveChangesError");
+          updateToast(saveToast, { kind: "error", message: $t("shell.saveChangesError") + "\n" + saveError });
           return false;
         }
       }
@@ -495,6 +687,19 @@
   let settingsOpen = $state(false);
   let userOpen = $state(false);
   let shortcutsOpen = $state(false);
+  let searchOpen = $state(false);
+  const shortcutsReady = $derived(ready && !(githubMode && (!connected || tokenExpired || githubAccess?.status !== "ready" || !!connectionError)) && !connectionBusy && !articleLoading && !articleError && !publishOpen && !publishLoading && !publishBusy && !settingsOpen && !shortcutsOpen && !userOpen && !pendingNavigation && !actionDialog && saveState !== "saving");
+
+  function runShortcut(id: ShortcutId) {
+    if (id === "search") {
+      if (shortcutsReady && (searchOpen || !shortcutOverlayOpen())) searchOpen = !searchOpen;
+      return;
+    }
+    if (!shortcutsReady || searchOpen || shortcutOverlayOpen()) return;
+    if (id === "save") { if (dirty) void save(); return; }
+    if (id === "toggleSidebar") { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; return; }
+    if (id === "help") shortcutsOpen = true;
+  }
 
   let settings = $state(getSettings());
   let settingsError = $state("");
@@ -554,6 +759,7 @@
       description: $t("shell.eraseBrowserDataDescription"),
       onconfirm: () => {
         if (saveState === "saving") throw new Error($t("shell.waitForSave"));
+        clearTimeout(recoveryTimer); recoveryPending = null; recoveryId = null;
         eraseData();
         dirty = false;
         location.reload();
@@ -631,7 +837,7 @@
   });
 
   const sidebar = $derived(buildSidebar(visibleContent, $t));
-  let pagesFilter = $state<string | null>("");
+  let pagesFilter = $state<string | null>(null);
   let pagesQuery = $state("");
   let collectionQueries = $state<Record<string, string>>({});
   const tableQuery = $derived(sel?.kind === "collection" ? Object.hasOwn(collectionQueries, sel.name) ? collectionQueries[sel.name] : "" : pagesQuery);
@@ -663,7 +869,7 @@
   });
   const draftDocuments = $derived.by(() => {
     const map: Record<string, Record<string, unknown>> = {};
-    for (const doc of manifest.documents ?? []) map[doc.id] = doc.data;
+    for (const doc of manifest.documents ?? []) if (doc.loaded === undefined || doc.loaded === "complete") map[doc.id] = doc.data;
     const current = sel;
     if (current?.kind === "document") map[current.id] = draft;
     return map;
@@ -714,6 +920,31 @@
     void select(null);
   }
 
+  const siteLinks = $derived(manifest.siteLinks ?? [
+    { label: $t("shell.dashboard"), href: null },
+    ...(manifest.preview?.liveUrl ? [{ label: $t("shell.liveWebsite"), href: manifest.preview.liveUrl }] : []),
+    ...(manifest.preview?.draftUrl ? [{ label: $t("shell.sitePreview"), href: manifest.preview.draftUrl }] : []),
+  ]);
+  let siteMenu: HTMLDivElement;
+  let siteLinksOpen = $state(false);
+  let siteLinksPosition = $state("");
+  let desktopSidebar = $state(false);
+  const starOpensLinks = $derived(desktopSidebar && settings.userPref.sidebarCollapsed && siteLinks.length > 0);
+  onMount(() => {
+    const media = matchMedia("(min-width: 768px)");
+    const update = () => { desktopSidebar = media.matches; if (siteMenu?.matches(":popover-open")) siteMenu.hidePopover(); };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  });
+  function positionSiteLinks(event: MouseEvent) {
+    const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
+    if (rect) {
+      const fitsRight = rect.right + 228 <= innerWidth - 8;
+      siteLinksPosition = `left:${fitsRight ? rect.right + 4 : Math.max(8, innerWidth - 232)}px;top:${fitsRight ? rect.top : rect.bottom + 4}px`;
+    }
+  }
+
   $effect(() => {
     void loadBlueprint();
   });
@@ -729,7 +960,7 @@
     const route = resolveHash(hash, manifest);
     selectedContentLocale = route.locale;
     entryList = null;
-    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? (new URLSearchParams(hash.split("?")[1]).get("all") === "1" ? null : "") : "";
+    pagesFilter = route.selection?.kind === "pages" ? route.selection.category ?? null : null;
     pagesQuery = "";
     openSelection(route.selection);
     hashNavigation?.write(currentHash(), true);
@@ -829,6 +1060,7 @@
     const action = pendingNavigation;
     pendingNavigation = null;
     pendingNavigationCancel = null;
+    discardRecoveryDraft();
     const fallback: Sel | null = newEntry ? { kind: "collection", name: newEntry.collection } : newDocument ? { kind: "pages" } : sel;
     newEntry = null;
     newDocument = null;
@@ -843,7 +1075,7 @@
     if (sel && next && sameSel(sel, next) && !resetPages && !resetCollection) return;
     requestNavigation(() => {
       if (resetPages) {
-        pagesFilter = next.category ?? "";
+        pagesFilter = next.category ?? null;
         pagesQuery = "";
       }
       if (resetCollection) collectionQueries[next.name] = "";
@@ -852,11 +1084,13 @@
   }
 
   function openSelection(next: Sel | null) {
+    flushRecovery(); releaseRecovery();
+    recoveryOffer = null; recoveryId = null; recoverySource = null;
     const revision = ++articleRevision;
     cancelIndexing();
     if ((next?.kind === "document" || next?.kind === "page") && (sel?.kind === "pages" || sel?.kind === "documents")) entryList = sel;
     articleLoading = false; articleError = "";
-    if (githubMode && next && !(next.kind === "document" && newDocument?.id === next.id) && !remoteSelectionReady(gitContext!, manifest, next)) {
+    if (githubMode && next && !(next.kind === "document" && newDocument?.id === next.id) && !(next.kind === "post" && newEntry?.post.slug === next.slug && newEntry.collection === next.collection) && !remoteSelectionReady(gitContext!, manifest, next)) {
       sel = next; articleLoading = true; draft = {}; bodyDraft = ""; bodyBase = ""; docBase = null; dirty = false;
       const context = gitContext, current = manifest;
       void readRemoteSelection(context!, current, next).then(() => {
@@ -917,9 +1151,10 @@
         void request.then(article => {
           if (revision !== articleRevision || gitContext !== context || manifest !== current) return;
           draft = JSON.parse(JSON.stringify(article.frontmatter));
-          if (po) po.frontmatter = article.frontmatter;
+          if (po) { po.frontmatter = article.frontmatter; po.body = article.body; }
           else manifest.collections?.find(c => c.name === next.collection)?.posts.push({ slug: next.slug, frontmatter: article.frontmatter });
           bodyDraft = article.body; bodyBase = article.body; saveState = "idle";
+          articleLoading = false; offerRecovery();
         }).catch(error => {
           handleAuthError(error);
           if (revision === articleRevision) articleError = error instanceof Error ? error.message : $t("shell.saveChangesError");
@@ -934,6 +1169,7 @@
     }
     dirty = newEntry !== null || (newDocument !== null && next?.kind === "document");
     saveState = "idle";
+    if (next && ["page", "document", "post", "menu"].includes(next.kind)) offerRecovery();
 
   }
 
@@ -979,7 +1215,7 @@
       requireGitContext();
       if (connectionError) throw new Error("Reconnect GitHub and verify editing access first.");
     }
-    const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open';
+    const blocked = '.preview-frame[aria-busy="true"], dialog[open], [role="dialog"], [popover]:popover-open:not(.toast-stack)';
     const overlay = [document, ...[...document.querySelectorAll('iframe')].map(frame => frame.contentDocument)].some(doc => doc && [...doc.querySelectorAll(blocked)].some(element => element.getClientRects().length > 0 && doc.defaultView?.getComputedStyle(element).visibility !== "hidden"));
     if (articleLoading || articleError || reindexBusy || connectionBusy || saveTask || saveState === "saving" || publishOpen || publishBusy || publishLoading || settingsOpen || shortcutsOpen || userOpen || pendingNavigation || actionDialog || overlay) throw new Error("Editor is busy or a dialog is open. Finish the current action first.");
   }
@@ -1016,6 +1252,7 @@
     if (sel?.kind === "document") {
       dirty = JSON.stringify(draft) !== JSON.stringify(docBase);
       if (saveState !== "saving") saveState = "idle";
+      backupDraft();
       return;
     }
     const ref =
@@ -1027,6 +1264,7 @@
       JSON.stringify({ fm: draft, body: bodyDraft }) !==
       JSON.stringify({ fm: ref, body: bodyBase });
     if (saveState !== "saving") saveState = "idle";
+    backupDraft();
   }
 
   function cellValue(p: { slug: string; frontmatter: Record<string, unknown> }, key: string): string {
@@ -1103,6 +1341,7 @@
           }
           manifest.documents = (manifest.documents ?? []).filter(doc => doc.id !== id);
         }
+        discardRecoveryDraft();
         newDocument = null;
         docBase = null;
         openSelection(back);
@@ -1130,6 +1369,7 @@
           }
           collection.posts = collection.posts.filter((p) => p.slug !== current.slug);
         }
+        discardRecoveryDraft();
         newEntry = null;
         openSelection({ kind: "collection", name: collection.name });
       },
@@ -1172,6 +1412,11 @@
       userOpen = false;
       document.querySelector<HTMLButtonElement>('.user-btn')?.focus();
     }
+    const shortcut = matchShortcut(e);
+    if (!shortcut || shortcut === "toggleMode" || shortcut === "toggleProperties") return;
+    if (shortcut === "toggleSidebar" && isTypingTarget(e.target)) return;
+    e.preventDefault();
+    runShortcut(shortcut);
   }}
 />
 {#if !ready || (githubMode && !connected)}
@@ -1213,11 +1458,27 @@
 {:else}
 <div class="rigel" use:mediaPreviews class:sidebar-collapsed={settings.userPref.sidebarCollapsed}>
   <aside id="rigel-sidebar" data-tooltip-position="right">
-    <a class="brand" href="/rigel/" role="button" aria-label={$t("shell.welcome")} onclick={(event) => { event.preventDefault(); goWelcome(); }}>
+    <div class="brand-row">
+    <button type="button" class="brand" aria-label={starOpensLinks ? $t("shell.siteLinks") : $t("shell.dashboard")} aria-expanded={starOpensLinks ? siteLinksOpen : undefined} aria-controls={starOpensLinks ? "rigel-site-links" : undefined} popovertarget={starOpensLinks ? "rigel-site-links" : undefined} onclick={(event) => { if (starOpensLinks) positionSiteLinks(event); else goWelcome(); }}>
       <img src={logo} alt="" width="32" height="32" />
       <span>Rigel <span class="brand-suffix">CMS</span></span>
-    </a>
-    <TopBar {manifest} {sel} {contentLocale} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
+    </button>
+    {#if siteLinks.length}
+      <button type="button" class="site-links-trigger" aria-label={$t("shell.siteLinks")} aria-expanded={siteLinksOpen} aria-controls="rigel-site-links" popovertarget="rigel-site-links" onclick={positionSiteLinks}><Icon name="arrowUpRight" size={16} /></button>
+    {/if}
+    </div>
+    {#if siteLinks.length}
+      <div bind:this={siteMenu} id="rigel-site-links" class="block-menu site-links" popover="auto" role="region" aria-label={$t("shell.siteLinks")} style={siteLinksPosition} ontoggle={event => { siteLinksOpen = event.currentTarget.matches(':popover-open'); }}>
+        {#each siteLinks as link}
+          {#if link.href !== null}
+            <a href={link.href} target="_blank" rel="noopener noreferrer" onclick={() => siteMenu.hidePopover()}>{link.label}</a>
+          {:else}
+            <button type="button" onclick={() => { siteMenu.hidePopover(); goWelcome(); }}>{link.label}</button>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+    <TopBar {manifest} {sel} {contentLocale} bind:open={searchOpen} scope={effectiveSearchScope(manifest.search, settings.userPref.searchScope)} onselect={selectSearch} oncancelindex={cancelIndexing} />
     {#if manifest.contentLocales && manifest.contentLocales.locales.length > 1}
       <div class="content-language" data-locale={contentLocale}>
         {#key localeControlRevision}
@@ -1258,7 +1519,7 @@
         <Icon name="rocketLaunch" size={18} /><span class="sidebar-label">{$t("shell.publish")}</span>
       </button>
     {/if}
-    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-label={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} data-tooltip={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
+    <button class="sidebar-toggle" aria-expanded={!settings.userPref.sidebarCollapsed} aria-controls="rigel-sidebar-navigation" aria-keyshortcuts={shortcutAria("toggleSidebar")} aria-label={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} data-tooltip={settings.userPref.sidebarCollapsed ? $t("shell.expandSidebar") : $t("shell.collapseSidebar")} onclick={() => { settings.userPref.sidebarCollapsed = !settings.userPref.sidebarCollapsed; }}>
       <SidebarIcon name="sidebar-simple" /><span class="sidebar-label">{$t("shell.collapseSidebar")}</span>
     </button>
     <div class="aside-foot">
@@ -1284,7 +1545,7 @@
               <Icon name="gear" size={13} />
               {$t("shell.settings")}
             </button>
-            <button role="menuitem" onclick={() => { userOpen = false; shortcutsOpen = true; }}>
+            <button role="menuitem" aria-keyshortcuts={shortcutAria("help")} onclick={() => { userOpen = false; shortcutsOpen = true; }}>
               <Icon name="keyboard" size={13} />
               {$t("shell.keyboardShortcutsMenu")}
             </button>
@@ -1314,6 +1575,18 @@
       {/if}
       {#if demoMode}<p class="github-session" role="status">{$t("shell.demoBanner")}</p>{/if}
       {#if settingsError}<p role="alert">{settingsError}</p>{/if}
+      {#if recoveryError}<p role="alert">{$t("recovery.error")}</p>{/if}
+      {#if recoveryOffer && !articleLoading && (!githubMode || githubAccess?.status === "ready")}
+        <div class="github-session recovery-notice" role="region" aria-label={$t("recovery.title")}>
+          <strong>{$t("recovery.title")}</strong>
+          <p>{$t("recovery.description")}</p>
+          {#if !recoveryOffer.creating && JSON.stringify(recoveryOffer.base) !== JSON.stringify(recoveryBase)}<p role="status">{$t("recovery.changed")}</p>{/if}
+          <div class="recovery-actions">
+            <button class="primary" disabled={dirty || saveState === "saving" || connectionBusy} onclick={() => restoreRecovery(recoveryOffer!)}>{$t("recovery.restore")}</button>
+            <button class="outlined" disabled={saveState === "saving" || connectionBusy} onclick={() => dismissRecovery(recoveryOffer!)}>{$t("recovery.discard")}</button>
+          </div>
+        </div>
+      {/if}
       {#if ready && sel && sel.kind !== "media"}
         {#if sel.kind === "page" || sel.kind === "post" || sel.kind === "menu" || sel.kind === "document"}
         <div class="editor-actions">
@@ -1327,10 +1600,13 @@
           <p class="back"><button onclick={() => select({ kind: "menus" })}>{$t("shell.backTo", { name: $t("shell.menus") })}</button></p>
         {/if}
           <div class="save-actions">
-            <span class="save-status" role="status" class:dirty={dirty && saveState !== "saving"} class:saving={saveState === "saving"} class:saved={!dirty && saveState === "saved"} class:error={saveState === "error"}>
-              {saveState === "saving" ? $t("shell.saving") : saveState === "error" ? $t("shell.saveFailed") : dirty ? $t("shell.unsaved") : saveState === "saved" ? $t("shell.saved") : ""}
-            </span>
-            <button class="primary save-button" disabled={!dirty || saveState === "saving"} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
+            <div class="save-control">
+              <button class="primary save-button" disabled={!dirty || saveState === "saving"} aria-keyshortcuts={shortcutAria("save")} onclick={() => save()}>{saveState === "saving" ? $t("shell.saving") : $t("shell.save")}</button>
+              <span class="save-status" role="status" class:dirty={dirty && saveState !== "saving"} class:saving={saveState === "saving"} class:saved={!dirty && saveState === "saved"} class:error={saveState === "error"}>
+                {saveState === "saving" ? $t("shell.saving") : saveState === "error" ? $t("shell.saveFailed") : dirty ? $t("shell.unsaved") : saveState === "saved" ? $t("shell.saved") : ""}
+              </span>
+            </div>
+            {#if githubMode && !newEntry && !newDocument}<button class="outlined history-button" disabled={articleLoading || !!articleError || saveState === "saving" || !connected || tokenExpired} onclick={openHistory}>{$t("shell.history")}</button>{/if}
           </div>
         </div>
         {/if}
@@ -1344,7 +1620,6 @@
         {#if (sel?.kind === "collection" && coll) || (sel?.kind === "documents" && activeDocType && activeDocType.creatable !== false && !activeDocType.singleton)}
           <button class="primary" disabled={articleLoading || !!articleError} onclick={() => (sel?.kind === "collection" ? newPost(coll!) : newPage(activeDocType))}>{$t("shell.addNew")}</button>
         {/if}
-        {#if githubMode && sel.kind === "collection"}<button disabled={connectionBusy || reindexBusy} onclick={refreshCollections}>{$t("media.refresh")}</button>{/if}
         {#if sel.kind === "pages" || (sel.kind === "collection" && coll)}
           <div class="pages-controls">
           {#if sel.kind === "pages" && categories.length}
@@ -1361,17 +1636,6 @@
         {/if}
         </div>
       {/if}
-      {#if saveError}
-        <div class="save-toast" role="alert">
-          <div class="save-toast-content">
-            <strong>{$t("shell.saveChangesError")}</strong>
-            <p>{saveError}</p>
-            <button class="outlined" disabled={saveState === "saving"} onclick={() => save()}>{$t("shell.retrySave")}</button>
-            {#if githubMode}<button class="outlined github-reconnect" disabled={connectionBusy || saveState === "saving"} onclick={connectGitHub}>{$t("shell.reconnectGithub")}</button>{/if}
-          </div>
-          <button type="button" class="icon-btn" aria-label={$t("shell.dismissSaveError")} onclick={() => { saveError = ""; }}><Icon name="x" size={18} /></button>
-        </div>
-      {/if}
       {#if !ready}
         <p>{$t("shell.loading")}</p>
       {:else if articleLoading}
@@ -1381,7 +1645,7 @@
         <p role="alert">{articleError}</p>
         <button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>
       {:else if sel?.kind === "media"}
-        <ImagePicker inline />
+        <ImagePicker inline manifest={mediaManifest} onusage={entry => selectSearch(entry.target, entry.locale)} />
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
 
         <div class="table-card">
@@ -1434,12 +1698,18 @@
         {/if}
 
       {:else if sel?.kind === "document" && schema && activeDocType}
+        {#snippet entryMetadata()}
+          {#if !newDocument && sel?.kind === "document"}
+            {#key sel.id}<EntryUsage {manifest} target={sel} onload={loadEntryUsage} onselect={entry => selectSearch(entry.target, entry.locale)} />{/key}
+          {/if}
+        {/snippet}
         {#if standaloneDocument}
           <div class="document-form">
-            <SchemaPanel {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={updateDraft} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
+            <SchemaPanel metadata={entryMetadata} {schema} docType={activeDocType} values={draft} docId={sel.id} selected={null} creating={newDocument?.id === sel.id} pending={[]} documents={manifest.documents ?? []} focusToken={0} devMode={settings.devMode} onchange={updateDraft} onselect={() => {}} oneditdocument={(id) => { const doc = manifest.documents?.find(doc => doc.id === id); if (doc) select({ kind: "document", type: doc.type, id }); }} />
           </div>
         {:else}
         <VisualEditor
+          metadata={entryMetadata}
           docId={sel.id}
           {schema}
           docType={activeDocType}
@@ -1458,6 +1728,8 @@
             if (doc) select({ kind: "document", type: doc.type, id: doc.id });
           }}
           onchange={updateDraft}
+          shortcutsEnabled={shortcutsReady && !searchOpen}
+          onshortcut={runShortcut}
         />
         {/if}
 
@@ -1496,6 +1768,11 @@
         {/if}
 
       {:else if sel?.kind === "post" && coll && post}
+        {#snippet articleMetadata()}
+          {#if !newEntry && sel?.kind === "post"}
+            <EntryUsage {manifest} target={sel} onload={loadEntryUsage} onselect={entry => selectSearch(entry.target, entry.locale)} />
+          {/if}
+        {/snippet}
         {#key `${coll.name}/${post.slug}`}
           <VisualEditor
             docId={`${coll.name}:${post.slug}`}
@@ -1509,9 +1786,11 @@
             creating={!!newEntry}
             devMode={settings.devMode}
             onchange={updateDraft}
+            shortcutsEnabled={shortcutsReady && !searchOpen}
+            onshortcut={runShortcut}
           >
             {#snippet properties(selected, focusToken, bodyInline, oneditbody, bodyLoading, inlineFields, oneditfield)}
-              <CollectionPanel fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
+              <CollectionPanel metadata={articleMetadata} fields={coll.fields} values={draft} storageSlug={post.slug} pagePath={manifest.preview ? previewUrl(manifest.preview, { kind: "post", collection: coll.name, slug: post.slug, urlSlug: Object.hasOwn(draft, "slug") ? String(draft.slug) : undefined }, "website") : null} ondelete={deletePost} deleteDisabled={saveState === "saving"} documents={manifest.documents ?? []} body={bodyDraft as ArticleBody} {bodyInline} {bodyLoading} {inlineFields} {oneditbody} {oneditfield} {selected} {focusToken} devMode={settings.devMode} onchange={(key, value) => { draft[key] = value; touch(); }} onbody={updateBody} />
             {/snippet}
           </VisualEditor>
         {/key}
@@ -1522,6 +1801,21 @@
           <h2>{$t("shell.welcomeTitle")}</h2>
           <p>{$t("shell.welcomeTagline")}</p>
           <p class="welcome-hint">{$t("shell.welcomeHint")}</p>
+          {#if recoveries.length}
+            <section class="recovery-list" aria-label={$t("recovery.listTitle")}>
+              <h3>{$t("recovery.listTitle")}</h3>
+              {#each recoveries as record (record.id)}
+                <div class="recovery-entry">
+                  <strong>{String(record.values.title ?? record.values.name ?? (record.selection.kind === "document" ? record.selection.id : record.selection.slug))}</strong>
+                  <small>{$t("recovery.date", { date: new Date(record.savedAt).toLocaleString($locale) })}</small>
+                  <div class="recovery-actions">
+                    <button class="outlined" onclick={() => openRecovery(record)}>{$t("recovery.review")}</button>
+                    <button class="outlined" onclick={() => dismissRecovery(record)}>{$t("recovery.discard")}</button>
+                  </div>
+                </div>
+              {/each}
+            </section>
+          {/if}
           {#if updateVersion}<UpdateNotice version={updateVersion} ondismiss={dismissVersion} />{/if}
         </div>
       {/if}
@@ -1534,12 +1828,13 @@
     </main>
     {#if manifest.preview && previewTarget}
       <div class="preview-divider" role="separator" tabindex="0" aria-label={$t("shell.editorPreviewWidth")} aria-orientation="vertical" aria-controls="rigel-editor-pane" aria-valuemin={Math.round(splitMin * 100)} aria-valuemax={Math.round(splitMax * 100)} aria-valuenow={Math.round(previewSplit * 100)} aria-valuetext={$t("shell.editorWidthPercent", { percent: Math.round(previewSplit * 100) })} onpointerdown={startPreviewResize} onpointermove={movePreviewResize} onpointerup={endPreviewResize} onpointercancel={endPreviewResize} onlostpointercapture={endPreviewResize} onkeydown={keyPreviewResize}></div>
-      <SitePreview target={previewTarget} config={manifest.preview} isNew={!!newEntry} values={draft} body={bodyDraft} devMode={settings.devMode} />
+      <SitePreview target={previewTarget} config={manifest.preview} isNew={!!newEntry} values={draft} body={bodyDraft} devMode={settings.devMode} shortcutsEnabled={shortcutsReady && !searchOpen} onshortcut={runShortcut} />
     {/if}
   </div>
 </div>
 {/if}
 
+<div class="rigel" style="display: contents"><Toaster /></div>
 {#if settingsOpen}
   <Settings bind:s={settings} search={manifest.search} contentLocales={manifest.contentLocales} github={githubMode ? manifest.github : undefined} user={githubAccess?.user} error={settingsError} saving={saveState === "saving"} onerase={eraseBrowserData} onclose={() => (settingsOpen = false)} onreindex={reindexCollections} oncancelindex={cancelIndexing} onclearcache={clearFiles} {canClearFileCache} {fileCacheBusy} {fileCacheMessage} {reindexBusy} {reindexMessage} collections={manifest.collections ?? []} maintenanceDisabled={demoMode || dirty || saveState === "saving" || publishBusy} />
 {/if}
@@ -1548,6 +1843,9 @@
 {/if}
 {#if pendingNavigation}
   <UnsavedChanges busy={saveState === "saving"} error={saveError} onsave={saveAndLeave} ondiscard={discardAndLeave} oncancel={cancelNavigation} />
+{/if}
+{#if history && history.context === gitContext && history.current === manifest && history.selection === sel && connected && !tokenExpired}
+  <HistoryDialog context={history.context} manifest={history.current} selection={history.selection} {dirty} onrestore={restoreHistory} onclose={() => { history = null; }} />
 {/if}
 {#if actionDialog}
   <ActionDialog {...actionDialog} onclose={() => { actionDialog = null; }} />

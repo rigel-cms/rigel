@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from "../i18n";
-  let { tab = $bindable("content"), seo = true }: { tab?: "page" | "content" | "seo"; seo?: boolean } = $props();
+  let { tab = $bindable("page"), seo = true }: { tab?: "page" | "content" | "seo"; seo?: boolean } = $props();
   const values = $derived<("page" | "content" | "seo")[]>(seo ? ["page", "content", "seo"] : ["page", "content"]);
   let tabs: HTMLDivElement;
   let height = $state(0);

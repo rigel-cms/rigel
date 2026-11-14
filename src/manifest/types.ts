@@ -40,11 +40,13 @@ export interface GitHubBackendConfig {
 }
 
 export interface Manifest {
+  recoveryScope?: string;
   contentLocales?: import("../config").ContentLocalesConfig;
   search?: { scope: import("../config").SearchScope };
   backend?: "github" | "demo";
   github?: GitHubBackendConfig;
   sidebar?: import("./navigation").SidebarEntry[];
+  siteLinks?: import("../config").SiteLink[];
   preview?: import("../preview").PreviewConfig;
   pages: CopyPage[];
   collections?: ManifestCollection[];

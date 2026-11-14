@@ -1,0 +1,11 @@
+{
+  "recovery.title": "发现未保存的草稿",
+  "recovery.description": "此浏览器中有编辑内容的备份。恢复不会保存或发布任何内容。",
+  "recovery.changed": "备份后，已保存的内容发生了变化。恢复将替换编辑器内容，请在保存前检查。",
+  "recovery.restore": "恢复草稿",
+  "recovery.discard": "删除备份",
+  "recovery.error": "草稿恢复不可用。编辑内容仍在编辑器中，请在离开前保存。",
+  "recovery.listTitle": "可恢复的草稿",
+  "recovery.review": "查看草稿",
+  "recovery.date": "备份时间：{date}"
+}

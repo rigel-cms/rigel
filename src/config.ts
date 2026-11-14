@@ -3,9 +3,10 @@ import { validateSchema } from "./schema/validate";
 import type { Schema } from "./schema/types";
 import { validateSidebar, type SidebarEntry } from "./manifest/navigation";
 import { withSeoFields } from "./manifest/seo";
-import { previewBaseUrl, previewRoute } from "./preview-urls";
+import { previewBaseUrl, previewRoute, safePreviewUrl } from "./preview-urls";
 import type { JsonOutput } from "./json-output";
 import { DEFAULT_MAX_FILE_SIZE } from "./media-types";
+import { imageProcessingOptions, type ImageProcessing } from "./image-processing";
 import { systemMessage } from "./editor/i18n/format";
 import { localeNames, type Locale } from "./editor/i18n/locales";
 import { validateContentLocales, validateContentLocale } from "./manifest/content-locales";
@@ -18,10 +19,16 @@ export interface ContentLocalesConfig {
 
 export type SearchScope = "all" | "currentLocale";
 
+export interface SiteLink {
+  label: string;
+  href: string;
+}
+
 export interface RigelConfig {
   copyDir: string;
   mediaDir?: string;
   maxFileSize?: number;
+  imageProcessing?: Partial<ImageProcessing>;
   preview?: import("./preview").PreviewConfig;
   backend: "local" | "github" | "demo";
   jsonOutput?: JsonOutput;
@@ -34,6 +41,7 @@ export interface RigelConfig {
   menus?: { folder: string; maxDepth?: number };
   schema?: Schema;
   sidebar?: SidebarEntry[];
+  siteLinks?: SiteLink[];
   repo?: string;
   branch?: string;
   publishBranch?: string;
@@ -62,6 +70,12 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   const cfg = { ...DEFAULTS, ...options };
   if (!["local", "github", "demo"].includes(cfg.backend)) throw new Error("rigel: backend must be local, github or demo");
   cfg.search = { scope: effectiveSearchScope(cfg.search, undefined) };
+  if (cfg.imageProcessing !== undefined) {
+    const value = cfg.imageProcessing;
+    const normalized = imageProcessingOptions(value);
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => !Object.hasOwn(normalized, key) || value[key as keyof ImageProcessing] !== normalized[key as keyof ImageProcessing])) throw new Error("rigel: invalid imageProcessing options");
+  }
+  cfg.imageProcessing = imageProcessingOptions(cfg.imageProcessing);
   if (cfg.contentLocales !== undefined) {
     validateContentLocales(cfg.contentLocales);
     cfg.contentLocales = { ...cfg.contentLocales, locales: cfg.contentLocales.locales.map(locale => ({ ...locale })) };
@@ -141,6 +155,17 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
     }
   }
   if (cfg.sidebar !== undefined) validateSidebar(cfg.sidebar);
+  if (cfg.siteLinks !== undefined) {
+    if (!Array.isArray(cfg.siteLinks) || Array.from(cfg.siteLinks).some(link => {
+      if (!link || typeof link.label !== "string" || !link.label.trim() || typeof link.href !== "string" || !safePreviewUrl(link.href)) return true;
+      try {
+        if (/^[a-z][a-z\d+.-]*:/i.test(link.href) && !/^https?:\/\//i.test(link.href)) return true;
+        const url = new URL(link.href, "https://rigel.invalid/");
+        return !!(url.username || url.password) || (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)));
+      } catch { return true; }
+    })) throw new Error("rigel: siteLinks must be an array of label and safe relative or HTTPS href links (HTTP allowed on loopback)");
+    cfg.siteLinks = cfg.siteLinks.map(({ label, href }) => ({ label, href }));
+  }
 
   return cfg;
 }

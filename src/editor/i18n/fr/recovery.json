@@ -1,0 +1,11 @@
+{
+  "recovery.title": "Brouillon non enregistré trouvé",
+  "recovery.description": "Ce navigateur contient une sauvegarde de vos modifications. La restaurer ne les enregistre ni ne les publie.",
+  "recovery.changed": "Le contenu enregistré a changé depuis cette sauvegarde. La restauration remplace le contenu de l’éditeur ; vérifiez-le avant d’enregistrer.",
+  "recovery.restore": "Restaurer le brouillon",
+  "recovery.discard": "Supprimer la sauvegarde",
+  "recovery.error": "La récupération du brouillon est indisponible. Vos modifications sont toujours dans l’éditeur ; enregistrez-les avant de partir.",
+  "recovery.listTitle": "Brouillons récupérables",
+  "recovery.review": "Examiner le brouillon",
+  "recovery.date": "Sauvegardé le {date}"
+}

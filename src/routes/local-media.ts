@@ -5,7 +5,7 @@ import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mediaDirectory, listMedia, updateMediaSidecar, deleteMediaFile, validateMetaUpdate } from "./media-files";
-import { DEFAULT_MAX_FILE_SIZE, mediaHeaders, mediaMetadata, safeMediaName } from "../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaHeaders, mediaMetadata, validUploadName, safeMediaName } from "../media-types";
 import { validMediaBytes } from "./media-validation";
 import config from "virtual:rigel-config";
 
@@ -36,9 +36,11 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response("Same-origin request required", { status: 403 });
   }
   const mime = request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
-  const supplied = request.headers.get("X-Rigel-Filename");
+  let supplied = request.headers.get("X-Rigel-Filename");
+  try { if (supplied) supplied = decodeURIComponent(supplied); }
+  catch { return new Response(t("local.unsupportedMedia"), { status: 415 }); }
   const fallback = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[mime ?? ""];
-  const metadata = supplied ? (safeMediaName(supplied) ? mediaMetadata(supplied) : undefined) : fallback ? mediaMetadata(`image.${fallback}`) : undefined;
+  const metadata = supplied ? (validUploadName(supplied) ? mediaMetadata(supplied) : undefined) : fallback ? mediaMetadata(`image.${fallback}`) : undefined;
   if (!metadata || metadata.type !== mime) return new Response(t("local.unsupportedMedia"), { status: 415 });
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   const length = request.headers.get("Content-Length");

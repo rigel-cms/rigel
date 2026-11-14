@@ -14,11 +14,12 @@
   import SidebarIcon from "./SidebarIcon.svelte";
   import Icon from "./Icon.svelte";
   import PreviewFrame from "./PreviewFrame.svelte";
+  import { isTypingTarget, matchShortcut, shortcutAria, shortcutOverlayOpen, type ShortcutId } from "./shortcuts";
   import { fieldForPath, replaceAt, type SelectedField } from "./schema-edit";
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
   let {
-    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {},
+    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, metadata, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {}, shortcutsEnabled = true, onshortcut = () => {},
   }: {
     docId: string;
     schema?: Schema;
@@ -31,6 +32,7 @@
     ondelete?: () => void;
     deleteDisabled?: boolean;
     body?: "" | import("../../article-body").ArticleBody;
+    metadata?: Snippet;
     properties?: Snippet<[SelectedField | null, number, boolean, () => void, boolean, string[], (path: string) => void]>;
     bodyInline?: boolean;
     onbody?: (body: ArticleBody) => void;
@@ -39,6 +41,8 @@
     reloadToken?: number;
     onchange: (next: Record<string, unknown>) => void;
     oneditdocument?: (id: string) => void;
+    shortcutsEnabled?: boolean;
+    onshortcut?: (shortcut: ShortcutId) => void;
   } = $props();
 
   let frame: HTMLIFrameElement | undefined = $state();
@@ -55,8 +59,9 @@
   let bodyAttributes: [string, string | null][] = [];
   let bodyScope: HTMLElement | null = null;
   let removeTooltips: (() => void) | undefined;
+  let stopFrameShortcut: (() => void) | undefined;
   let mode = $state<"browse" | "edit">("edit");
-  let panelOpen = $state(false);
+  let panelOpen = $state(true);
   let editorWidth = $state(0);
   let requestedWidth = $state(340);
   let resizing = $state(false);
@@ -222,6 +227,16 @@
     patch();
   }
   const regionAttributes = ["class", "style", "role", "aria-label", "aria-multiline", "aria-keyshortcuts", "contenteditable", "data-lexical-editor", "spellcheck", "tabindex", "translate"];
+  function placeCaret(element: HTMLElement, offset: number) {
+    const doc = element.ownerDocument;
+    const range = doc.createRange(); range.selectNodeContents(element); range.collapse(true);
+    const walker = doc.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (offset <= (node.textContent?.length ?? 0)) { range.setStart(node, offset); range.collapse(true); break; }
+      offset -= node.textContent?.length ?? 0;
+    }
+    const selection = doc.defaultView?.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+  }
   async function startBodyEdit(element: HTMLElement, event?: MouseEvent) {
     if (!body) return;
     if (bodyEditor) { element.focus(); return; }
@@ -259,22 +274,20 @@
     await tick();
     const editable = element; editable.focus();
     const block = editable?.children[Math.max(0, blockIndex)];
-    if (block) {
-      const range = doc.createRange(); range.selectNodeContents(block); range.collapse(true);
-      const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (offset <= (node.textContent?.length ?? 0)) { range.setStart(node, offset); range.collapse(true); break; }
-        offset -= node.textContent?.length ?? 0;
-      }
-      const selection = doc.defaultView?.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
-    }
+    if (block) placeCaret(block as HTMLElement, offset);
     if (editVideo) mounted.editVideoAt(blockIndex);
   }
-  function startMarkdownEdit(element: HTMLElement) {
+  function startMarkdownEdit(element: HTMLElement, event?: MouseEvent) {
     const field = fieldPathFrom(element);
     if (!bodyInline || !field || field.doc !== docId || !schema || !docType) return false;
     const def = fieldForPath(schema, docType, values, field.path);
     if (def?.type !== "markdown" || def.sidebarOnly) return false;
+    const blockIndex = event ? [...element.children].findIndex(child => child.contains(event.target as Node)) : 0;
+    const caret = event && element.ownerDocument.caretPositionFromPoint?.(event.clientX, event.clientY);
+    let offset = 0;
+    if (caret && element.children[blockIndex]?.contains(caret.offsetNode)) {
+      const range = element.ownerDocument.createRange(); range.selectNodeContents(element.children[blockIndex]); range.setEnd(caret.offsetNode, caret.offset); offset = range.toString().length;
+    }
     stopBodyEdit();
     const doc = element.ownerDocument;
     let editorStyle = doc.querySelector<HTMLStyleElement>('style[data-rigel-editor-styles]');
@@ -316,7 +329,11 @@
     }
     bodyThemeObserver = new MutationObserver(syncTheme);
     bodyThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-contrast"] });
-    void tick().then(() => (element.isContentEditable ? element : host.querySelector<HTMLTextAreaElement>("textarea"))?.focus());
+    void tick().then(() => {
+      (element.isContentEditable ? element : host.querySelector<HTMLTextAreaElement>("textarea"))?.focus();
+      const block = element.children[Math.max(0, blockIndex)];
+      if (event && element.isContentEditable && block) placeCaret(block as HTMLElement, offset);
+    });
     return true;
   }
 
@@ -337,6 +354,7 @@
   }
   $effect(() => { if (!bodyInline || (!schema && !inlineBodyEnabled) || mode !== "edit") stopBodyEdit(); });
   onDestroy(stopBodyEdit);
+  onDestroy(() => stopFrameShortcut?.());
 
   function onClick(event: MouseEvent) {
     const target = eventElement(event.target);
@@ -348,7 +366,7 @@
     const articleBody = target.closest<HTMLElement>('[data-rigel-richtext="$body"]');
     if (inlineBodyEnabled && articleBody) { void startBodyEdit(articleBody, event); return; }
     const markdown = target.closest<HTMLElement>("[data-rigel-richtext]");
-    if (markdown && startMarkdownEdit(markdown)) return;
+    if (markdown && startMarkdownEdit(markdown, event)) return;
     stopBodyEdit();
     const element = target.closest<HTMLElement>("[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image],[data-rigel-alt],[data-rigel-href],[data-rigel-section]");
     if (element) selectFromElement(element);
@@ -416,6 +434,8 @@
   }
 
   function onLoad() {
+    stopFrameShortcut?.();
+    stopFrameShortcut = undefined;
     stopBodyEdit(); bodyAvailable = false;
     loaded = false;
     error = "";
@@ -437,6 +457,9 @@
       doc.defaultView?.addEventListener("scroll", () => closeInline(), { passive: true });
       if (schema) bindPreviewDocument(doc, docId);
       if (!doc.querySelector(schema ? `[data-rigel-doc="${docId}"]` : "[data-rigel-tags],[data-rigel-text],[data-rigel-richtext],[data-rigel-image]")) throw new Error($t("richtext.liveEditingUnavailable"));
+      const onkeydown = (event: KeyboardEvent) => frameShortcut(event, doc);
+      doc.addEventListener("keydown", onkeydown, true);
+      stopFrameShortcut = () => doc.removeEventListener("keydown", onkeydown, true);
       loaded = true;
       bodyAvailable = !schema && !!body && !!doc.querySelector('[data-rigel-richtext="$body"]');
       patch();
@@ -454,6 +477,24 @@
       selected = null;
       closeInline();
     }
+  }
+
+  function localShortcut(event: KeyboardEvent, doc: Document) {
+    const shortcut = shortcutsEnabled ? matchShortcut(event) : null;
+    if (shortcut !== "toggleMode" && shortcut !== "toggleProperties") return;
+    if (editingBody || inline || isTypingTarget(doc.activeElement) || shortcutOverlayOpen(doc)) return;
+    event.preventDefault();
+    if (shortcut === "toggleMode") setMode(mode === "edit" ? "browse" : "edit");
+    else panelOpen = !panelOpen;
+  }
+
+  function frameShortcut(event: KeyboardEvent, doc: Document) {
+    const shortcut = shortcutsEnabled ? matchShortcut(event) : null;
+    if (!shortcut) return;
+    if (shortcut === "toggleMode" || shortcut === "toggleProperties") { localShortcut(event, doc); return; }
+    if (shortcut === "toggleSidebar" && isTypingTarget(doc.activeElement)) return;
+    event.preventDefault();
+    onshortcut(shortcut);
   }
 
   function endResize() {
@@ -504,6 +545,8 @@
   $effect(() => {
     if (docId === lastDocId) return;
     lastDocId = docId;
+    panelOpen = true;
+    focusToken = 0;
     requestedWidth = 340;
     endResize();
     inline = null;
@@ -520,20 +563,21 @@
 </script>
 
 <svelte:window onkeydown={(event) => {
-  if (event.key === "Escape" && inline) { event.stopPropagation(); closeInline(true); }
+  if (event.key === "Escape" && inline) { event.stopPropagation(); closeInline(true); return; }
+  localShortcut(event, document);
 }} />
 
 <div class="visual-editor" bind:clientWidth={editorWidth} class:with-panel={panelOpen} class:resizing-properties={resizing} style={`--properties-width: ${panelWidth}px`}>
   <div class="visual-canvas">
     <div class="visual-toolbar">
       <div class="mode-toggle" role="group" aria-label={$t("richtext.previewMode")}>
-        <button type="button" aria-pressed={mode === "browse"} onclick={() => setMode("browse")}>{$t("richtext.browse")}</button>
-        <button type="button" aria-pressed={mode === "edit"} onclick={() => setMode("edit")}>{$t("richtext.edit")}</button>
+        <button type="button" aria-pressed={mode === "browse"} aria-keyshortcuts={shortcutAria("toggleMode")} onclick={() => setMode("browse")}>{$t("richtext.browse")}</button>
+        <button type="button" aria-pressed={mode === "edit"} aria-keyshortcuts={shortcutAria("toggleMode")} onclick={() => setMode("edit")}>{$t("richtext.edit")}</button>
       </div>
       <span class="visual-hint">{mode === "edit" ? $t("richtext.editPreviewHint") : $t("richtext.browsePreviewHint")}</span>
       <div class="visual-actions">
         {#if websitePath}<a class="icon-btn visual-live" href={websitePath} target="_blank" rel="noopener noreferrer" aria-label={$t("richtext.previewOnWebsite")} data-tooltip={$t("richtext.previewOnWebsite")}><Icon name="external" size={18} /></a>{/if}
-        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-label={$t("richtext.togglePropertiesPanel")} data-tooltip={$t("richtext.togglePropertiesPanel")} onclick={() => (panelOpen = !panelOpen)}>
+        <button type="button" class="icon-btn" aria-pressed={panelOpen} aria-keyshortcuts={shortcutAria("toggleProperties")} aria-label={$t("richtext.togglePropertiesPanel")} data-tooltip={$t("richtext.togglePropertiesPanel")} onclick={() => (panelOpen = !panelOpen)}>
           <SidebarIcon name="square-half" />
         </button>
       </div>
@@ -571,6 +615,7 @@
     {@render properties(selected, focusToken, inlineBodyEnabled || inlineBodyLoading, focusBody, inlineBodyLoading, richtextPaths, editField)}
   {:else if panelOpen && schema && docType}
     <SchemaPanel
+      {metadata}
       {schema}
       {docType}
       {values}

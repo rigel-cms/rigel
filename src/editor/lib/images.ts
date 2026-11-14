@@ -1,10 +1,12 @@
 import { getSettings, setSettings } from "./settings";
 import { translate, locale } from "../i18n";
 import { get } from "svelte/store";
-import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, safeMediaName, storedMediaFile } from "../../media-types";
+import { DEFAULT_MAX_FILE_SIZE, mediaMetadata, validUploadName, storedMediaFile } from "../../media-types";
 import config from "virtual:rigel-config";
 import { mediaBackend, uploadRepositoryMedia } from "./media-backend";
 import type { MediaMeta } from "../../media-metadata";
+import { processImage } from "./process-image";
+import { MAX_IMAGE_SOURCE_BYTES } from "../../image-processing";
 export function getKeys(): StockKeys { return getSettings().apiKeys; }
 export function setKeys(keys: StockKeys) { setSettings({ apiKeys: keys }); }
 
@@ -150,10 +152,11 @@ export async function importImageUrl(value: string, metadata: MediaMeta = {}): P
   try { response = await fetch(value, { credentials: "omit", referrerPolicy: "no-referrer" }); }
   catch { throw new Error(translate("media.imageDownloadFailed")); }
   if (!response.ok) throw new Error(translate("media.photoDownloadFailed", { status: response.status }));
-  const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  const processing = getSettings().imageProcessing;
+  const limit = Math.min(MAX_IMAGE_SOURCE_BYTES, processing.resize || processing.convertHeic ? MAX_IMAGE_SOURCE_BYTES : config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE);
   if (Number(response.headers.get("Content-Length")) > limit) throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 }));
   const type = response.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
-  if (!["image/jpeg", "image/png", "image/webp"].includes(type ?? "")) throw new Error(translate("media.chooseImageFormat"));
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"].includes(type ?? "")) throw new Error(translate("media.chooseImageFormat"));
   if (!response.body) throw new Error(translate("media.emptyDownload"));
   const reader = response.body.getReader();
   const chunks: Uint8Array<ArrayBuffer>[] = [];
@@ -188,13 +191,17 @@ export function currentAuthor(): string {
   } catch { return "Local user"; }
 }
 
-export async function uploadMedia(file: File, meta: MediaMeta = {}): Promise<string> {
+export async function uploadMedia(file: File, meta: MediaMeta = {}, assertActive: () => void = () => {}): Promise<string> {
+  assertActive();
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
+  file = await processImage(file, getSettings().imageProcessing);
+  assertActive();
   const metadata = mediaMetadata(file.name);
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
-  if (!safeMediaName(file.name) || !metadata || file.size > limit) throw new Error(translate("media.chooseSupportedFile", { limit: limit / 1024 / 1024 }));
+  if (file.size > limit) throw new Error(translate("local.mediaTooLarge", { limit: limit / 1024 / 1024 }));
+  if (!validUploadName(file.name) || !metadata) throw new Error(translate("local.unsupportedMedia"));
   if (mediaBackend() === "github") return uploadRepositoryMedia(file, { ...meta, author: currentAuthor() });
-  const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "Accept-Language": get(locale), "X-Rigel-Filename": file.name, "X-Rigel-Author": currentAuthor() }, body: file });
+  const response = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Content-Type": metadata.type, "Accept-Language": get(locale), "X-Rigel-Filename": encodeURIComponent(file.name), "X-Rigel-Author": currentAuthor() }, body: file });
   if (!response.ok) throw new Error(translate("media.uploadFailed", { status: response.status, body: await response.text() }));
   const result = await response.json();
   if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !mediaMetadata(result.url)) throw new Error(translate("media.invalidUploadedUrl"));
@@ -203,18 +210,20 @@ export async function uploadMedia(file: File, meta: MediaMeta = {}): Promise<str
 
 export async function uploadImage(blob: Blob, metadata: MediaMeta = {}): Promise<string> {
   if (config.backend === "demo") throw new Error(translate("shell.demoMediaReadOnly"));
+  const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/heic": "heic", "image/heif": "heif" } as Record<string, string>)[blob.type];
+  if (!extension) throw new Error(translate("media.chooseImageFormat"));
+  const file = await processImage(new File([blob], `image.${extension}`, { type: blob.type }), getSettings().imageProcessing);
+  blob = file;
   const limit = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   if (blob.size > limit) throw new Error(translate("media.photoLimitExceeded", { limit: limit / 1024 / 1024 }));
   if (mediaBackend() === "github") {
-    const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string>)[blob.type];
-    if (!extension) throw new Error(translate("media.chooseImageFormat"));
-    return uploadRepositoryMedia(new File([blob], `image.${extension}`, { type: blob.type }), { ...metadata, author: currentAuthor() });
+    return uploadRepositoryMedia(file, { ...metadata, author: currentAuthor() });
   }
   const saved = await fetch("/rigel/api/local/media", { method: "POST", headers: { "Accept-Language": get(locale) }, body: blob });
   if (saved.status === 404) throw new Error(translate("media.localImportRequired"));
   if (!saved.ok) throw new Error(translate("media.photoImportFailedStatus", { status: saved.status }));
   const result = await saved.json();
-  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !/\.(jpg|png|webp)$/.test(result.url)) {
+  if (typeof result.url !== "string" || !safeImageUrl(result.url) || !result.url.startsWith("/") || !storedMediaFile.test(result.url.split("/").pop() ?? "") || !/\.(jpg|png|webp|gif|avif)$/.test(result.url)) {
     throw new Error(translate("media.invalidImportedUrl"));
   }
   return result.url;

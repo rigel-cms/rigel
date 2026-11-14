@@ -26,6 +26,12 @@ export function mediaMetadata(name: string) {
   const extension = name.split('.').pop()?.toLowerCase() ?? '';
   return Object.hasOwn(MEDIA_TYPES, extension) ? { ...MEDIA_TYPES[extension], extension } : undefined;
 }
+export function safeMediaLabel(name: string) {
+  return !!name.trim() && !name.startsWith(".") && !/[/\\\u0000-\u001f\u007f]/.test(name);
+}
+export function validUploadName(name: string) {
+  return safeMediaLabel(name) && !!mediaMetadata(name);
+}
 export function safeMediaName(name: string) {
   return /^[a-zA-Z0-9_-][a-zA-Z0-9_. -]*$/.test(name) && !!mediaMetadata(name);
 }

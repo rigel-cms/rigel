@@ -5,7 +5,7 @@
   import { mediaPreviews } from "./media-backend";
   import { subscribeMediaLabels } from "./embed-preview";
 
-  let { url, title, frame = $bindable(), reloadToken = 0, onload, onloading, onerror }: {
+  let { url, title, frame = $bindable(), reloadToken = 0, onload, onloading, onerror, onkeydown }: {
     url: string;
     title: string;
     frame?: HTMLIFrameElement;
@@ -13,6 +13,7 @@
     onload: () => void;
     onloading: () => void;
     onerror: (message: string) => void;
+    onkeydown?: (event: KeyboardEvent) => void;
   } = $props();
   let source = $state<{ src?: string; srcdoc?: string; ready: (event: Event) => void; fail: () => void } | null>(null);
   let loading = $state(true);
@@ -59,6 +60,7 @@
         if (signal.aborted) return;
         if (!reducedMotion) await wait(Math.max(0, 500 - (performance.now() - started)));
         if (signal.aborted || iframe !== frame) return;
+        if (onkeydown) doc.addEventListener("keydown", onkeydown, { capture: true, signal });
         onload();
         await tick();
         if (signal.aborted || iframe !== frame) return;

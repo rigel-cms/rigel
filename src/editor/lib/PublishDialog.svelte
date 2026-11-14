@@ -55,8 +55,8 @@
   .publish-head, .publish-actions { display: flex; align-items: center; gap: 0.75rem; }
   .publish-head { justify-content: space-between; }
   .publish-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 1.5rem; }
-  .publish-dialog button { min-height: 44px; }
-  .publish-head .icon-btn { min-width: 44px; }
+  .publish-dialog button { min-height: var(--button-size); }
+  .publish-head .icon-btn { min-width: var(--button-size); }
   .publish-branch { font-weight: 600; }
   .publish-files { list-style: none; margin: 0; padding: 0; max-height: min(35dvh, 20rem); overflow-y: auto; border: 1px solid var(--border); }
   .publish-files li { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 0.75rem; padding: 0.625rem; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }

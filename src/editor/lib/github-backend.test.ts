@@ -11,6 +11,7 @@ import { serializeCollectionLedger } from "../../manifest/collection-ledger";
 import { readRemoteSelection, indexRemoteDocuments, readRemotePost, indexRemoteCollections, reindexRemoteCollections, resetRemoteCollectionCache } from "./github-backend";
 
 import { documentLedgerShape, documentMetadata } from "../../manifest/document-ledger";
+import { entryUsage } from "../../manifest/references";
 
 function metadataFixture(indexed = true) {
   const s = server(), original = blueprint();
@@ -28,6 +29,114 @@ function metadataFixture(indexed = true) {
   }
   return { s, original };
 }
+
+test("entry backlinks use document ledgers and article references without loading document bodies or writing", async () => {
+  const { s, original } = metadataFixture();
+  const m = await loadManifestRemote(ctx, original);
+  expect(entryUsage(m, "author:alex")).toEqual({ entries: [], complete: false });
+  await indexRemoteDocuments(ctx, m, m.schema!.documents.map(type => type.name));
+  expect(entryUsage(m, "author:alex")).toEqual({ complete: false, entries: [
+    { label: "room", group: "room", locale: undefined, target: { kind: "document", type: "room", id: "room:first" } },
+  ] });
+  const before = s.calls.length;
+  await indexRemoteCollections(ctx, m, "blog");
+  expect(entryUsage(m, "author:alex")).toEqual({ complete: true, entries: [
+    { label: "room", group: "room", locale: undefined, target: { kind: "document", type: "room", id: "room:first" } },
+    { label: "Hello", group: "Blog", locale: undefined, target: { kind: "post", collection: "blog", slug: "hello" } },
+  ] });
+  expect(m.documents!.every(doc => doc.loaded === "metadata")).toBe(true);
+  expect(blobReads(s, before)).toHaveLength(1);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("media usage loads saved GitHub bodies on demand for nested images, articles, copy and menus without writes", async () => {
+  const s = server(), original = blueprint(), url = "/rigel-media/used.png";
+  original.backend = "github";
+  original.schema!.objects.push({ name: "photo", title: "Photo", type: "object", fields: [{ key: "images", label: "Images", type: "array", items: [{ type: "image" }] }] });
+  original.schema!.documents[0].fields.push({ key: "gallery", label: "Gallery", type: "array", items: [{ type: "object", name: "photo" }] });
+  original.pages[0].groups = [{ id: "contact", label: "Contact", fields: [{ key: "title", label: "Title", type: "image" }] }];
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Saved author", gallery: [{ _key: "photo", _type: "photo", images: [url] }] }));
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Saved article" }, body: { root: { ...emptyBody().root, children: [{ type: "image", version: 1, src: url, alt: "Saved" }] } } }));
+  s.put("playground/src/content/copy/contact.ts", `export default defineCopy({ values: { contact: { title: "${url}" } } });`);
+  s.put("playground/src/content/menus/main.json", JSON.stringify({ slug: "main", title: "Saved menu", items: [{ id: "file", label: "File", url, children: [] }] }));
+  const m = await loadManifestRemote(ctx, original);
+  expect(blobReads(s)).toEqual([]);
+  const { configureMediaBackend } = await import("./media-backend");
+  const { mediaUsageSnapshot, mediaDeletionSnapshot } = await import("./media-usage-data");
+  const errors: unknown[] = [];
+  const stop = configureMediaBackend(() => ({ ctx, manifest: m }), error => { errors.push(error); }, () => "github");
+  try {
+    const before = JSON.stringify(m);
+    const usage = await mediaUsageSnapshot(m, url);
+    expect(errors).toEqual([]);
+    expect(usage.entries.map(entry => entry.label)).toEqual(["Contact", "Saved author", "Saved article", "Saved menu"]);
+    expect(usage.complete).toBe(true); expect(usage.error).toBe(false);
+    expect(await mediaDeletionSnapshot(m, url)).toEqual({ blocked: true, count: 4, unverified: false, error: false });
+    expect(await mediaDeletionSnapshot(m, "/rigel-media/unused.png")).toEqual({ blocked: false, count: 0, unverified: false, error: false });
+    expect(JSON.stringify(m)).toBe(before);
+    const { remoteSelectionReady } = await import("./github-backend");
+    expect(remoteSelectionReady(ctx, m, { kind: "page", slug: "contact" })).toBe(false);
+    expect(remoteSelectionReady(ctx, m, { kind: "menu", slug: "main" })).toBe(false);
+    expect(s.calls.every(call => call.method === "GET")).toBe(true);
+    expect(blobReads(s)).toHaveLength(4);
+  } finally { stop(); }
+});
+
+test("media snapshots retain partial saved matches, exclude drafts and retry failed bodies", async () => {
+  const s = server(), original = blueprint(), url = "/rigel-media/saved.png";
+  original.backend = "github";
+  original.schema!.documents[0].fields.push({ key: "portrait", label: "Portrait", type: "image" });
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Saved", portrait: url }));
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Article" }, body: { root: { ...emptyBody().root, children: [{ type: "image", version: 1, src: url, alt: "Saved" }] } } }));
+  const m = await loadManifestRemote(ctx, original), originalFetch = fetch;
+  m.documents![0].data = { name: "Draft", portrait: "/draft.png" }; m.documents![0].loaded = "complete";
+  m.collections![0].posts.push({ slug: "unsaved", frontmatter: {}, body: { root: { ...emptyBody().root, children: [{ ...{ type: "image", version: 1, src: "/draft.png", alt: "Draft" } }] } } });
+  let fail = true;
+  const articleSha = s.files.get("playground/src/content/blog/hello.json")!.sha;
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => fail && url.endsWith(articleSha) ? Promise.resolve(Response.json({}, { status: 503 })) : originalFetch(url, init));
+  const { configureMediaBackend } = await import("./media-backend");
+  const { mediaUsageSnapshot, mediaDeletionSnapshot } = await import("./media-usage-data");
+  const stop = configureMediaBackend(() => ({ ctx, manifest: m }), () => {}, () => "github");
+  const before = JSON.stringify(m);
+  try {
+    const partial = await mediaUsageSnapshot(m, url);
+    expect(partial.entries.map(entry => entry.label)).toEqual(["Saved"]);
+    expect(partial.complete).toBe(false); expect(partial.error).toBe(true);
+    expect(await mediaDeletionSnapshot(m, url)).toEqual({ blocked: true, count: 1, unverified: true, error: true });
+    fail = false;
+    const retried = await mediaUsageSnapshot(m, url);
+    expect(retried.entries.map(entry => entry.label)).toEqual(["Saved", "Article"]);
+    expect(retried.complete).toBe(true); expect(retried.error).toBe(false);
+    expect(await mediaUsageSnapshot(m, "/draft.png")).toEqual({ entries: [], complete: true, error: false });
+    expect(JSON.stringify(m)).toBe(before);
+    expect(s.calls.every(call => call.method === "GET")).toBe(true);
+  } finally { stop(); }
+});
+
+test.each(["abort", "session", "manifest"])("media snapshots reject late %s results without changing the editor", async mode => {
+  const s = server(), original = blueprint(); original.backend = "github";
+  let active = true;
+  const session = { ...ctx, assertActive: () => { if (!active) throw new Error("Expired"); } };
+  const m = await loadManifestRemote(session, original), originalFetch = fetch, controller = new AbortController();
+  const { configureMediaBackend } = await import("./media-backend");
+  const { mediaUsageSnapshot } = await import("./media-usage-data");
+  let current = m, release!: () => void, started!: () => void;
+  const held = new Promise<void>(done => { release = done; }), fetching = new Promise<void>(done => { started = done; });
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => { if (url.includes("/git/blobs/")) { started(); await held; } return originalFetch(url, init); });
+  const stop = configureMediaBackend(() => { session.assertActive(); return { ctx: session, manifest: current }; }, () => {}, () => "github");
+  const before = JSON.stringify(m);
+  try {
+    const task = mediaUsageSnapshot(m, "/unused.png", controller.signal);
+    await fetching;
+    if (mode === "abort") controller.abort();
+    else if (mode === "session") active = false;
+    else current = { ...m };
+    release();
+    expect(await task).toEqual({ entries: [], complete: false, error: true });
+    expect(JSON.stringify(m)).toBe(before);
+    expect(s.calls.every(call => call.method === "GET")).toBe(true);
+  } finally { release(); stop(); }
+});
 
 function blobReads(s: ReturnType<typeof server>, since = 0) {
   return s.calls.slice(since).filter(call => call.method === "GET" && call.path.startsWith("/git/blobs/"));
@@ -500,6 +609,16 @@ test("repository media initializes file and ledger atomically, previews bytes an
   expect(s.files.has(`playground/public${url}`)).toBe(false);
 });
 
+test.each(["Chambre (1).txt", "Océan d'Atlantique (été).txt", "海辺 🌊 100%.txt"])("GitHub upload preserves label %s and stores only UUID paths", async name => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const url = await uploadRemoteMedia(ctx, m, new File(["Draft attachment"], name, { type: "text/plain" }));
+  expect(url).toMatch(/^\/rigel-media\/[a-f0-9-]+\.txt$/);
+  expect(s.files.get(`playground/public${url}`)!.text).toBe("Draft attachment");
+  expect((await listRemoteMedia(ctx, m)).find(asset => asset.url === url)!.name).toBe(name);
+  await updateRemoteMedia(ctx, m, { url, name, title: "Updated title" });
+  expect((await listRemoteMedia(ctx, m)).find(asset => asset.url === url)).toMatchObject({ name, title: "Updated title" });
+});
+
 test("media rejects invalid bytes, MIME, size, unsafe folders and symlinks without writes", async () => {
   const s = server(), original = blueprint(), m = await loadEditingFixture(ctx, original);
   const before = s.calls.filter(call => call.method !== "GET").length;
@@ -604,6 +723,78 @@ test("media larger than the content decoder limit uses Git blobs for binary read
 
 vi.mock("./github-text-batch", () => ({ readGitHubTextBatch: async () => new Map() }));
 vi.mock("virtual:rigel-extensions", () => ({ default: [{ name: "notes", blocks: [{ name: "note", label: "Note", editor() {}, render() {}, validate(data: Record<string, unknown>) { if (typeof data.text !== "string") throw new Error("Note requires text"); } }] }] }));
+test("history reads one authoritative file at the snapshot head, bounds pagination and preserves current save provenance", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint()), transport = fetch;
+  const { listRemoteHistory, readRemoteRevision } = await import("./github-backend");
+  const selection = { kind: "post", collection: "blog", slug: "hello" } as const;
+  const head = s.head, revision = "c".repeat(40), before = JSON.stringify(m), calls: URL[] = [];
+  const text = JSON.stringify({ frontmatter: { title: "Older" }, body: emptyBody() });
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (url.pathname.endsWith("/commits")) { calls.push(url); return Response.json([{ sha: revision, commit: { message: "Sample older commit", author: { name: "Editor", date: "2026-01-01T12:00:00Z" } } }]); }
+    if (url.pathname.includes("/contents/") && url.search) { calls.push(url); return Response.json({ type: "file", path: "playground/src/content/blog/hello.json", sha: createHash("sha1").update(`blob ${Buffer.byteLength(text)}\0${text}`).digest("hex"), encoding: "base64", content: Buffer.from(text).toString("base64") }); }
+    return transport(input, init);
+  });
+  const history = await listRemoteHistory(ctx, m, selection);
+  expect(history.entries).toEqual([{ sha: revision, message: "Sample older commit", author: "Editor", date: "2026-01-01T12:00:00Z" }]);
+  expect(history.more).toBe(false);
+  expect(calls[0].searchParams.get("sha")).toBe(head);
+  expect(calls[0].searchParams.get("path")).toBe("playground/src/content/blog/hello.json");
+  expect(calls[0].searchParams.get("per_page")).toBe("20");
+  const restored = await readRemoteRevision(ctx, m, selection, revision);
+  expect(restored.values).toEqual({ title: "Older" });
+  expect(restored.body).toEqual(emptyBody());
+  expect(calls[1].searchParams.get("ref")).toBe(revision);
+  expect(JSON.stringify(m)).toBe(before);
+  await expect(listRemoteHistory(ctx, m, selection, 11)).rejects.toThrow();
+  await expect(readRemoteRevision(ctx, m, selection, "drafts")).rejects.toThrow();
+  await expect(listRemoteHistory(ctx, m, { ...selection, slug: "unknown" })).rejects.toThrow();
+  expect(calls).toHaveLength(2);
+  s.put("unrelated/change.json", "{}");
+  await expect(saveRemoteSelection(ctx, m, selection, restored.values, restored.body, false)).rejects.toThrow(/conflict/i);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("historical content uses data-only copy, article, document and menu validation", async () => {
+  server();
+  const { parseRemoteRevision } = await import("./github-backend");
+  const m = await loadEditingFixture(ctx, blueprint());
+  m.pages[0].groups = [{ id: "hero", label: "Hero", fields: [{ key: "title", type: "string", label: "Title" }] }];
+  const copy = (value: string) => `export default defineCopy({values:{hero:{title:${value}}}});`;
+  expect(parseRemoteRevision(m, { kind: "page", slug: "contact" }, copy('"Old"')).values).toEqual({ hero: { title: "Old" } });
+  expect(() => parseRemoteRevision(m, { kind: "page", slug: "contact" }, copy('(()=>{throw Error("Executed")})()'))).toThrow(/data-only/);
+  expect(() => parseRemoteRevision(m, { kind: "page", slug: "contact" }, copy("42"))).toThrow();
+  expect(() => parseRemoteRevision(m, { kind: "document", type: "author", id: "author:alex" }, '{"name":42}')).toThrow();
+  expect(() => parseRemoteRevision(m, { kind: "document", type: "author", id: "author:alex" }, '{"name":"Old","_id":"author:other"}')).toThrow();
+  expect(parseRemoteRevision(m, { kind: "document", type: "author", id: "author:alex" }, '{"name":"Old"}').values).toEqual({ name: "Old" });
+  expect(() => parseRemoteRevision(m, { kind: "post", collection: "blog", slug: "hello" }, '{"frontmatter":{},"body":"<script>alert(1)</script>"}')).toThrow();
+  expect(() => parseRemoteRevision(m, { kind: "post", collection: "blog", slug: "hello" }, '{')).toThrow();
+  expect(parseRemoteRevision(m, { kind: "menu", slug: "main" }, '{"slug":"main","title":"Old","items":[]}').values).toEqual({ title: "Old", items: [] });
+  expect(() => parseRemoteRevision(m, { kind: "menu", slug: "main" }, '{"slug":"other","title":"Old","items":[]}')).toThrow();
+});
+
+test("history rejects expired contexts, failed permissions, missing files and corrupt bytes without mutating the snapshot", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const { listRemoteHistory, readRemoteRevision } = await import("./github-backend");
+  const selection = { kind: "document", type: "author", id: "author:alex" } as const, before = JSON.stringify(m);
+  for (const status of [401, 403, 404, 429]) {
+    s.status = status;
+    await expect(listRemoteHistory(ctx, m, selection)).rejects.toThrow();
+    await expect(readRemoteRevision(ctx, m, selection, "c".repeat(40))).rejects.toThrow();
+  }
+  s.status = 0;
+  await expect(listRemoteHistory({ ...ctx, token: "other" }, m, selection)).rejects.toThrow();
+  let active = true;
+  const context = { ...ctx, assertActive() { if (!active) throw new Error("Inactive account"); } };
+  let complete!: (value: Response) => void;
+  vi.stubGlobal("fetch", () => new Promise<Response>(resolve => { complete = resolve; }));
+  const pending = listRemoteHistory(context, m, selection);
+  active = false; complete(Response.json([]));
+  await expect(pending).rejects.toThrow("Inactive account");
+  expect(JSON.stringify(m)).toBe(before);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
 const ctx = { token: "secret-token", repo: "owner/site", branch: "drafts" };
 
 test("GitHub saves apply registered validation before requests and preserve unknown blocks", async () => {

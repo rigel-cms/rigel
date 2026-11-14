@@ -33,6 +33,19 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+test('image processing persists with other preferences and ignores invalid stored fields', () => {
+  const defaults = { convertHeic: true, resize: true, quality: 90, maxEdge: 2048 };
+  expect(getSettings().imageProcessing).toEqual(defaults);
+  const custom = { convertHeic: false, resize: false, quality: 75, maxEdge: 1200 };
+  setSettings({ imageProcessing: custom }); setKeys({ pexels: 'test-key' });
+  expect(getSettings().imageProcessing).toEqual(custom);
+  entries.set('rigelcms.settings', JSON.stringify({ imageProcessing: { convertHeic: 'false', resize: 1, quality: 101, maxEdge: -1 } }));
+  expect(getSettings().imageProcessing).toEqual(defaults);
+  entries.set('rigelcms.settings', 'broken');
+  getSettings().imageProcessing.quality = 5;
+  expect(getSettings().imageProcessing).toEqual(defaults);
+});
+
 test("sidebar collapse is a validated preference and survives unrelated settings updates", () => {
   expect(getSettings().userPref).toMatchObject({ sidebarCollapsed: false });
   entries.set("rigelcms.settings", JSON.stringify({ userPref: { sidebarCollapsed: true } }));
@@ -103,6 +116,7 @@ test("migrates legacy settings and API keys into one settings store on save", ()
   expect(JSON.parse(entries.get("rigelcms.settings")!)).toEqual({
     theme: "dark", language: "en", devMode: true, highContrast: false,
     apiKeys: { pixabay: "test-key" },
+    imageProcessing: { convertHeic: true, resize: true, quality: 90, maxEdge: 2048 },
     userPref: { previewSplit: 0.5, mediaView: "grid", sidebarCollapsed: false, editorExperience: "inline" },
   });
   expect([...entries.keys()].sort()).toEqual(["rigelcms.settings"]);

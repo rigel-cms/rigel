@@ -63,7 +63,7 @@ try {
   await cdp('Page.navigate', { url: origin });
   await wait(`!!document.querySelector('iframe.revealed')`, 'preview');
 
-  await check(`!document.querySelector('.with-panel') && document.querySelector('.visual-actions button').getAttribute('aria-pressed') === 'false'`, 'properties closed initially');
+  await check(`!!document.querySelector('.with-panel') && document.querySelector('.visual-actions button').getAttribute('aria-pressed') === 'true' && document.querySelector('#properties-tab-page').getAttribute('aria-selected') === 'true'`, 'properties open on Page initially');
   await delay(400);
   await evaluate(`window.original = {copy:${copy}.outerHTML, color:${frame}.defaultView.getComputedStyle(${copy}).color, font:${frame}.defaultView.getComputedStyle(${copy}).fontFamily};`);
 
@@ -88,6 +88,7 @@ try {
 
   await clickAt(await at('#copy p'));
   await wait(`${copy}.isContentEditable`, 'inline editor');
+  await evaluate(`(()=>{const heading=${copy}.querySelector('h2'); const range=${frame}.createRange(); range.selectNodeContents(heading); range.collapse(true); const selection=${frame}.defaultView.getSelection(); selection.removeAllRanges(); selection.addRange(range);})()`);
   await cdp('Input.insertText', { text: 'Hello ' });
   await wait(`document.querySelector('#draft').textContent.includes('Hello')`, 'typed text reaches the draft');
   assert.equal(new MarkdownIt().render(await field('copy')), '<h2>Hello Native copy</h2>\n<p>Website <strong>presentation</strong> stays readable.</p>\n<p>Another paragraph.</p>\n', 'typing writes render-equivalent Markdown back to the field');

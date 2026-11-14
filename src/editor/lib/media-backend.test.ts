@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { configureMediaBackend, listMedia, saveMediaMetadata, deleteMedia, mediaSource, resetMediaPreviews, refreshMediaPreviews } from "./media-backend";
+import { configureMediaBackend, listMedia, saveMediaMetadata, deleteMedia, mediaSource, resetMediaPreviews, refreshMediaPreviews, mediaUploadGuard } from "./media-backend";
 import * as github from "./github-backend";
 
 vi.mock("virtual:rigel-config", () => ({ default: { backend: "local" } }));
@@ -61,6 +61,25 @@ test("library thumbnails wait for near viewport while detail previews remain eag
   expect(original).toHaveBeenCalledTimes(1);
   expect(read).toHaveBeenCalledTimes(1);
   detail.destroy();
+});
+
+test("queued uploads retain their verified backend, session and manifest scope", () => {
+  let ctx = { token: "fixture", repo: "owner/site", branch: "drafts" }, manifest = { pages: [] } as any;
+  let backend: "github" | "demo" = "github";
+  configureMediaBackend(() => ({ ctx, manifest }), undefined, () => backend);
+  const guard = mediaUploadGuard();
+  expect(guard).not.toThrow();
+  ctx = { ...ctx };
+  expect(guard).toThrow();
+  const next = mediaUploadGuard();
+  manifest = { ...manifest };
+  expect(next).toThrow();
+  const third = mediaUploadGuard();
+  resetMediaPreviews();
+  expect(third).toThrow();
+  const fourth = mediaUploadGuard();
+  backend = "demo";
+  expect(fourth).toThrow();
 });
 
 test("local media retains listing, metadata and deletion HTTP contracts", async () => {

@@ -205,6 +205,6 @@
     .menu-pane { display: none; border: 0; }
     .menu-pane.active { display: block; }
     .menu-path { gap: 0; }
-    .menu-editor button, .menu-actions summary { min-height: 44px; }
+    .menu-editor button, .menu-actions summary { min-height: var(--button-size); }
   }
 </style>

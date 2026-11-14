@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { t } from "../i18n";
   import SchemaField from "./SchemaField.svelte";
   import Icon from "./Icon.svelte";
@@ -24,8 +25,9 @@
   import { isProtectedDocument } from "../../schema/deletion";
 
   let {
-    schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, pagePath = null, ondelete, deleteDisabled = false, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
+    metadata, schema, docType, values, docId, selected, creating, pending, documents, focusToken, devMode, pagePath = null, ondelete, deleteDisabled = false, inlineFields = [], oneditfield = () => {}, onchange, onselect, oneditdocument,
   }: {
+    metadata?: Snippet;
     schema: Schema;
     docType: DocumentDef;
     values: Record<string, unknown>;
@@ -47,7 +49,7 @@
   } = $props();
 
   let host: HTMLDivElement;
-  let tab = $state<"page" | "content" | "seo">("content");
+  let tab = $state<"page" | "content" | "seo">("page");
   let addType = $state("");
   const protectedPage = $derived(isProtectedDocument(docType, docId.slice(docType.name.length + 1)));
   const sections = $derived(sectionList(values));
@@ -62,7 +64,7 @@
     void focusToken;
     const path = selected?.docId === docId ? selected.path : "";
     const sectionKey = selected?.docId === docId ? selected.sectionKey : undefined;
-    tab = docType.shared || sectionKey || !path || path.includes(".") ? "content" : isSeoField(path) ? "seo" : "page";
+    tab = docType.shared || sectionKey || path.includes(".") ? "content" : isSeoField(path) ? "seo" : "page";
     if (!focusToken || !host) return;
     let cancelled = false;
     void tick().then(() => {
@@ -197,6 +199,7 @@
       {#if protectedPage}<p id="page-delete-notice" class="hint">{$t("local.pageProtected")}</p>{/if}
     </section>
   {/if}
+  {#if !docType.shared && metadata}{@render metadata()}{/if}
   </div>
   <div id="properties-content" role={docType.shared ? undefined : "tabpanel"} aria-labelledby={docType.shared ? undefined : "properties-tab-content"} hidden={tab !== "content"}>
   {#if sections.length || values.sections !== undefined}
@@ -282,4 +285,5 @@
     </section>
     </div>
   {/if}
+  {#if docType.shared && metadata}{@render metadata()}{/if}
 </div>

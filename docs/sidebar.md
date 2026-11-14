@@ -2,6 +2,25 @@
 
 The CMS sidebar opens Pages, configured article collections, shared documents, Menus and Media. Opening an entry uses its editor and explicit Save workflow. The sidebar controls editor navigation; [menus](menus.md) control links on the public website.
 
+## Site links
+
+The arrow button beside the Rigel logo opens site links. In the collapsed desktop rail, the star opens the same dropdown. The expanded logo opens Dashboard through the usual unsaved-change prompt.
+
+By default, the dropdown contains Dashboard, Live website when `preview.liveUrl` is configured, and Preview when `preview.draftUrl` is configured. The website links open the deployed sites in new tabs. Preview does not include unsaved editor changes; see [preview](preview.md) for the editor's draft preview.
+
+Set `siteLinks` in the Astro integration to replace all default items with your own links, in order:
+
+```ts
+siteLinks: [
+  { label: "Website", href: "https://example.com/" },
+  { label: "Help", href: "/help/" },
+]
+```
+
+Custom links open in new tabs with `noopener noreferrer`. Labels are literal text. Destinations may be relative URLs or HTTPS URLs; HTTP is allowed only for `localhost`, `127.0.0.1` and `[::1]`. Rigel rejects credentials, protocol-relative URLs, unsafe schemes, whitespace and backslashes. Relative URLs resolve against the editor's current URL.
+
+Set `siteLinks: []` to disable the dropdown. The collapsed star then opens Dashboard. Custom links replace Dashboard too; the expanded logo remains available for guarded Dashboard navigation.
+
 ## Default navigation
 
 Without a `sidebar` option, Rigel builds these groups from the content manifest:

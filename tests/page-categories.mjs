@@ -273,7 +273,7 @@ try {
   await choose('.action-dialog', 'Category', 'Articles');
   await check(`![...document.querySelectorAll('.action-dialog .select-label')].some(node=>node.textContent==='Template')`, 'French category excludes both English templates');
   await click('.action-dialog button[type=submit]'); await wait(`!document.querySelector('.action-dialog')`);
-  failSave = true; await click('.save-button'); await wait(`!!document.querySelector('.save-toast')`);
+  failSave = true; await click('.save-button'); await wait(`!!document.querySelector('.toast[data-kind="error"]')`);
   await choose('.content-language', 'Content language', 'English'); await wait(`!!document.querySelector('.unsaved-dialog[open]')`);
   await textClick('.unsaved-actions button', 'Keep editing');
   await check(`document.querySelector('.content-language button').textContent.includes('Français') && document.querySelector('.titlebar h2').textContent==='French browser draft'`, 'cancelled locale switch retains locale and unsaved page');

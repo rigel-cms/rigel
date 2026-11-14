@@ -1,0 +1,11 @@
+{
+  "recovery.title": "Trovata una bozza non salvata",
+  "recovery.description": "Questo browser contiene una copia delle tue modifiche. Ripristinarla non salva né pubblica nulla.",
+  "recovery.changed": "Il contenuto salvato è cambiato dopo questa copia. Il ripristino sostituisce il contenuto dell’editor; controllalo prima di salvare.",
+  "recovery.restore": "Ripristina bozza",
+  "recovery.discard": "Elimina copia",
+  "recovery.error": "Il recupero delle bozze non è disponibile. Le modifiche sono ancora nell’editor; salvale prima di uscire.",
+  "recovery.listTitle": "Bozze recuperabili",
+  "recovery.review": "Esamina bozza",
+  "recovery.date": "Copia del {date}"
+}

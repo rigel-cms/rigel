@@ -55,7 +55,7 @@ test.each([JSON.stringify(menu), "{", JSON.stringify({ ...menu, slug: "wrong" })
     const load = (server.environments.ssr as RunnableDevEnvironment).runner.import("virtual:rigel-manifest");
     if (contents === JSON.stringify(menu)) {
       const result = await load;
-      expect(result.default).toEqual({ pages: [], collections: [], documents: [], search: { scope: "all" }, menus: { maxDepth: 3, entries: [menu] } });
+      expect(result.default).toEqual({ recoveryScope: expect.stringMatching(/^[a-f0-9]{64}$/), pages: [], collections: [], documents: [], search: { scope: "all" }, menus: { maxDepth: 3, entries: [menu] } });
       const config = await (server.environments.ssr as RunnableDevEnvironment).runner.import("virtual:rigel-config");
       expect(config.default.root).toBe(pathToFileURL(root + "/").href);
       expect(config.default.search).toEqual({ scope: "all" });

@@ -1,0 +1,11 @@
+{
+  "recovery.title": "Unsaved draft found",
+  "recovery.description": "This browser has a backup of your edits. Restoring it does not save or publish anything.",
+  "recovery.changed": "The saved content has changed since this backup. Restoring replaces the editor contents; review before saving.",
+  "recovery.restore": "Restore draft",
+  "recovery.discard": "Discard backup",
+  "recovery.error": "Draft recovery is unavailable. Your edits are still in the editor; save them before leaving.",
+  "recovery.listTitle": "Recoverable drafts",
+  "recovery.review": "Review draft",
+  "recovery.date": "Backed up {date}"
+}

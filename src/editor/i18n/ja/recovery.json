@@ -1,0 +1,11 @@
+{
+  "recovery.title": "未保存の下書きが見つかりました",
+  "recovery.description": "このブラウザーには編集内容のバックアップがあります。復元しても保存や公開はされません。",
+  "recovery.changed": "バックアップ後に保存済みの内容が変更されています。復元するとエディターの内容が置き換わります。保存前に確認してください。",
+  "recovery.restore": "下書きを復元",
+  "recovery.discard": "バックアップを削除",
+  "recovery.error": "下書きを復元できません。編集内容はエディターに残っています。離れる前に保存してください。",
+  "recovery.listTitle": "復元できる下書き",
+  "recovery.review": "下書きを確認",
+  "recovery.date": "バックアップ日時：{date}"
+}

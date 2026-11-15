@@ -56,6 +56,132 @@ test("confirmation creates only an exact-branch PR and verifies a head-pinned sq
   expect(s.calls.at(-1)?.path).toBe("/pulls/7");
 });
 
+test("confirmation waits for GitHub's pending mergeability calculation before squashing", async () => {
+  vi.useFakeTimers();
+  try {
+    const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+    let pending = 2;
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const response = await original(input, init);
+      if (input.endsWith("/pulls/7") && !s.merged && pending-- > 0) {
+        const data = await response.json();
+        return Response.json({ ...data, mergeable: null, mergeable_state: "unknown" });
+      }
+      return response;
+    });
+    const result = confirmRemotePublish(ctx, m, review).catch(error => error);
+    await vi.runAllTimersAsync();
+    expect(await result).toBe("published");
+    expect(s.calls.filter(call => call.method === "POST")).toHaveLength(1);
+    expect(s.calls.filter(call => call.method === "PUT")).toHaveLength(1);
+  } finally { vi.useRealTimers(); }
+});
+
+test("pending mergeability has bounded reads and retries reuse the same PR", async () => {
+  vi.useFakeTimers();
+  try {
+    const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+    let pending = true, reads = 0;
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const response = await original(input, init);
+      if (input.endsWith("/pulls/7") && pending) {
+        reads++;
+        return Response.json({ ...await response.json(), mergeable: null, mergeable_state: "unknown" });
+      }
+      return response;
+    });
+    const result = confirmRemotePublish(ctx, m, review).catch(error => error);
+    await vi.runAllTimersAsync();
+    expect((await result).message).toMatch(/still checking/);
+    expect(reads).toBe(6);
+    expect(s.calls.filter(call => call.method === "POST")).toHaveLength(1);
+    expect(s.calls.some(call => call.method === "PUT")).toBe(false);
+    pending = false;
+    await expect(confirmRemotePublish(ctx, m, review)).resolves.toBe("published");
+    expect(s.calls.filter(call => call.method === "POST")).toHaveLength(1);
+    expect(s.calls.filter(call => call.method === "PUT")).toHaveLength(1);
+  } finally { vi.useRealTimers(); }
+});
+
+test.each(["head", "base"] as const)("a moved %s during mergeability polling prevents merge", async field => {
+  vi.useFakeTimers();
+  try {
+    const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const response = await original(input, init);
+      return input.endsWith("/pulls/7") ? Response.json({ ...await response.json(), mergeable: null, mergeable_state: "unknown" }) : response;
+    });
+    setTimeout(() => { s[field] = C; }, 500);
+    const result = confirmRemotePublish(ctx, m, review).catch(error => error);
+    await vi.runAllTimersAsync();
+    expect(await result).toBeInstanceOf(PublishReviewChangedError);
+    expect(s.calls.some(call => call.method === "PUT")).toBe(false);
+  } finally { vi.useRealTimers(); }
+});
+
+test("session invalidation during mergeability polling stops subsequent requests", async () => {
+  vi.useFakeTimers();
+  try {
+    const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const response = await original(input, init);
+      return input.endsWith("/pulls/7") ? Response.json({ ...await response.json(), mergeable: true, mergeable_state: "unknown" }) : response;
+    });
+    let active = true;
+    setTimeout(() => { active = false; }, 500);
+    const result = confirmRemotePublish(ctx, m, review, () => { if (!active) throw Error("Session invalidated"); }).catch(error => error);
+    await vi.runAllTimersAsync();
+    expect((await result).message).toBe("Session invalidated");
+    expect(s.calls.at(-1)?.path).toBe("/pulls/7");
+    expect(s.calls.some(call => call.method === "PUT")).toBe(false);
+  } finally { vi.useRealTimers(); }
+});
+
+test.each(["clean", "has_hooks", "unstable"])("a mergeable %s PR uses GitHub's protected SHA-pinned merge", async mergeState => {
+  const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    const response = await original(input, init);
+    return input.endsWith("/pulls/7") ? Response.json({ ...await response.json(), mergeable_state: mergeState }) : response;
+  });
+  await expect(confirmRemotePublish(ctx, m, review)).resolves.toBe("published");
+  expect(s.calls.filter(call => call.method === "PUT")).toEqual([{ path: "/pulls/7/merge", method: "PUT", body: { merge_method: "squash", sha: A } }]);
+});
+
+test("GitHub's protection refusal is not retried even for a mergeable unstable PR", async () => {
+  const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+  let merges = 0;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (input.endsWith("/pulls/7/merge")) { merges++; return Response.json({}, { status: 405 }); }
+    const response = await original(input, init);
+    return input.endsWith("/pulls/7") ? Response.json({ ...await response.json(), mergeable_state: "unstable" }) : response;
+  });
+  const error = await confirmRemotePublish(ctx, m, review).catch(error => error);
+  expect(error.status).toBe(405);
+  expect(merges).toBe(1);
+  expect(s.merged).toBe(false);
+});
+
+test.each(["dirty", "blocked"])("a resolved %s state after pending mergeability still blocks merge", async state => {
+  vi.useFakeTimers();
+  try {
+    const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+    let pending = true;
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+      const response = await original(input, init);
+      if (input.endsWith("/pulls/7")) {
+        const data = { ...await response.json(), mergeable: pending ? null : state !== "dirty", mergeable_state: pending ? "unknown" : state };
+        pending = false;
+        return Response.json(data);
+      }
+      return response;
+    });
+    const result = confirmRemotePublish(ctx, m, review).catch(error => error);
+    await vi.runAllTimersAsync();
+    expect((await result).message).toMatch(/required checks/);
+    expect(s.calls.some(call => call.method === "PUT")).toBe(false);
+  } finally { vi.useRealTimers(); }
+});
+
 test.each(["head", "base"] as const)("moved %s invalidates review without any write", async field => {
   const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m);
   s[field] = C;
@@ -214,6 +340,18 @@ test("save and delete cannot overlap publishing, and queued saving blocks confir
   const saving = saveRemoteSelection(ctx, m, { kind: "pages" }, {}, "", false);
   await expect(confirmRemotePublish(ctx, m, review)).rejects.toThrow(/Wait/);
   await expect(saving).rejects.toThrow(/editable/);
+});
+
+test.each(["x-ratelimit-remaining", "retry-after"])("publishing preserves a 403 rate limit identified by %s", async header => {
+  const s = server(), m = manifest(), review = await reviewRemotePublish(ctx, m), original = fetch;
+  vi.stubGlobal("fetch", (input: string, init?: RequestInit) => input.includes("/pulls")
+    ? Promise.resolve(Response.json({ message: "test-token secret" }, { status: 403, headers: { [header]: header === "retry-after" ? "60" : "0" } }))
+    : original(input, init));
+  const error = await confirmRemotePublish(ctx, m, review).catch(error => error);
+  expect(error.status).toBe(403);
+  expect(error.message).toMatch(/rate limit/);
+  expect(error.message).not.toMatch(/permissions|Reconnect|test-token|secret/);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
 });
 
 test.each([401, 403, 405, 409, 422])("publishing API %s fails safely with actionable sanitized errors", async status => {

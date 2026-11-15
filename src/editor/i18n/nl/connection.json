@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "De pull request of het doel is gewijzigd. Controleer de wijzigingen opnieuw voordat je publiceert.",
   "connection.syncUnverified": "GitHub synchroniseert de concepten nog, of de synchronisatie kan niet worden geverifieerd. Wacht, laad de conceptinhoud opnieuw en controleer deze nogmaals. Er is niets gepubliceerd.",
   "connection.mergeBlocked": "GitHub heeft deze merge niet toegestaan. Los conflicten op en voldoe aan de vereiste controles, reviews of branchbeveiliging op GitHub. Probeer het daarna opnieuw. Er wordt geen beveiliging omzeild.",
+  "connection.mergePending": "GitHub controleert nog de status van de merge. Wacht even en probeer opnieuw te publiceren.",
   "connection.mergeFailed": "GitHub heeft de pull request niet samengevoegd. Controleer de vereiste controles, reviews en branchbeveiliging en probeer het daarna opnieuw.",
   "connection.publishUnverified": "Het publicatieresultaat kan niet worden geverifieerd. Controleer deze pull request op GitHub voordat je het opnieuw probeert.",
   "connection.publishPermissions": "Publiceren vereist lees-/schrijfmachtigingen voor Contents en Pull requests van de GitHub App, goedkeuring van de installatie-eigenaar en schrijftoegang tot de repository. Maak na goedkeuring opnieuw verbinding. Branchbeveiliging blijft van toepassing.",

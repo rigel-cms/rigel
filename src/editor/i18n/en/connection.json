@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "Pull request or target changed. Review changes again before publishing.",
   "connection.syncUnverified": "GitHub is still syncing drafts, or the sync could not be verified. Wait, reload draft content and review again. Nothing was published.",
   "connection.mergeBlocked": "GitHub has not allowed this merge. Resolve conflicts, required checks, reviews or branch protections on GitHub, then retry. No protection is bypassed.",
+  "connection.mergePending": "GitHub is still checking the merge status. Wait a moment and retry publishing.",
   "connection.mergeFailed": "GitHub did not merge the pull request. Check required checks, reviews and branch protections, then retry.",
   "connection.publishUnverified": "The publish result could not be verified. Check this pull request on GitHub before retrying.",
   "connection.publishPermissions": "Publishing requires GitHub App Contents and Pull requests read/write permissions, installation-owner approval and repository write access. Reconnect after approval. Branch protections still apply.",

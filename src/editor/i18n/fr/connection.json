@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "La demande de fusion ou la cible a changé. Examinez à nouveau les modifications avant de publier.",
   "connection.syncUnverified": "GitHub synchronise encore les brouillons, ou la synchronisation n’a pas pu être vérifiée. Patientez, rechargez le contenu des brouillons et recommencez l’examen. Rien n’a été publié.",
   "connection.mergeBlocked": "GitHub n’a pas autorisé cette fusion. Résolvez les conflits, les vérifications requises, les revues ou les protections de branche sur GitHub, puis réessayez. Aucune protection n’est contournée.",
+  "connection.mergePending": "GitHub vérifie encore l’état de la fusion. Patientez un instant, puis réessayez de publier.",
   "connection.mergeFailed": "GitHub n’a pas fusionné la demande de fusion. Vérifiez les vérifications requises, les revues et les protections de branche, puis réessayez.",
   "connection.publishUnverified": "Le résultat de la publication n’a pas pu être vérifié. Vérifiez cette demande de fusion sur GitHub avant de réessayer.",
   "connection.publishPermissions": "La publication nécessite les autorisations GitHub App Contents et Pull requests en lecture/écriture, l’approbation du propriétaire de l’installation et un accès en écriture au dépôt. Reconnectez-vous après approbation. Les protections de branche s’appliquent toujours.",

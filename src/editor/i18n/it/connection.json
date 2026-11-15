@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "La pull request o la destinazione sono cambiate. Esamina di nuovo le modifiche prima di pubblicare.",
   "connection.syncUnverified": "GitHub sta ancora sincronizzando le bozze, oppure non è stato possibile verificare la sincronizzazione. Attendi, ricarica il contenuto delle bozze e ripeti la revisione. Non è stato pubblicato nulla.",
   "connection.mergeBlocked": "GitHub non ha consentito questo merge. Risolvi conflitti, controlli obbligatori, revisioni o protezioni dei branch su GitHub, poi riprova. Nessuna protezione viene aggirata.",
+  "connection.mergePending": "GitHub sta ancora verificando lo stato del merge. Attendi un momento e riprova a pubblicare.",
   "connection.mergeFailed": "GitHub non ha eseguito il merge della pull request. Controlla i controlli obbligatori, le revisioni e le protezioni dei branch, poi riprova.",
   "connection.publishUnverified": "Impossibile verificare il risultato della pubblicazione. Controlla questa pull request su GitHub prima di riprovare.",
   "connection.publishPermissions": "La pubblicazione richiede per la GitHub App i permessi di lettura/scrittura Contents e Pull requests, l’approvazione del proprietario dell’installazione e l’accesso in scrittura al repository. Ricollegati dopo l’approvazione. Le protezioni dei branch restano valide.",

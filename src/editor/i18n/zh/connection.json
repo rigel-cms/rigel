@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "拉取请求或目标发生了变化。请重新审查更改后再发布。",
   "connection.syncUnverified": "GitHub 仍在同步草稿，或无法验证同步结果。请稍候，重新加载草稿内容并再次审查。未发布任何内容。",
   "connection.mergeBlocked": "GitHub 尚未允许此次合并。请在 GitHub 上解决冲突、必需的检查、审查或分支保护要求，然后重试。不会绕过任何保护措施。",
+  "connection.mergePending": "GitHub 仍在检查合并状态。请稍候再尝试发布。",
   "connection.mergeFailed": "GitHub 未合并此拉取请求。请检查必需的检查、审查和分支保护要求后重试。",
   "connection.publishUnverified": "无法验证发布结果。请在 GitHub 上检查此拉取请求后再重试。",
   "connection.publishPermissions": "发布需要 GitHub App 的 Contents 和 Pull requests 读写权限、安装所有者批准及仓库写入权限。批准后请重新连接。分支保护仍然适用。",

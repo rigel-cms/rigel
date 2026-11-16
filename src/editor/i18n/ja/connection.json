@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "プルリクエストまたは対象が変更されました。公開前に変更内容を再確認してください。",
   "connection.syncUnverified": "GitHub で下書きの同期が続いているか、同期を確認できませんでした。しばらく待って下書きコンテンツを再読み込みし、再確認してください。何も公開されていません。",
   "connection.mergeBlocked": "GitHub がこのマージを許可していません。GitHub で競合、必須チェック、レビュー、ブランチ保護の条件を解決してから再試行してください。保護は一切回避しません。",
+  "connection.mergePending": "GitHub がマージの状態を確認しています。少し待ってから公開を再試行してください。",
   "connection.mergeFailed": "GitHub はプルリクエストをマージしませんでした。必須チェック、レビュー、ブランチ保護を確認して再試行してください。",
   "connection.publishUnverified": "公開結果を確認できませんでした。再試行前に GitHub でこのプルリクエストを確認してください。",
   "connection.publishPermissions": "公開には GitHub App の Contents と Pull requests の読み取り・書き込み権限、インストール所有者の承認、リポジトリへの書き込み権限が必要です。承認後に再接続してください。ブランチ保護は引き続き適用されます。",

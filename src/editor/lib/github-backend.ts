@@ -35,7 +35,7 @@ const MAX_BYTES = 1024 * 1024;
 const MAX_LEDGER_BYTES = 16 * MAX_BYTES;
 
 class GitError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  constructor(message: string, public status: number, public rateLimited = false) { super(message); }
 }
 
 export class PublishReviewChangedError extends Error {}
@@ -82,7 +82,7 @@ async function gh(ctx: GitContext, path: string, init: RequestInit = {}): Promis
   if (!response.ok) {
     const rateLimited = response.status === 429 || response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after");
     const key = rateLimited ? "connection.requestRateLimited" : ({401:"connection.requestSessionExpired",403:"connection.requestAccessDenied",404:"connection.requestUnavailable",409:"connection.requestConflict",422:"connection.requestRejected"} as Record<number,string>)[response.status] ?? "connection.requestError";
-    throw new GitError(translate(key, { status: response.status }), response.status);
+    throw new GitError(translate(key, { status: response.status }), response.status, rateLimited);
   }
   try { return await response.json(); } catch { throw new Error(translate("connection.malformedResponse")); }
 }
@@ -1179,9 +1179,15 @@ export async function confirmRemotePublish(ctx: GitContext, manifest: Manifest, 
     }
     validate(pr);
     review.prNumber = pr.number;
-    pr = validate(await request(ctx, `/pulls/${pr.number}`));
-    if (merged(pr)) return "published";
-    if (pr.state !== "open" || pr.draft || pr.base.sha !== review.base) throw new PublishReviewChangedError(translate("connection.pullRequestTargetChanged"));
+    for (let attempt = 0; ; attempt++) {
+      pr = validate(await request(ctx, `/pulls/${pr.number}`));
+      if (merged(pr)) return "published";
+      if (pr.state !== "open" || pr.draft || pr.base.sha !== review.base) throw new PublishReviewChangedError(translate("connection.pullRequestTargetChanged"));
+      if (review.needsSync || (pr.mergeable !== null && pr.mergeable_state !== "unknown")) break;
+      if (attempt === 5) throw new Error(translate("connection.mergePending"));
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await unchanged();
+    }
     if (review.needsSync) {
       await unchanged();
       await request(ctx, `/pulls/${pr.number}/update-branch`, { method: "PUT", body: JSON.stringify({ expected_head_sha: review.head }) });
@@ -1189,7 +1195,7 @@ export async function confirmRemotePublish(ctx: GitContext, manifest: Manifest, 
       if (!matches(updated) || updated.state !== "open" || sha(updated.head.sha) === review.head) throw new Error(translate("connection.syncUnverified"));
       return "synced";
     }
-    if (pr.mergeable !== true || pr.mergeable_state !== "clean") throw new Error(translate("connection.mergeBlocked"));
+    if (pr.mergeable !== true || !["clean", "has_hooks", "unstable"].includes(pr.mergeable_state)) throw new Error(translate("connection.mergeBlocked"));
     await unchanged();
     let failure: unknown;
     try {
@@ -1206,7 +1212,7 @@ export async function confirmRemotePublish(ctx: GitContext, manifest: Manifest, 
     if (failure) throw failure;
     throw new Error(translate("connection.publishUnverified"));
   } catch (error) {
-    if (error instanceof GitError && [403, 404].includes(error.status)) throw new GitError(translate("connection.publishPermissions"), error.status);
+    if (error instanceof GitError && !error.rateLimited && [403, 404].includes(error.status)) throw new GitError(translate("connection.publishPermissions"), error.status);
     if (error instanceof GitError && [405, 409, 422].includes(error.status)) throw new GitError(translate("connection.publishRejected"), error.status);
     throw error;
   } finally { publishing.delete(key); }

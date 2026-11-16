@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "La solicitud de incorporación o el destino han cambiado. Vuelve a revisar los cambios antes de publicar.",
   "connection.syncUnverified": "GitHub sigue sincronizando los borradores o no se pudo verificar la sincronización. Espera, recarga el contenido de los borradores y revisa de nuevo. No se ha publicado nada.",
   "connection.mergeBlocked": "GitHub no ha permitido esta fusión. Resuelve los conflictos, las comprobaciones obligatorias, las revisiones o las protecciones de rama en GitHub e inténtalo de nuevo. No se elude ninguna protección.",
+  "connection.mergePending": "GitHub aún está comprobando el estado de la fusión. Espera un momento y vuelve a publicar.",
   "connection.mergeFailed": "GitHub no fusionó la solicitud de incorporación. Comprueba las comprobaciones obligatorias, las revisiones y las protecciones de rama e inténtalo de nuevo.",
   "connection.publishUnverified": "No se pudo verificar el resultado de la publicación. Comprueba esta solicitud de incorporación en GitHub antes de volver a intentarlo.",
   "connection.publishPermissions": "La publicación requiere permisos de lectura y escritura en Contents y Pull requests de GitHub App, la aprobación del propietario de la instalación y acceso de escritura al repositorio. Vuelve a conectarte tras la aprobación. Las protecciones de rama siguen vigentes.",

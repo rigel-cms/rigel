@@ -87,6 +87,7 @@
   "connection.pullRequestTargetChanged": "Der Pull Request oder das Ziel hat sich geändert. Prüfe die Änderungen vor dem Veröffentlichen erneut.",
   "connection.syncUnverified": "GitHub synchronisiert die Entwürfe noch, oder die Synchronisierung konnte nicht verifiziert werden. Warte, lade die Entwurfsinhalte erneut und prüfe sie noch einmal. Es wurde nichts veröffentlicht.",
   "connection.mergeBlocked": "GitHub hat diesen Merge nicht zugelassen. Löse Konflikte und erfülle die erforderlichen Prüfungen, Reviews oder Branch-Schutzregeln auf GitHub. Versuche es dann erneut. Keine Schutzmaßnahme wird umgangen.",
+  "connection.mergePending": "GitHub prüft noch den Merge-Status. Warte kurz und versuche die Veröffentlichung erneut.",
   "connection.mergeFailed": "GitHub hat den Pull Request nicht zusammengeführt. Prüfe die erforderlichen Prüfungen, Reviews und Branch-Schutzregeln und versuche es dann erneut.",
   "connection.publishUnverified": "Das Veröffentlichungsergebnis konnte nicht verifiziert werden. Prüfe diesen Pull Request auf GitHub, bevor du es erneut versuchst.",
   "connection.publishPermissions": "Zum Veröffentlichen sind Lese-/Schreibberechtigungen für Contents und Pull requests der GitHub App, die Genehmigung des Installationsinhabers und Schreibzugriff auf das Repository erforderlich. Verbinde dich nach der Genehmigung erneut. Die Branch-Schutzregeln gelten weiterhin.",

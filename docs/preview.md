@@ -46,6 +46,50 @@ Paths use object keys and stable array `_key` values. Array positions are not pr
 
 For schema content, put `data-rigel-doc="page:about"` on each bound element and on section/list containers. It identifies the source document for that element; a parent attribute does not substitute for attributes on descendant anchors. Referenced records use their own IDs and local field paths.
 
+### Format displayed values
+
+Declare named formats in `preview.formats` and select one on a text anchor:
+
+```ts
+const articleDate = {
+  type: "date" as const,
+  locale: "en",
+  options: { year: "numeric", month: "long", day: "numeric" } as const,
+};
+
+rigel({
+  preview: {
+    formats: {
+      articleDate,
+      price: { type: "number", locale: "en-US", options: { style: "currency", currency: "USD" } },
+    },
+  },
+});
+```
+
+```html
+<time data-rigel-text="date" data-rigel-format="articleDate"></time>
+<span data-rigel-text="price" data-rigel-format="price"></span>
+<a href="/about/#team" data-rigel-text="author"></a>
+```
+
+Formats use `Intl.DateTimeFormat` or `Intl.NumberFormat`. The default locale is `en`; dates default to UTC. Set `options.timeZone` explicitly for another zone. Dates accept valid ISO calendar dates, ISO timestamps with a zone, or `Date` objects. Numbers must be finite numeric values, not numeric strings. Blank or invalid values clear the displayed text. Unknown format names also clear it. Date formats on `<time>` update its `datetime` attribute with the raw value and remove it when cleared.
+
+Formatting changes text only. Saved values and field controls keep their original types. Formatted anchors use the properties panel rather than double-click text editing. Nested paths, shared owners and repeated anchors work like other text bindings. Collection reference fields such as `author` already supply their display labels; they do not need a format.
+
+Use the same format in the public template to keep its output consistent:
+
+```astro
+---
+import { formatValue } from "@rigel-cms/rigel/content";
+import { articleDate } from "./formats";
+const { date } = Astro.props;
+---
+<time datetime={date} data-rigel-text="date" data-rigel-format="articleDate">{formatValue(date, articleDate)}</time>
+```
+
+Place shared declarations such as `articleDate` in a site module and import them into both the integration configuration and templates. Format configuration is validated at startup and must be plain serializable data. Custom callbacks and HTML output are not supported.
+
 ### Keep optimized images editable
 
 Astro's `Image` and `Picture` components replace `src` with hashed, responsive candidates, so changing `src` alone changes nothing while `srcset` still lists the old files. Mark an editable image with `data-rigel-src` to show the draft instead:

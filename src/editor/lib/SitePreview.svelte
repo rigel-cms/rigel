@@ -24,7 +24,7 @@
   });
   function patch() {
     if (!loaded || !frame?.contentDocument) return;
-    patchPreview(frame.contentDocument, JSON.parse(JSON.stringify(values)), body);
+    patchPreview(frame.contentDocument, JSON.parse(JSON.stringify(values)), body, { formats: config.formats });
   }
   function onload() {
     try {

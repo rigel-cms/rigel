@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
+import { formatValue, type FieldFormat } from "./field-format";
 import { pageRoute } from "./schema/paths";
 import { slugify } from "./slugs";
 import { renderArticle } from "./article-render";
@@ -15,6 +16,7 @@ export interface PreviewDocumentMapping {
 }
 
 export interface PreviewConfig {
+  formats?: Record<string, FieldFormat>;
   liveUrl?: string;
   draftUrl?: string;
   pages?: Record<string, string | PreviewDocumentMapping>;
@@ -86,6 +88,7 @@ export function cleanupPreview(doc: Document) {
 }
 
 export interface PatchDocuments {
+  formats?: Record<string, FieldFormat>;
   editingBody?: Element | null;
   documents?: Record<string, Record<string, unknown>>;
   primary?: string;
@@ -195,8 +198,14 @@ export function patchPreview(doc: Document, values: Record<string, unknown>, bod
   for (const el of doc.querySelectorAll<HTMLElement>("[data-rigel-text]")) {
     const result = get(el, el.dataset.rigelText!);
     if (!result.found) continue;
-    const text = result.value === null || result.value === undefined ? "" : String(result.value);
+    const name = el.getAttribute("data-rigel-format");
+    const format = name !== null && options.formats && Object.hasOwn(options.formats, name) ? options.formats[name] : undefined;
+    const text = name !== null && !format ? "" : formatValue(result.value, format);
     if (el.textContent !== text) el.textContent = text;
+    if (el.tagName === "TIME" && name !== null) {
+      if (text && format?.type === "date") el.setAttribute("datetime", result.value instanceof Date ? result.value.toISOString() : String(result.value));
+      else el.removeAttribute("datetime");
+    }
   }
   for (const el of doc.querySelectorAll<HTMLElement>("[data-rigel-richtext]")) {
     if (el === options.editingBody) continue;

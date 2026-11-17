@@ -35,6 +35,7 @@ const icons = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w
 <svg><path id="not-symbol" d="M0 0h10v10z"/></svg>`;
 const shared = `<section><p data-rigel-doc="amenity:identity" data-rigel-text="en.text">Deployed identity description</p></section><section><h3 data-rigel-doc="amenity:gym" data-rigel-text="en.title">Deployed shared gym</h3><p data-rigel-doc="amenity:gym" data-rigel-text="en.text">Deployed shared description</p></section><section><h3 data-rigel-doc="amenity:complete" data-rigel-text="en.title">Old complete title</h3><p data-rigel-doc="amenity:complete" data-rigel-text="en.text">Stale optional description</p></section>`;
 const html = `<!doctype html><html><head><base href="https://wrong.invalid/"><meta http-equiv="refresh" content="0;url=https://wrong.invalid/"><link rel="stylesheet" href="/styles.css"><style>body { min-height: 2000px }</style><script>parent.previewScriptRan = true</script></head><body onload="parent.previewScriptRan=true"><h1 data-rigel-doc="page:about" data-rigel-text="title">Deployed title</h1><h2 data-rigel-text="intro.title">Deployed copy</h2><div data-rigel-richtext="$body"><p>Deployed body</p></div><img src="/pixel.svg" data-rigel-image="image" onerror="parent.previewScriptRan=true"><a href="/escape/">Leave preview</a>${shared}${icons}<form class="layout-form" action="/escape/" onsubmit="parent.previewScriptRan=true"><label>Guests<input name="guests" autofocus></label><button formaction="/escape/">Submit</button></form><iframe src="/escape/"></iframe><object data="/escape/"></object><template data-rigel-item-template=""><p data-rigel-text="items.__item__.title"></p></template></body></html>`;
+const formatted = '<time data-rigel-text="date" data-rigel-format="articleDate"></time><time data-rigel-text="intro.date" data-rigel-format="articleDate"></time><span data-rigel-doc="amenity:complete" data-rigel-text="price" data-rigel-format="price"></span>';
 function fixture(req, res) {
   requests.push({ url: req.url, headers: req.headers });
   if (req.url === '/styles.css') { res.setHeader('Content-Type', 'text/css'); res.end('h1 { color: rgb(12, 34, 56) } form.layout-form { display: grid; gap: 13px; padding: 17px }'); return; }
@@ -44,7 +45,7 @@ function fixture(req, res) {
   if (req.url.startsWith('/blog/new-remote-article')) { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('Not built yet'); return; }
   if (failure === '404') { res.writeHead(404, { 'Content-Type': 'text/html' }); res.end('Missing route'); return; }
   res.setHeader('Content-Type', failure === 'type' ? 'text/plain' : 'text/html');
-  const prepared = req.url.startsWith('/preview/blog/') ? html.replace(' data-rigel-doc="page:about"', '') : html;
+  const prepared = (req.url.startsWith('/preview/blog/') ? html.replace(' data-rigel-doc="page:about"', '') : html).replace('</body>', `${formatted}</body>`);
   res.end(failure === 'anchors' ? '<html><body><h1>Unprepared but visible</h1></body></html>' : sameOrigin ? prepared.replace(/<base[^>]+>|<meta[^>]+>/g, '') : prepared);
 }
 const remote = httpServer(fixture);
@@ -52,13 +53,25 @@ await new Promise(resolve => remote.listen(0, '127.0.0.1', resolve));
 const draftOrigin = `http://127.0.0.1:${remote.address().port}`;
 let sameOrigin = false;
 function manifest() {
-  return {
+  const result = {
     pages: [{ slug: 'copy', label: 'Copy fixture', groups: [{ id: 'intro', label: 'Intro', fields: [{ key: 'title', label: 'Copy title', type: 'string' }] }], values: { intro: { title: 'Saved copy' } } }],
     schema: { objects: [], documents: [{ name: 'page', title: 'Pages', type: 'document', folder: 'content/pages', fields: [{ key: 'title', label: 'Title', type: 'string' }] }] },
     documents: [{ id: 'page:about', type: 'page', slug: 'about', data: { title: 'Saved title', image: '/pixel.svg' } }, { id: 'amenity:gym', type: 'amenity', slug: 'gym', loaded: 'metadata', data: { title: 'Metadata-only scalar title' } }, { id: 'amenity:identity', type: 'amenity', slug: 'identity', loaded: 'identity', data: {} }, { id: 'amenity:complete', type: 'amenity', slug: 'complete', loaded: 'complete', data: { en: { title: 'Complete shared title' } } }],
     collections: [{ name: 'blog', label: 'Blog', fields: [{ key: 'title', label: 'Title', type: 'string', required: true }, { key: 'description', label: 'Description', type: 'text' }, { key: 'metaTitle', label: 'Meta title', type: 'string' }, { key: 'ogImage', label: 'Open Graph image', type: 'image' }], posts: [{ slug: 'first-post', ...article }] }],
     preview: { liveUrl: 'https://sunnypixels.io', ...(sameOrigin ? {} : { draftUrl: draftOrigin }), documents: { page: { url: '/page/{slug}/' } }, pages: { copy: '/copy/' }, collections: { blog: { url: '/blog/{slug}/', new: '/preview/blog/' } } },
   };
+  result.preview.formats = {
+    articleDate: { type: 'date', locale: 'en', options: { year: 'numeric', month: 'long', day: 'numeric' } },
+    price: { type: 'number', locale: 'en-US', options: { style: 'currency', currency: 'USD' } },
+  };
+  result.schema.documents[0].fields.push({ key: 'date', label: 'Date', type: 'date' });
+  result.documents[0].data.date = '2026-11-17';
+  result.documents[3].data.price = 0;
+  result.pages[0].groups[0].fields.push({ key: 'date', label: 'Date', type: 'string' });
+  result.pages[0].values.intro.date = '2026-11-17';
+  result.collections[0].fields.push({ key: 'date', label: 'Date', type: 'date' });
+  result.collections[0].posts[0].frontmatter.date = '2026-11-17';
+  return result;
 }
 await writeFile(path.join(scratch, 'index.html'), '<html><body><div id="app"></div><script type="module" src="/main.js"></script></body></html>');
 await writeFile(path.join(scratch, 'main.js'), `import { mount } from 'svelte'; import App from '/src/editor/App.svelte'; import '/src/editor/styles.css'; mount(App, { target: document.getElementById('app') });`);
@@ -150,6 +163,16 @@ try {
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('data-tooltip')`), 'Preview on website');
   assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'Saved title');
   assert.equal(await evaluate(`${frameDoc}.baseURI`), `${draftOrigin}/page/about/`);
+  assert.equal(await evaluate(`${frameDoc}.querySelector('time[data-rigel-text="date"]').textContent`), 'November 17, 2026');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('[data-rigel-format="price"]').textContent`), '$0.00');
+  await click('[data-schema-path="date"] .date-trigger');
+  await wait(`!!document.querySelector('.date-popover:popover-open')`, 'date picker');
+  await click('[data-schema-path="date"] [data-date="2026-11-18"]');
+  await wait(`${frameDoc}.querySelector('time[data-rigel-text="date"]').textContent === 'November 18, 2026'`, 'unsaved formatted date');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('time[data-rigel-text="date"]').getAttribute('datetime')`), '2026-11-18');
+  await click('[data-schema-path="date"] .date-trigger');
+  await wait(`!!document.querySelector('.date-popover:popover-open')`, 'date picker restore');
+  await click('[data-schema-path="date"] [data-date="2026-11-17"]');
   assert.equal(await evaluate(`${frameDoc}.querySelector('template').content.querySelector('p').dataset.rigelText`), 'items.__item__.title');
   await wait(`${frameDoc}.defaultView.getComputedStyle(${frameDoc}.querySelector('h1')).color === 'rgb(12, 34, 56)'`, 'remote CSS');
   await wait(`${frameDoc}.querySelector('img').naturalWidth === 8`, 'remote image');
@@ -208,6 +231,7 @@ try {
   assert(requests.filter(r => r.url.startsWith('/page/')).every(r => !r.headers.cookie), 'HTML fetch omits cookies');
   await click('.brand'); await click('#nav-pages'); await button('Copy fixture');
   await wait(`${frameDoc}?.querySelector('h2')?.textContent === 'Saved copy'`, 'legacy SitePreview cross-origin');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('time[data-rigel-text="intro.date"]').textContent`), 'November 17, 2026');
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/copy/`);
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('aria-label')`), 'Preview on website');
   assert.equal(await evaluate(`document.querySelector('.visual-live').getAttribute('data-tooltip')`), 'Preview on website');
@@ -219,6 +243,7 @@ try {
   await click('.brand'); await button('Discard changes');
   await click('[data-collection="blog"]'); await button(article.frontmatter.title);
   await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'article cross-origin');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('time[data-rigel-text="date"]').textContent`), 'November 17, 2026');
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${draftOrigin}/blog/first-post/`);
   const articleRequests = requests.length;
   await evaluate(`${frameDoc}.querySelector('[data-rigel-richtext="$body"] p').dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}))`);
@@ -297,6 +322,7 @@ try {
   failure = ''; sameOrigin = true;
   await open(); await page();
   await wait(`document.querySelector('.canvas-stage')?.dataset.ready === 'true'`, 'same-origin default');
+  assert.equal(await evaluate(`${frameDoc}.querySelector('time[data-rigel-text="date"]').textContent`), 'November 17, 2026');
   assert.equal(await evaluate(`document.querySelector('.visual-live').href`), `${origin}/page/about/`);
   assert.equal(await evaluate(`document.querySelector('iframe').hasAttribute('srcdoc')`), false);
   assert.equal(await evaluate(`${frameDoc}.querySelector('h1').textContent`), 'Saved title');

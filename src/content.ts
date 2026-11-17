@@ -6,3 +6,5 @@ export { defineSchema, defineDocument, defineObject, defineField } from "./schem
 export type { Schema, DocumentDef, ObjectDef, FieldDef, ContentDocument } from "./schema/types";
 export { effectiveSlug } from "./slugs";
 export { pageRoute } from "./schema/paths";
+export { formatValue } from "./field-format";
+export type { FieldFormat } from "./field-format";

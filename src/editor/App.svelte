@@ -1710,6 +1710,7 @@
         {:else}
         <VisualEditor
           metadata={entryMetadata}
+          formats={manifest.preview?.formats}
           docId={sel.id}
           {schema}
           docType={activeDocType}
@@ -1776,6 +1777,7 @@
         {#key `${coll.name}/${post.slug}`}
           <VisualEditor
             docId={`${coll.name}:${post.slug}`}
+            formats={manifest.preview?.formats}
             values={draft}
             previewValues={collectionPreviewValues(coll.fields, draft, manifest.documents ?? [], $t)}
             body={bodyDraft}

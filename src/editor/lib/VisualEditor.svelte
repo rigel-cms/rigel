@@ -9,6 +9,7 @@
   import editorStyles from "../styles.css?inline";
   import type { ArticleBody } from "../../article-body";
   import { bindPreviewDocument, patchPreview } from "../../preview";
+  import type { FieldFormat } from "../../field-format";
   import { anchorValue } from "../../preview";
   import SchemaPanel from "./SchemaPanel.svelte";
   import SidebarIcon from "./SidebarIcon.svelte";
@@ -19,13 +20,14 @@
   import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
 
   let {
-    docId, schema, docType, values, previewValues, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, metadata, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {}, shortcutsEnabled = true, onshortcut = () => {},
+    docId, schema, docType, values, previewValues, formats, documents = {}, previewPath, websitePath, ondelete, deleteDisabled = false, body = "", bodyInline = false, onbody = () => {}, properties, metadata, creating, devMode, reloadToken = 0, onchange, oneditdocument = () => {}, shortcutsEnabled = true, onshortcut = () => {},
   }: {
     docId: string;
     schema?: Schema;
     docType?: DocumentDef;
     values: Record<string, unknown>;
     previewValues?: Record<string, unknown>;
+    formats?: Record<string, FieldFormat>;
     documents?: Record<string, Record<string, unknown>>;
     previewPath: string | null;
     websitePath?: string | null;
@@ -164,7 +166,7 @@
   function patch() {
     const doc = docElement();
     if (!doc) return;
-    patchPreview(doc, previewValues ?? values, body, { documents, primary: docId, editingBody });
+    patchPreview(doc, previewValues ?? values, body, { documents, primary: docId, editingBody, formats });
     for (const button of doc.querySelectorAll<HTMLButtonElement>('[data-rigel-edit-video]')) button.hidden = !inlineBodyEnabled || mode !== "edit";
     const signature = (Array.isArray(values.sections) ? (values.sections as Record<string, unknown>[]) : [])
       .map((section) => `${section._key}:${section._type}`)
@@ -377,7 +379,7 @@
     const target = eventElement(event.target);
     if (!target) return;
     const element = target.closest<HTMLElement>("[data-rigel-text]");
-    if (!element) return;
+    if (!element || element.hasAttribute("data-rigel-format")) return;
     const field = fieldPathFrom(element);
     if (!field || field.doc !== docId) return;
     const def = fieldForPath(schema, docType, values, field.path);

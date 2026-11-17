@@ -11,6 +11,7 @@ import { systemMessage } from "./editor/i18n/format";
 import { localeNames, type Locale } from "./editor/i18n/locales";
 import { validateContentLocales, validateContentLocale } from "./manifest/content-locales";
 import { effectiveSearchScope } from "./manifest/search";
+import { validateFieldFormat } from "./field-format";
 
 export interface ContentLocalesConfig {
   defaultLocale: string;
@@ -96,6 +97,15 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   if (typeof cfg.demo !== "boolean") throw new Error("rigel: demo must be boolean");
   if (cfg.preview) {
     cfg.preview = { ...cfg.preview };
+    if (cfg.preview.formats !== undefined) {
+      const formats = cfg.preview.formats;
+      if (!formats || typeof formats !== "object" || Array.isArray(formats) || ![Object.prototype, null].includes(Object.getPrototypeOf(formats))) throw new Error("rigel: preview formats must be a plain named object");
+      for (const [name, format] of Object.entries(formats)) {
+        if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(name) || ["__proto__", "constructor", "prototype"].includes(name)) throw new Error("rigel: invalid preview format name");
+        validateFieldFormat(format);
+      }
+      cfg.preview.formats = structuredClone(formats);
+    }
     for (const key of ["liveUrl", "draftUrl"] as const) if (cfg.preview[key] !== undefined) cfg.preview[key] = previewBaseUrl(cfg.preview[key]);
     for (const mappings of [cfg.preview.pages, cfg.preview.documents, cfg.preview.collections]) {
       for (const mapping of Object.values(mappings ?? {})) {

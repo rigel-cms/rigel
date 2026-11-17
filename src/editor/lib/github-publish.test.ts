@@ -45,6 +45,43 @@ test("review is read-only, complete and includes renamed and non-CMS files", asy
   expect(s.calls.every(c => c.method === "GET")).toBe(true);
 });
 
+test("three edits to one file produce one net review entry and omit reverted edits", async () => {
+  const s = server(), original = fetch;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    const response = await original(input, init);
+    if (input.includes("/compare/")) return Response.json({
+      ...await response.json(),
+      commits: [A, B, C].map(sha => ({ sha, commit: { message: "Edit outside/cms.txt and reverted.txt" }, files: [{ filename: "outside/cms.txt", status: "modified" }, { filename: "reverted.txt", status: "modified" }] })),
+    });
+    if (input.includes("/git/trees/")) {
+      const data = await response.json();
+      data.tree.push({ path: "reverted.txt", sha: C, type: "blob", mode: "100644" });
+      return Response.json(data);
+    }
+    return response;
+  });
+  const review = await reviewRemotePublish(ctx, manifest());
+  expect(review.files).toEqual(s.files);
+  expect(review.files.filter(file => file.filename === "outside/cms.txt")).toHaveLength(1);
+  expect(review.files.some(file => file.filename === "reverted.txt")).toBe(false);
+  expect(s.calls.some(call => call.path.startsWith("/commits"))).toBe(false);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("duplicate comparison paths fail closed instead of being silently deduplicated", async () => {
+  const s = server();
+  s.files.push({ ...s.files[0] });
+  await expect(reviewRemotePublish(ctx, manifest())).rejects.toThrow(/unsupported/i);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("review rejects file statuses inconsistent with the pinned trees", async () => {
+  const s = server();
+  s.files[0].status = "added";
+  await expect(reviewRemotePublish(ctx, manifest())).rejects.toThrow(/unsupported/i);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
 test("confirmation creates only an exact-branch PR and verifies a head-pinned squash", async () => {
   const s = server(), m = manifest();
   const review = await reviewRemotePublish(ctx, m);

@@ -60,6 +60,7 @@ export interface CollectionField {
   key: string;
   label: string;
   labelKey?: string;
+  group?: "page" | "content" | "seo";
   type: "string" | "text" | "boolean" | "date" | "tags" | "markdown" | "image" | "reference";
   to?: string;
   multiple?: boolean;

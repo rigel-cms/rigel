@@ -14,8 +14,12 @@ async function snapshot(manifest: Manifest, signal?: AbortSignal) {
   let error = false;
   try {
     if (!manifest.backend) for (const collection of copy.collections ?? []) for (const post of collection.posts) {
-      const article = await readLocalArticle(collection.name, post.slug);
-      post.frontmatter = article.frontmatter; post.body = article.body;
+      signal?.throwIfAborted();
+      try {
+        const article = await readLocalArticle(collection.name, post.slug);
+        signal?.throwIfAborted();
+        post.frontmatter = article.frontmatter; post.body = article.body;
+      } catch { error = true; }
     }
   } catch { error = true; }
   return { copy, error };

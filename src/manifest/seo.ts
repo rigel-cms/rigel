@@ -12,6 +12,10 @@ export function isSeoField(key: string): boolean {
   return key === "metaTitle" || key === "description" || key === "ogImage" || key === "noindex";
 }
 
+export function fieldGroup(field: { key: string; group?: "page" | "content" | "seo" }): "page" | "content" | "seo" {
+  return field.group ?? (isSeoField(field.key) ? "seo" : ["title", "slug", "draft"].includes(field.key) ? "page" : "content");
+}
+
 export function withSeoFields<T extends { key: string }>(fields: T[]): (T | typeof SEO_FIELDS[number])[] {
   return [...fields, ...SEO_FIELDS.filter(field => !fields.some(existing => existing.key === field.key)).map(field => ({ ...field }))];
 }

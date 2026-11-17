@@ -19,8 +19,8 @@
     type SelectedField,
   } from "./schema-edit";
   import { resolvePath } from "../../schema/paths";
-  import { isSeoField } from "../../manifest/seo";
-  import type { ContentDocument, DocumentDef, Schema } from "../../schema/types";
+  import { fieldGroup } from "../../manifest/seo";
+  import type { ContentDocument, DocumentDef, FieldDef, Schema } from "../../schema/types";
   import { slugify } from "../../slugs";
   import { isProtectedDocument } from "../../schema/deletion";
 
@@ -58,18 +58,19 @@
   const selectedSection = $derived(selected?.sectionKey ? sectionTypeDef(schema, sections.find((section) => section._key === selected?.sectionKey)?._type) : undefined);
   const selectedValue = $derived(selected && selectedField ? resolvePath(values, selected.path).value : undefined);
   const docFields = $derived(docType.fields.filter((field) => field.key !== "sections" && (docType.shared || field.key !== "slug")));
-  const seoFields = $derived(docType.shared ? [] : docFields.filter(field => isSeoField(field.key)));
+  const seoFields = $derived(docType.shared ? [] : docFields.filter(field => fieldGroup(field) === "seo"));
 
   $effect(() => {
     void focusToken;
     const path = selected?.docId === docId ? selected.path : "";
     const sectionKey = selected?.docId === docId ? selected.sectionKey : undefined;
-    tab = docType.shared || sectionKey || path.includes(".") ? "content" : isSeoField(path) ? "seo" : "page";
+    const rootField = docFields.find(field => field.key === path.split(".")[0]);
+    tab = docType.shared || sectionKey || path === "sections" || path.startsWith("sections.") ? "content" : rootField ? fieldGroup(rootField) : "page";
     if (!focusToken || !host) return;
     let cancelled = false;
     void tick().then(() => {
       if (cancelled) return;
-      const properties = host.querySelector(sectionKey ? ".section-properties" : isSeoField(path) && !docType.shared ? ".seo-fields" : ".document-properties");
+      const properties = host.querySelector(sectionKey ? ".section-properties" : docType.shared ? ".document-properties" : `#properties-${tab}`);
       const field = [...properties?.querySelectorAll<HTMLElement>("[data-schema-path]") ?? []].find((element) => element.dataset.schemaPath === path);
       const scope = field ?? properties;
       const target = scope?.querySelector<HTMLElement>('[contenteditable="true"]')
@@ -172,6 +173,9 @@
 <svelte:window onpointermove={dragPointer} onpointerup={finishDrag} onpointercancel={cancelDrag} onkeydown={event => { if (event.key === 'Escape' && pointer) { event.preventDefault(); cancelDrag(); message = $t('fields.menuMoveCancelled'); } }} />
 
 <div class="schema-panel" bind:this={host}>
+  {#snippet documentField(field: FieldDef)}
+    <SchemaField {schema} {documents} {devMode} {inlineFields} {oneditfield} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
+  {/snippet}
   {#if docType.shared}
     <p class="shared-badge"><Icon name="info" size={12} /> {$t(docType.demo ? "fields.demoContentNotice" : "fields.sharedContentNotice")}</p>
   {/if}
@@ -184,10 +188,8 @@
       <p class="hint">{$t("fields.documentSlugHint")}</p>
       <label class="page-path"><span>{$t("shell.websiteRoute")}</span><input type="text" value={pagePath ?? $t("shell.notConfigured")} readonly /></label>
     {/if}
-    {#each docFields.filter(field => docType.shared || !isSeoField(field.key)) as field (field.key)}
-      <div data-schema-path={field.key}>
-        <SchemaField {schema} {documents} {devMode} {inlineFields} {oneditfield} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
-      </div>
+    {#each docFields.filter(field => docType.shared || fieldGroup(field) === "page") as field (field.key)}
+      {@render documentField(field)}
     {/each}
   </section>
   {#if creating}
@@ -202,6 +204,13 @@
   {#if !docType.shared && metadata}{@render metadata()}{/if}
   </div>
   <div id="properties-content" role={docType.shared ? undefined : "tabpanel"} aria-labelledby={docType.shared ? undefined : "properties-tab-content"} hidden={tab !== "content"}>
+  {#if !docType.shared}
+    <section class="document-content">
+      {#each docFields.filter(field => fieldGroup(field) === "content") as field (field.key)}
+        {@render documentField(field)}
+      {/each}
+    </section>
+  {/if}
   {#if sections.length || values.sections !== undefined}
     <section>
       <h3>{$t("fields.structure")}</h3>
@@ -230,7 +239,7 @@
     </section>
   {/if}
 
-  {#if selectedSection || (selectedField && selected?.path.includes("."))}
+  {#if selectedSection || (selectedField && selected?.path.startsWith("sections."))}
   <section class="section-properties">
     <h3>{$t("fields.sectionProperties")}</h3>
     {#if selectedSection && selected?.sectionKey}
@@ -278,7 +287,7 @@
       <h3>{$t("fields.seo")}</h3>
       {#each seoFields as field (field.key)}
         <div data-schema-path={field.key}>
-          <SchemaField {schema} {documents} {devMode} {inlineFields} {oneditfield} {field} base={field.key} value={values[field.key]} onvalue={(next) => onchange(replaceAt(values, field.key, next))} />
+          {@render documentField(field)}
           <SeoGuidance field={field.key} value={values[field.key]} />
         </div>
       {/each}

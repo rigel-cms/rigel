@@ -90,6 +90,7 @@ function validateFieldsShape(schema: Schema, fields: FieldDef[], scope: string) 
     if (!FIELD_KEY_PATTERN.test(String(field.key)) || RESERVED_KEYS.has(field.key)) throw new SchemaError(`${scope}: invalid field key ${field.key}`);
     if (keys.has(field.key)) throw new SchemaError(`${scope}: duplicate field key ${field.key}`);
     keys.add(field.key);
+    if (field.group !== undefined && !["page", "content", "seo"].includes(field.group)) throw new SchemaError(`${scope}.${field.key}: group must be page, content or seo`);
     if (typeof field.label !== "string" || !field.label.trim()) throw new SchemaError(`${scope}.${field.key}: label required`);
     if (field.accept !== undefined && (field.type !== "file" || typeof field.accept !== "string" || !field.accept.split(",").every(token => /^(?:\.[a-z0-9]+|[a-z0-9!#$&^_.+-]+\/(?:[a-z0-9!#$&^_.+-]+|\*))$/i.test(token.trim())))) throw new SchemaError(`${scope}.${field.key}: accept must contain file extensions or MIME types`);
     if (field.sidebarOnly !== undefined && (field.type !== "markdown" || typeof field.sidebarOnly !== "boolean")) throw new SchemaError(`${scope}.${field.key}: sidebarOnly applies to markdown fields`);

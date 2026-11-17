@@ -1103,6 +1103,7 @@ export async function reviewRemotePublish(ctx: GitContext, manifest: Manifest, a
       const covered = new Set<string>();
       for (const file of comparison.files) {
         if (!file || typeof file.filename !== "string" || covered.has(file.filename) || !changed.has(file.filename) || !["added", "removed", "modified", "renamed"].includes(file.status)) throw new Error(translate("connection.unsupportedComparison"));
+        if (file.status !== "renamed" && file.status !== (!source.has(file.filename) ? "removed" : !destination.has(file.filename) ? "added" : "modified")) throw new Error(translate("connection.unsupportedComparison"));
         covered.add(file.filename);
         if (file.status === "renamed") {
           if (typeof file.previous_filename !== "string" || !changed.has(file.previous_filename) || covered.has(file.previous_filename)) throw new Error(translate("connection.incompleteRename"));

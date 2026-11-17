@@ -144,6 +144,7 @@ export function parseConfig(options: Partial<RigelConfig> = {}): RigelConfig {
   if (cfg.collections) cfg.collections = cfg.collections.map(collection => ({ ...collection, fields: withSeoFields(collection.fields) }));
   for (const collection of cfg.collections ?? []) {
     for (const field of collection.fields) {
+      if (field.group !== undefined && !["page", "content", "seo"].includes(field.group)) throw new Error(`rigel: ${collection.name}.${field.key}: group must be page, content or seo`);
       if (field.required !== undefined && typeof field.required !== "boolean") throw new Error(`rigel: ${collection.name}.${field.key}: required must be boolean`);
       if (field.type !== "reference") continue;
       if (field.multiple !== undefined && typeof field.multiple !== "boolean") throw new Error(`rigel: ${collection.name}.${field.key}: multiple must be boolean`);

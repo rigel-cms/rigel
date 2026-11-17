@@ -31,6 +31,22 @@ For schema pages, values live directly in the document JSON. For article collect
 
 The website page and article properties panels separate Content and SEO. Page name (`title`) identifies the CMS entry; it is independent of headings inside sections and of `metaTitle`. Editing the name does not change the URL slug. Keep article title, social image and body/section images separate too. SEO fields are excluded from default table columns unless explicitly requested.
 
+## Choose a properties tab
+
+Schema document fields and collection frontmatter fields accept `group: "page" | "content" | "seo"`. Explicit groups override the defaults: custom fields go to Content, `title` and `draft` to Page, and the four native SEO keys to SEO. The URL controls stay in Page; document sections and the article body stay in Content.
+
+```ts
+fields: [
+  { key: "title", label: "Page name", type: "string" },
+  { key: "heading", label: "Heading", type: "string" },
+  { key: "layout", label: "Layout", type: "string", group: "page" },
+  { key: "canonicalUrl", label: "Canonical URL", type: "string", group: "seo" },
+  { key: "description", label: "Summary", type: "text", group: "content" },
+]
+```
+
+Every group uses the same field editors, including complex schema fields and collection tags, references and Markdown. Nested fields follow their top-level field's tab. Shared documents remain untabbed and show all declared fields regardless of group. Placement changes neither saved values nor your site's HTML; SEO guidance remains limited to the native SEO keys.
+
 ## Render the head
 
 This complete minimal Astro layout accepts page or article metadata. Pass the appropriate saved values from your route; it does not load content itself:

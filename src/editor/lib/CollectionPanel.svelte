@@ -12,7 +12,7 @@
   import SeoGuidance from "./SeoGuidance.svelte";
   import ReferenceSelect from "./ReferenceSelect.svelte";
   import { referenceOptions } from "../../manifest/references";
-  import { isSeoField } from "../../manifest/seo";
+  import { fieldGroup } from "../../manifest/seo";
   import type { ContentDocument } from "../../schema/types";
   import { slugify } from "../../slugs";
 
@@ -44,7 +44,7 @@
     void focusToken;
     const path = selected?.path;
     if (!path || !focusToken) return;
-    tab = path === "$body" ? "content" : isSeoField(path) ? "seo" : "page";
+    tab = path === "$body" ? "content" : fieldGroup(fields.find(field => field.key === path) ?? { key: path });
     void tick().then(() => {
       const field = host?.querySelector(`[data-collection-field="${CSS.escape(path)}"]`);
       const control = (path === "$body" ? field?.querySelector<HTMLElement>('[contenteditable="true"]') : field?.querySelector<HTMLElement>('button[role="combobox"], input, textarea, [contenteditable="true"]')) ?? field?.querySelector<HTMLElement>('button');
@@ -55,14 +55,7 @@
 </script>
 
 <div class="schema-panel collection-panel" bind:this={host}>
-  <PropertiesTabs bind:tab />
-  <div id="properties-page" role="tabpanel" aria-labelledby="properties-tab-page" hidden={tab !== "page"}>
-  <section>
-    <h3>{$t("fields.articleDetails")}</h3>
-    <label><span>{$t("fields.urlSlug")}</span><input type="text" value={String(values.slug ?? storageSlug)} oninput={(event) => onchange("slug", event.currentTarget.value)} onblur={() => { if (Object.hasOwn(values, "slug")) onchange("slug", slugify(String(values.slug))); }} /></label>
-    <p class="hint">{$t("fields.collectionSlugHint")}</p>
-    <label class="page-path"><span>{$t("shell.websiteRoute")}</span><input type="text" value={pagePath ?? $t("shell.notConfigured")} readonly /></label>
-    {#each fields.filter(field => field.key !== "slug" && !isSeoField(field.key)) as field (field.key)}
+  {#snippet collectionField(field: CollectionField)}
       {@const label = field.labelKey ? $t(field.labelKey) : field.label}
       <div data-collection-field={field.key}>
         {#if field.type === "reference"}
@@ -95,6 +88,16 @@
           <label><span>{label}{devMode ? ` (${field.key})` : ""}</span><input type="text" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)} /></label>
         {/if}
       </div>
+  {/snippet}
+  <PropertiesTabs bind:tab />
+  <div id="properties-page" role="tabpanel" aria-labelledby="properties-tab-page" hidden={tab !== "page"}>
+  <section>
+    <h3>{$t("fields.articleDetails")}</h3>
+    <label><span>{$t("fields.urlSlug")}</span><input type="text" value={String(values.slug ?? storageSlug)} oninput={(event) => onchange("slug", event.currentTarget.value)} onblur={() => { if (Object.hasOwn(values, "slug")) onchange("slug", slugify(String(values.slug))); }} /></label>
+    <p class="hint">{$t("fields.collectionSlugHint")}</p>
+    <label class="page-path"><span>{$t("shell.websiteRoute")}</span><input type="text" value={pagePath ?? $t("shell.notConfigured")} readonly /></label>
+    {#each fields.filter(field => field.key !== "slug" && fieldGroup(field) === "page") as field (field.key)}
+      {@render collectionField(field)}
     {/each}
   </section>
   <section>
@@ -103,6 +106,11 @@
   {@render metadata?.()}
   </div>
   <div id="properties-content" role="tabpanel" aria-labelledby="properties-tab-content" hidden={tab !== "content"}>
+  <section>
+    {#each fields.filter(field => field.key !== "slug" && fieldGroup(field) === "content") as field (field.key)}
+      {@render collectionField(field)}
+    {/each}
+  </section>
   <section data-collection-field="$body">
     {#if bodyInline}
       <button class="outlined" disabled={bodyLoading} onclick={oneditbody}>{$t("fields.editArticleBody")}</button>
@@ -113,19 +121,9 @@
   <div id="properties-seo" role="tabpanel" aria-labelledby="properties-tab-seo" hidden={tab !== "seo"}>
   <section class="seo-fields">
     <h3>{$t("fields.seo")}</h3>
-    {#each fields.filter(field => isSeoField(field.key)) as field (field.key)}
-      <div data-collection-field={field.key}>
-        <label class:inline={field.type === "boolean"}>
-          {#if field.type === "boolean"}
-            <input type="checkbox" role="switch" class="switch" checked={values[field.key] === true} onchange={(event) => onchange(field.key, event.currentTarget.checked)} />
-            <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
-          {:else}
-            <span>{field.labelKey ? $t(field.labelKey) : field.label}</span>
-            {#if field.type === "image"}<ImagePicker value={String(values[field.key] ?? "")} onpick={(value) => onchange(field.key, value)} />
-            {:else if field.type === "text"}<textarea rows="3" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)}></textarea>
-            {:else}<input type="text" value={String(values[field.key] ?? "")} oninput={(event) => onchange(field.key, event.currentTarget.value)} />{/if}
-          {/if}
-        </label>
+    {#each fields.filter(field => field.key !== "slug" && fieldGroup(field) === "seo") as field (field.key)}
+      <div>
+        {@render collectionField(field)}
         <SeoGuidance field={field.key} value={values[field.key]} />
       </div>
     {/each}

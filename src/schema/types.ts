@@ -9,6 +9,7 @@ export interface FieldDef {
   key: string;
   label: string;
   labelKey?: string;
+  group?: "page" | "content" | "seo";
   type: ScalarFieldType | "object" | "array" | "reference";
   placeholder?: string;
   accept?: string;

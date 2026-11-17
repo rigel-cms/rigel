@@ -26,7 +26,7 @@ type FileSnapshot = { sha: string; text: string; mode: string };
 type MediaChange = { path: string; text: string | null; sha?: string; mode?: string };
 type PendingWrite = { sha: string; text: string | null; creating: boolean; head: string; mode: string; changes?: MediaChange[] };
 type CollectionSnapshot = { ledger: string; ledgerRead?: boolean; files: Map<string, { path: string; sha: string; mode: string }>; metadata: Map<string, CollectionLedgerEntry>; task?: Promise<void> };
-type Snapshot = { documents: Map<string, CollectionSnapshot>; menus: Set<string>; copies: Set<string>; authorize: (ctx: GitContext) => boolean; account: string; reset: () => void; target: string; head: string; writes: Promise<void>; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite>; collections: Map<string, CollectionSnapshot>; read: (path: string) => Promise<string>; articles: Map<string, { sha: string; mode: string }>; cache: Map<string, number> };
+type Snapshot = { baselines?: Map<string, { sha: string; mode: string }>; documents: Map<string, CollectionSnapshot>; menus: Set<string>; copies: Set<string>; authorize: (ctx: GitContext) => boolean; account: string; reset: () => void; target: string; head: string; writes: Promise<void>; files: Map<string, FileSnapshot>; paths: Set<string>; pending: Map<string, PendingWrite>; collections: Map<string, CollectionSnapshot>; read: (path: string) => Promise<string>; articles: Map<string, { sha: string; mode: string }>; cache: Map<string, number> };
 const REMOTE_SNAPSHOT = Symbol("rigel-remote-snapshot");
 const SHA = /^[a-f0-9]{40}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -283,7 +283,7 @@ export async function loadManifestRemote(ctx: GitContext, blueprint: Manifest, c
     assertUniqueUrlSlugs(collection.posts.map(post => ({ slug: post.slug, values: post.frontmatter })), translate);
   }));
 
-  Object.defineProperty(manifest,REMOTE_SNAPSHOT,{value:snapshot});
+  Object.defineProperty(manifest,REMOTE_SNAPSHOT,{value:snapshot,configurable:true});
   if (options.deferCollections === false) await indexRemoteCollections(ctx, manifest);
   return manifest;
 }
@@ -406,6 +406,8 @@ export async function readRemoteSelection(ctx: GitContext, manifest: Manifest, s
         state.metadata.set(doc.slug, { slug: doc.slug, sha: state.files.get(doc.slug)!.sha, frontmatter: documentMetadata(type, data) });
       }
       await Promise.all(documentReferences(doc.data).map(visit));
+      const path = filePath(ctx, manifest, type.folder, doc.slug);
+      snapshot.baselines?.set(path, snapshot.articles.get(path)!);
     };
     await visit(selection.id);
   } else if (selection.kind === "menu") {
@@ -415,12 +417,16 @@ export async function readRemoteSelection(ctx: GitContext, manifest: Manifest, s
     const index = manifest.menus!.entries.findIndex(menu => menu.slug === selection.slug);
     if (index < 0) throw new Error(translate("connection.invalidFile"));
     manifest.menus!.entries[index] = menu; snapshot.menus.add(selection.slug);
+    const path = filePath(ctx, manifest, cfg.menus.folder, selection.slug);
+    snapshot.baselines?.set(path, snapshot.articles.get(path)!);
   } else if (selection.kind === "page") {
     const page = manifest.pages.find(page => page.slug === selection.slug);
     if (!page) throw new Error(translate("connection.unknownCopyPage"));
     const values = readValues(await snapshot.read(filePath(ctx, manifest, cfg.copyDir, page.slug, "ts")));
     if (!Object.values(values).every(isPlainObject)) throw new Error(translate("connection.invalidCopyGroups"));
     page.values = values as typeof page.values; snapshot.copies.add(page.slug);
+    const path = filePath(ctx, manifest, cfg.copyDir, page.slug, "ts");
+    snapshot.baselines?.set(path, snapshot.articles.get(path)!);
   }
 }
 
@@ -496,6 +502,7 @@ export async function readRemotePost(ctx: GitContext, manifest: Manifest, name: 
       await readRemoteSelection(ctx, manifest, { kind: "document", type: doc.type, id: doc.id });
     });
   }));
+  if (dependencies) snapshot.baselines?.set(file.path, snapshot.articles.get(file.path)!);
   return { slug, frontmatter: post.frontmatter, body: post.body as ArticleBody };
 }
 
@@ -510,7 +517,7 @@ export async function readRemoteMediaContent(ctx: GitContext, manifest: Manifest
     collections: manifest.collections?.map(collection => ({ ...collection, posts: [], index: { state: "complete", loaded: 0, total: snapshot.collections.get(collection.name)!.files.size } })),
     menus: manifest.menus ? { ...manifest.menus, entries: manifest.menus.entries.map(menu => ({ ...menu, items: [] })) } : undefined,
   };
-  Object.defineProperty(copy, REMOTE_SNAPSHOT, { value: { ...snapshot, copies: new Set(), menus: new Set() } });
+  Object.defineProperty(copy, REMOTE_SNAPSHOT, { value: { ...snapshot, baselines: undefined, copies: new Set(), menus: new Set() } });
   const tasks = [
     ...copy.pages.map(page => () => readRemoteSelection(guarded, copy, { kind: "page", slug: page.slug })),
     ...copy.documents!.map(doc => () => readRemoteSelection(guarded, copy, { kind: "document", type: doc.type, id: doc.id })),
@@ -641,11 +648,43 @@ function loaded(ctx: GitContext, manifest: Manifest, sameAccount = true): Snapsh
   return snapshot;
 }
 
-async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean, additions: MediaChange[] | ((blob: string | null) => MediaChange[]) = []) {
+async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: string | null, creating: boolean, additions: MediaChange[] | ((blob: string | null) => MediaChange[]) = [], refresh?: () => Promise<void>) {
   const snapshot = loaded(ctx,manifest);
   const head = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
   const uncertain = snapshot.pending.get(path);
-  if (head !== snapshot.head && head !== uncertain?.head) throw new Error(translate("connection.draftConflictUnsaved"));
+  if (snapshot.pending.size && !uncertain) throw new Error(translate("connection.draftConflictUnsaved"));
+  const baseline = (snapshot.baselines ?? snapshot.articles).get(path);
+  const unchanged = (current: Snapshot) => {
+    const file = current.articles.get(path);
+    return creating ? !current.paths.has(path) : !!baseline && baseline.sha === file?.sha && baseline.mode === file.mode;
+  };
+  if (head !== snapshot.head && head !== uncertain?.head) {
+    if (!refresh || snapshot.pending.size) throw new Error(translate("connection.draftConflictUnsaved"));
+    const fresh = await loadManifestRemote(ctx, JSON.parse(JSON.stringify(manifest)), false);
+    const current = loaded(ctx, fresh);
+    if (current.head !== head || !unchanged(current)) throw new Error(translate("connection.draftConflictUnsaved"));
+    await Promise.all([...snapshot.collections.values(), ...snapshot.documents.values()].map(state => state.task));
+    loaded(ctx, manifest);
+    current.baselines = snapshot.baselines ?? new Map(snapshot.articles);
+    current.writes = snapshot.writes;
+    for (const collection of manifest.collections ?? []) {
+      const next = fresh.collections!.find(item => item.name === collection.name)!;
+      const state = current.collections.get(collection.name)!;
+      next.posts.push(...collection.posts.filter(post => !next.posts.some(item => item.slug === post.slug) && state.files.get(post.slug)?.sha === snapshot.collections.get(collection.name)!.files.get(post.slug)?.sha));
+      next.posts = next.posts.map(post => {
+        const existing = collection.posts.find(item => item.slug === post.slug);
+        if (!existing) return post;
+        delete existing.body;
+        return Object.assign(existing, post);
+      });
+      Object.assign(collection, next);
+    }
+    manifest.documents = fresh.documents; manifest.contentIndex = fresh.contentIndex;
+    Object.defineProperty(manifest, REMOTE_SNAPSHOT, { value: current, configurable: true });
+    await refresh();
+    return;
+  }
+  if (!uncertain && !unchanged(snapshot)) throw new Error(translate("connection.draftConflictUnsaved"));
   const endpoint = `/contents/${path.split("/").map(encodeURIComponent).join("/")}`;
   const verify = async (pending: PendingWrite) => {
     const current = sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha);
@@ -699,6 +738,12 @@ async function mutate(ctx: GitContext, manifest: Manifest, path: string, text: s
     if ((pending.changes?.length || collectionLedger) && sha((await gh(ctx, `/git/ref/heads/${encodeURIComponent(ctx.branch)}`))?.object?.sha) !== pending.head) throw new Error(translate("connection.draftConflict"));
     snapshot.head = pending.head;
     snapshot.pending.delete(path);
+    if (pending.text === null) snapshot.baselines?.delete(path);
+    else snapshot.baselines?.set(path, { sha: pending.sha, mode: pending.mode });
+    for (const change of pending.changes ?? []) {
+      if (change.text === null) snapshot.baselines?.delete(change.path);
+      else snapshot.baselines?.set(change.path, { sha: change.sha!, mode: change.mode! });
+    }
     fileCacheChanged();
     for (const [name, state] of snapshot.documents) {
       if (!path.startsWith(state.ledger.slice(0, -COLLECTION_LEDGER.length)) || path === state.ledger) continue;
@@ -756,10 +801,11 @@ export async function saveRemoteSelection(...args: Parameters<typeof saveSelecti
   try { await result; } finally { saving.set(key, (saving.get(key) ?? 1) - 1); }
 }
 
-async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Selection, values: Record<string, unknown>, body: ArticleBody | "", creating: boolean): Promise<void> {
+async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Selection, values: Record<string, unknown>, body: ArticleBody | "", creating: boolean, refreshing = false): Promise<void> {
   const cfg = config(ctx,manifest);
   const snapshot = loaded(ctx,manifest);
   if (!isPlainObject(values)) throw new Error(translate("connection.invalidValues"));
+  const refresh = refreshing ? undefined : () => saveSelection(ctx, manifest, selection, values, body, creating, true);
   let path: string;
   let data: unknown;
   if (selection.kind === "page") {
@@ -768,7 +814,7 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     path = filePath(ctx,manifest,cfg.copyDir,selection.slug,"ts");
     const source = await snapshot.read(path);
     if (!source) throw new Error(translate("connection.reloadCopyPage"));
-    await mutate(ctx,manifest,path,applyValues(source,values),false); return;
+    await mutate(ctx,manifest,path,applyValues(source,values),false,[],refresh); return;
   } else if (selection.kind === "post") {
     const folder = cfg.collections.find(c => c.name === selection.collection)?.folder;
     const collection = manifest.collections?.find(c => c.name === selection.collection);
@@ -801,6 +847,27 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     data = validateMenu({...values,slug:selection.slug},cfg.menus.maxDepth,translate);
     path = filePath(ctx,manifest,cfg.menus.folder,selection.slug);
   } else throw new Error(translate("connection.selectContent"));
+  if (snapshot.baselines) {
+    const references = selection.kind === "document" ? documentReferences(data) : selection.kind === "post"
+      ? manifest.collections!.find(collection => collection.name === selection.collection)!.fields.filter(field => field.type === "reference" && field.to).flatMap(field => {
+        const value = values[field.key];
+        return (Array.isArray(value) ? value : value ? [value] : []) as string[];
+      }) : [];
+    const visited = new Set<string>();
+    for (const id of references) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const document = validateDocumentId(manifest.schema!, id);
+      if (!document) throw new Error(translate("connection.unknownDocument"));
+      const referencePath = filePath(ctx, manifest, document.type.folder, document.slug);
+      const before = snapshot.baselines.get(referencePath), current = snapshot.articles.get(referencePath);
+      if (!before || before.sha !== current?.sha || before.mode !== current.mode) throw new Error(translate("connection.draftConflictUnsaved"));
+      const referenced = parseJson(await snapshot.read(referencePath));
+      if (!isPlainObject(referenced)) throw new Error(translate("connection.invalidDocument"));
+      validateDocument(manifest.schema!, document.type.name, document.slug, referenced, manifest.documents!, translate);
+      references.push(...documentReferences(referenced));
+    }
+  }
   const additional = selection.kind === "post" ? (blob: string | null) => {
     const state = snapshot.collections.get(selection.collection)!, collection = manifest.collections!.find(c => c.name === selection.collection)!;
     return [{ path: state.ledger, text: encode(serializeCollectionLedger(collection, [...state.metadata.values()].filter(e => e.slug !== selection.slug).concat({ slug: selection.slug, sha: blob!, frontmatter: (data as { frontmatter: Record<string, unknown> }).frontmatter })), MAX_LEDGER_BYTES) }];
@@ -808,7 +875,7 @@ async function saveSelection(ctx: GitContext, manifest: Manifest, selection: Sel
     const state = snapshot.documents.get(selection.type)!, type = manifest.schema!.documents.find(type => type.name === selection.type)!;
     return [{ path: state.ledger, text: encode(serializeCollectionLedger(documentLedgerShape(type, manifest.schema!), [...state.metadata.values()].filter(entry => entry.slug !== selection.id.slice(selection.type.length + 1)).concat({ slug: selection.id.slice(selection.type.length + 1), sha: blob!, frontmatter: documentMetadata(type, data as Record<string, unknown>) })), MAX_LEDGER_BYTES) }];
   } : [];
-  await mutate(ctx,manifest,path,serializeContentJson(data,cfg.jsonOutput),creating,additional);
+  await mutate(ctx,manifest,path,serializeContentJson(data,cfg.jsonOutput),creating,additional,refresh);
 }
 
 function bytesBase64(bytes: Uint8Array) {

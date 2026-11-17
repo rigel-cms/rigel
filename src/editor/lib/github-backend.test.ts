@@ -750,7 +750,7 @@ test("history reads one authoritative file at the snapshot head, bounds paginati
   await expect(readRemoteRevision(ctx, m, selection, "drafts")).rejects.toThrow();
   await expect(listRemoteHistory(ctx, m, { ...selection, slug: "unknown" })).rejects.toThrow();
   expect(calls).toHaveLength(2);
-  s.put("unrelated/change.json", "{}");
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Concurrent edit" }, body: emptyBody() }));
   await expect(saveRemoteSelection(ctx, m, selection, restored.values, restored.body, false)).rejects.toThrow(/conflict/i);
   expect(s.calls.every(call => call.method === "GET")).toBe(true);
 });
@@ -987,8 +987,7 @@ test("remote saves reject URL claims added to another file since loading", async
   const s = server();
   const m = await loadEditingFixture(ctx, blueprint());
   s.put("playground/src/content/blog/other.json", JSON.stringify({ frontmatter: { title: "Other", slug: "claimed" }, body: emptyBody() }));
-  s.head = "b".repeat(40);
-  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft", slug: "claimed" }, emptyBody(), false)).rejects.toThrow(/reload/);
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft", slug: "claimed" }, emptyBody(), false)).rejects.toThrow(/already used/);
   expect(s.calls.every(call => call.method === "GET")).toBe(true);
 });
 
@@ -1132,13 +1131,196 @@ test("loaded CAS state survives a reactive manifest proxy without leaking into J
   expect(JSON.stringify(m)).not.toMatch(/secret-token|\"files\"|\"paths\"/);
 });
 
+test.each(["advance", "rewrite"])("saves an unchanged target after unrelated %s and regenerates its ledger", async movement => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const draft = { title: "My draft", author: "author:alex" };
+  if (movement === "rewrite") s.head = "b".repeat(40);
+  s.put("playground/src/content/blog/sibling.json", JSON.stringify({ frontmatter: { title: "Remote sibling" }, body: emptyBody() }));
+  const parent = s.head;
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, draft, emptyBody(), false);
+  expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter).toEqual(draft);
+  const entries = JSON.parse(s.files.get("playground/src/content/blog/.rigel-collection.json")!.text).entries;
+  expect(entries.map((entry: any) => entry.slug).sort()).toEqual(["hello", "sibling"]);
+  expect(entries.find((entry: any) => entry.slug === "sibling").sha).toBe(s.files.get("playground/src/content/blog/sibling.json")!.sha);
+  expect(s.calls.find(call => call.path === "/git/commits" && call.method === "POST")!.body.parents).toEqual([parent]);
+  expect(draft).toEqual({ title: "My draft", author: "author:alex" });
+});
+
+test.each(["document", "page", "menu"] as const)("%s saves survive unrelated head movement", async kind => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  s.put("unrelated/new.txt", "Keep me");
+  if (kind === "document") {
+    s.put("playground/src/content/authors/sibling.json", JSON.stringify({ name: "Sibling" }));
+    await saveRemoteSelection(ctx, m, { kind, type: "author", id: "author:alex" }, { name: "Draft" }, "", false);
+    const entries = JSON.parse(s.files.get("playground/src/content/authors/.rigel-collection.json")!.text).entries;
+    expect(entries.map((entry: any) => entry.slug).sort()).toEqual(["alex", "sibling"]);
+  } else if (kind === "page") {
+    await saveRemoteSelection(ctx, m, { kind, slug: "contact" }, { contact: { title: "Draft" } }, "", false);
+    expect(s.files.get("playground/src/content/copy/contact.ts")!.text).toContain("Draft");
+  } else {
+    await saveRemoteSelection(ctx, m, { kind, slug: "main" }, { title: "Draft", items: [] }, "", false);
+    expect(JSON.parse(s.files.get("playground/src/content/menus/main.json")!.text).title).toBe("Draft");
+  }
+  expect(s.files.get("unrelated/new.txt")!.text).toBe("Keep me");
+});
+
+test("refresh keeps the selected article object attached to its collection", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const post = m.collections![0].posts[0];
+  s.put("unrelated/new.txt", "Keep me");
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft" }, emptyBody(), false);
+  expect(m.collections![0].posts.find(post => post.slug === "hello")).toBe(post);
+});
+
+test.each(["during-refresh", "before-update"])("a head race %s is not retried or overwritten", async when => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint()), original = fetch;
+  s.put("unrelated/first.txt", "First");
+  let raced = false;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (!raced && (when === "during-refresh" ? input.includes("/git/trees/") : init?.method === "PATCH")) {
+      raced = true; s.put("unrelated/racer.txt", "Racer");
+    }
+    return original(input, init);
+  });
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft" }, emptyBody(), false)).rejects.toThrow(/conflict|rejected/);
+  expect(s.files.get("unrelated/racer.txt")!.text).toBe("Racer");
+  expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter.title).toBe("Hello");
+  expect(s.calls.filter(call => call.path === "/git/commits" && call.method === "POST").length).toBeLessThanOrEqual(1);
+  expect(s.calls.filter(call => call.method === "PATCH").every(call => call.body.force === false)).toBe(true);
+});
+
+test.each([false, true])("refresh retains uncertain-write recovery, applied=%s", async applied => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint()), original = fetch;
+  s.put("unrelated/first.txt", "First");
+  let fail = true;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (init?.method === "PATCH" && fail) {
+      fail = false;
+      if (applied) await original(input, init);
+      throw Error("Lost response");
+    }
+    return original(input, init);
+  });
+  const save = () => saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft" }, emptyBody(), false);
+  await expect(save()).rejects.toThrow();
+  await save();
+  expect(s.calls.filter(call => call.path === "/git/commits" && call.method === "POST")).toHaveLength(1);
+  expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter.title).toBe("Draft");
+});
+
+test("refresh waits for old metadata workers before replacing their live collection objects", async () => {
+  const s = server(), original = blueprint();
+  original.collections!.push({ name: "news", label: "News", fields: [], posts: [] });
+  original.github!.collections.push({ name: "news", folder: "src/content/news" });
+  s.put("playground/src/content/news/one.json", JSON.stringify({ frontmatter: { title: "One" }, body: emptyBody() }));
+  const m = await loadEditingFixture(ctx, original, false, { deferCollections: true }), transport = fetch;
+  const newsSha = s.files.get("playground/src/content/news/one.json")!.sha;
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; }), fetching = new Promise<void>(resolve => { started = resolve; });
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (input.includes(`/git/blobs/${newsSha}`)) { started(); await gate; }
+    return transport(input, init);
+  });
+  const indexing = indexRemoteCollections(ctx, m, "news");
+  await fetching;
+  s.put("unrelated/first.txt", "First");
+  const saving = saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft" }, emptyBody(), false);
+  try {
+    expect(await Promise.race([saving.then(() => "saved"), new Promise(resolve => setTimeout(() => resolve("waiting"), 100))])).toBe("waiting");
+  } finally { release(); await indexing; await saving; }
+});
+
+test("document save revalidates a URL claim introduced by a remote sibling", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  s.put("playground/src/content/authors/sibling.json", JSON.stringify({ name: "Sibling", slug: "claimed" }));
+  await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Draft", slug: "claimed" }, "", false)).rejects.toThrow(/already used/);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Remote target" }));
+  await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Draft", slug: "free" }, "", false)).rejects.toThrow(/conflict/);
+});
+
+test("reauthorization after refresh retains the dirty target baseline", async () => {
+  const s = server(), context = { ...ctx, cacheAccount: "alice" }, m = await loadEditingFixture(context, blueprint());
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Remote author" }));
+  await saveRemoteSelection(context, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft" }, emptyBody(), false);
+  const { reauthorizeRemoteContent } = await import("./github-backend");
+  const renewed = { ...context, token: "renewed" };
+  expect(reauthorizeRemoteContent(renewed, m)).toBe(true);
+  await expect(saveRemoteSelection(renewed, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Old dirty draft" }, "", false)).rejects.toThrow(/conflict/);
+});
+
+test.each([false, true])("refresh preserves fixed-option references with schema=%s", async withSchema => {
+  const s = server(), original = blueprint();
+  original.collections![0].fields = [{ key: "author", label: "Author", type: "reference", options: [{ value: "alex", label: "Alex" }] }];
+  if (!withSchema) delete original.schema;
+  s.put("playground/src/content/blog/hello.json", JSON.stringify({ frontmatter: { title: "Hello", author: "alex" }, body: emptyBody() }));
+  const m = await loadEditingFixture(ctx, original);
+  s.put("unrelated/new.txt", "Keep me");
+  for (const title of ["Draft", "Saved again"]) {
+    await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title, author: "alex" }, emptyBody(), false)).resolves.toBeUndefined();
+    expect(JSON.parse(s.files.get("playground/src/content/blog/hello.json")!.text).frontmatter).toEqual({ title, author: "alex" });
+  }
+  expect(s.files.get("unrelated/new.txt")!.text).toBe("Keep me");
+});
+
+test("refresh protects the transitive reference closure", async () => {
+  const s = server(), original = blueprint();
+  original.schema!.documents[0].fields.push({ key: "related", label: "Related", type: "reference", to: ["author"] });
+  s.put("playground/src/content/authors/other.json", JSON.stringify({ name: "Other" }));
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Alex", related: { _ref: "author:other" } }));
+  const m = await loadEditingFixture(ctx, original);
+  s.put("playground/src/content/authors/other.json", JSON.stringify({ name: "Changed dependency" }));
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft", author: "author:alex" }, emptyBody(), false)).rejects.toThrow(/conflict/);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test.each(["changed", "missing"])("refresh refuses a %s referenced document without writing", async mode => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  const path = "playground/src/content/authors/alex.json";
+  if (mode === "changed") s.put(path, JSON.stringify({ name: "Another author version" }));
+  else { s.files.delete(path); s.put("marker", "deleted author"); }
+  const before = new Map(s.files);
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Draft", author: "author:alex" }, emptyBody(), false)).rejects.toThrow(/conflict|existing/);
+  expect(s.files).toEqual(before);
+  expect(s.calls.every(call => call.method === "GET")).toBe(true);
+});
+
+test("refresh retains sibling draft baselines even after another target saves", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Remote author" }));
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Saved without author" }, emptyBody(), false);
+  await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Old dirty draft" }, "", false)).rejects.toThrow(/conflict/);
+  expect(JSON.parse(s.files.get("playground/src/content/authors/alex.json")!.text).name).toBe("Remote author");
+});
+
+test("explicitly reopening refreshed content establishes its new draft baseline", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint());
+  s.put("playground/src/content/authors/alex.json", JSON.stringify({ name: "Remote author" }));
+  await saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Saved" }, emptyBody(), false);
+  await readRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" });
+  await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Edited fresh author" }, "", false)).resolves.toBeUndefined();
+});
+
+test("an unapplied uncertain save blocks a different target", async () => {
+  const s = server(), m = await loadEditingFixture(ctx, blueprint()), original = fetch;
+  let fail = true;
+  vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
+    if (init?.method === "PATCH" && fail) { fail = false; throw Error("Lost response"); }
+    return original(input, init);
+  });
+  await expect(saveRemoteSelection(ctx, m, { kind: "post", collection: "blog", slug: "hello" }, { title: "Uncertain" }, emptyBody(), false)).rejects.toThrow();
+  const before = s.calls.length;
+  await expect(saveRemoteSelection(ctx, m, { kind: "document", type: "author", id: "author:alex" }, { name: "Different draft" }, "", false)).rejects.toThrow(/conflict/);
+  expect(s.calls.slice(before).every(call => call.method === "GET")).toBe(true);
+});
+
 test("CAS keeps loaded SHA and refuses collisions for updates, deletes and creates",async()=>{
   const s=server();const m=await loadEditingFixture(ctx,blueprint());
   const path="playground/src/content/blog/hello.json";const original=s.files.get(path)!;
   s.put(path,original.text+"\n");
   const before=s.calls.length;
   await expect(saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"hello"},{title:"Changed"},emptyBody(),false)).rejects.toThrow(/conflict.*reload/i);
-  expect(s.calls.slice(before).map(c=>c.method)).toEqual(["GET"]);
+  expect(s.calls.slice(before).every(c=>c.method === "GET")).toBe(true);
   await expect(deleteRemotePost(ctx,m,"blog","hello")).rejects.toThrow(/conflict/i);
   await expect(saveRemoteSelection(ctx,m,{kind:"post",collection:"blog",slug:"hello"},{},emptyBody(),true)).rejects.toThrow(/conflict/);
   s.put("playground/src/content/blog/new.json",original.text);

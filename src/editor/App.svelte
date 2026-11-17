@@ -254,11 +254,6 @@
   let tokenExpired = $state(false);
   const githubMode = $derived(manifest.backend === "github");
   const demoMode = $derived(manifest.backend === "demo");
-  const mediaManifest = $derived(githubMode ? {
-    ...manifest,
-    pages: manifest.pages.filter(page => remoteSelectionReady(gitContext!, manifest, { kind: "page", slug: page.slug })),
-    menus: manifest.menus ? { ...manifest.menus, entries: manifest.menus.entries.filter(menu => remoteSelectionReady(gitContext!, manifest, { kind: "menu", slug: menu.slug })) } : undefined,
-  } : manifest);
   let sel = $state<Sel | null>(null);
   const previewTarget = $derived(sel?.kind === "page" ? sel : null);
   let draft = $state<Record<string, unknown>>({});
@@ -1645,7 +1640,7 @@
         <p role="alert">{articleError}</p>
         <button onclick={() => openSelection(sel)}>{$t("shell.retryLoading")}</button>
       {:else if sel?.kind === "media"}
-        <ImagePicker inline manifest={mediaManifest} onusage={entry => selectSearch(entry.target, entry.locale)} />
+        <ImagePicker inline {manifest} onusage={entry => selectSearch(entry.target, entry.locale)} />
       {:else if sel?.kind === "pages" || sel?.kind === "documents" || sel?.kind === "menus" || (sel?.kind === "collection" && coll)}
 
         <div class="table-card">

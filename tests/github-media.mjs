@@ -25,7 +25,9 @@ const put = (path, bytes) => { bytes = Buffer.from(bytes); const sha = blobSha(b
 put("site/src/fields/entry.json", JSON.stringify({ title: "Media fields", image: "", file: "" }));
 put("site/src/blog/article.json", JSON.stringify({ frontmatter: { title: "Article", cover: "" }, body: emptyBody }));
 put("site/src/copy/copy.ts", 'import { defineCopy } from "@rigel-cms/rigel/content";\nexport default defineCopy({slug:"copy",label:"Copy",shared:true,groups:[],values:{content:{body:"Copy"}}});');
-if (process.argv.includes('--cache-reload')) put("site/static/uploads/media/cached.png", await readFile(new URL('../src/editor/assets/rigelcms-icon.png', import.meta.url)));
+if (process.argv.includes('--cache-reload') || process.argv.includes('--usage')) put("site/static/uploads/media/cached.png", await readFile(new URL('../src/editor/assets/rigelcms-icon.png', import.meta.url)));
+if (process.argv.includes('--usage')) put("site/src/blog/article.json", JSON.stringify({ frontmatter: { title: "Article", cover: "/uploads/media/cached.png" }, body: emptyBody }));
+let failUsage = process.argv.includes('--usage');
 let tree = id(); trees.set(tree, new Map(files));
 let head = id(); commits.set(head, { tree, parents: [] });
 const requests = [], errors = [];
@@ -46,7 +48,7 @@ const api = (path, method, body) => {
     assert.ok(entries);
     return [200, { truncated: false, tree: [...entries].map(([path, sha]) => ({ path, sha, type: "blob", mode: "100644", size: blobs.get(sha).length })) }];
   }
-  if (path.startsWith("/git/blobs/")) { const sha = path.slice(11); assert.ok(blobs.has(sha)); return [200, { sha, encoding: "base64", content: blobs.get(sha).toString("base64") }]; }
+  if (path.startsWith("/git/blobs/")) { const sha = path.slice(11); assert.ok(blobs.has(sha)); if (failUsage && sha === files.get("site/src/blog/article.json")) return [503, {}]; return [200, { sha, encoding: "base64", content: blobs.get(sha).toString("base64") }]; }
   if (path.startsWith("/git/commits/")) { const commit = commits.get(path.slice(13)); assert.ok(commit); return [200, { tree: { sha: commit.tree } }]; }
   if (path === "/git/blobs" && method === "POST") { const bytes = Buffer.from(body.content, "base64"), sha = blobSha(bytes); blobs.set(sha, bytes); return [201, { sha }]; }
   if (path === "/git/trees" && method === "POST") {
@@ -120,7 +122,27 @@ try {
     await waitFor("!!document.querySelector('dialog[open] .media-selection')");
   };
   const ledger = () => JSON.parse(blobs.get(files.get("site/static/uploads/media/.rigel-media.json")));
-  if (process.argv.includes('--cache-reload')) {
+  if (process.argv.includes('--usage')) {
+    await cdp("Page.navigate", { url: new URL('#/media', url).href });
+    await waitFor("document.querySelector('.media-library img[src^=blob]')?.naturalWidth>0");
+    await click('.media-library img[src^=blob]');
+    await waitFor("!!document.querySelector('.usage-trigger')");
+    const before = requests.length;
+    await click('.usage-trigger');
+    await waitFor("!!document.querySelector('.media-usage [role=alert]')");
+    const failedReads = requests.slice(before).filter(request => request.path.endsWith(files.get('site/src/blog/article.json')));
+    assert.ok(failedReads.length > 0, 'Used in attempts the saved article read before showing an error');
+    failUsage = false;
+    const retry = requests.length;
+    await click('.media-usage button');
+    await waitFor("document.querySelector('.media-usage a')?.textContent==='Article'");
+    assert.ok(requests.slice(retry).some(request => request.path.endsWith(files.get('site/src/blog/article.json'))), 'Retry performs a new read');
+    assert.equal(await evaluate("!!document.querySelector('.media-usage [role=alert]')"), false);
+    assert.equal(await evaluate("document.querySelector('.usage-count').textContent"), '1');
+    assert.equal(writes, 0);
+    assert.deepEqual(errors, []);
+    console.log(JSON.stringify({ usage: 'saved article found after failed read and retry', writes, errors }));
+  } else if (process.argv.includes('--cache-reload')) {
     await cdp("Page.navigate", { url: new URL('#/media', url).href });
     await waitFor("document.querySelector('.media-library img[src^=blob]')?.naturalWidth>0");
     assert.equal(await evaluate(`new Promise((resolve,reject)=>{const request=indexedDB.open('rigelcms-files',2);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,count=db.transaction('thumbnails').objectStore('thumbnails').count();count.onsuccess=()=>{db.close();resolve(count.result)};count.onerror=()=>{db.close();reject(count.error)}}})`), 1, 'Thumbnail is persisted before reload');

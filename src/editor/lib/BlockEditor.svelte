@@ -519,11 +519,7 @@
         previous.setImage({ ...image, credit: image.credit, creditURL: image.creditURL });
         const selection = L.$createNodeSelection(); selection.add(previous.getKey()); L.$setSelection(selection); hoverKey = ""; return;
       }
-      const node = new ImageNode(image), paragraph = L.$createParagraphNode();
-      if (previous && job.replace) previous.replace(node);
-      else if (previous) previous.insertAfter(node);
-      else L.$getRoot().append(node);
-      node.insertAfter(paragraph); paragraph.select(); hoverKey = "";
+      insertMediaNode(new ImageNode(image), previous, job.replace);
     });
     imageJob = null; editor.focus();
   }
@@ -539,22 +535,20 @@
     const key = editor.getEditorState().read(() => L.$getRoot().getChildren()[index]?.getKey());
     if (key) editMedia(key);
   }
+  function insertMediaNode(node: L.LexicalNode, previous: L.LexicalNode | null, replace: boolean) {
+    if (previous && L.$isRootNode(previous.getParent())) {
+      if (replace || (L.$isParagraphNode(previous) && previous.isEmpty())) previous.replace(node);
+      else previous.insertAfter(node);
+    } else L.$getRoot().append(node);
+    const selection = L.$createNodeSelection(); selection.add(node.getKey()); L.$setSelection(selection);
+    hoverKey = "";
+  }
   function insertMedia(create: () => L.LexicalNode) {
     const job = mediaJob ?? { key: activeKey, replace: false };
     editor.update(() => {
-      const node = create(), previous = L.$getNodeByKey(job.key), paragraph = L.$createParagraphNode();
-      if (job.replace && (previous instanceof EmbedNode || previous instanceof VideoNode)) {
-        if (previous instanceof VideoNode && node instanceof VideoNode) node.__video = { ...previous.__video, ...node.__video };
-        previous.replace(node);
-        const selection = L.$createNodeSelection(); selection.add(node.getKey()); L.$setSelection(selection); hoverKey = "";
-        return;
-      }
-      if (previous && job.replace) previous.replace(node);
-      else if (previous && L.$isRootNode(previous.getParent())) previous.insertAfter(node);
-      else L.$getRoot().append(node);
-      node.insertAfter(paragraph);
-      paragraph.select();
-      hoverKey = "";
+      const node = create(), previous = L.$getNodeByKey(job.key);
+      if (job.replace && previous instanceof VideoNode && node instanceof VideoNode) node.__video = { ...previous.__video, ...node.__video };
+      insertMediaNode(node, previous, job.replace);
     });
     mediaJob = null;
     refocus();
